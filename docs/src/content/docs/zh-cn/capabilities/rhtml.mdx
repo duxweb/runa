@@ -1,0 +1,302 @@
+---
+title: "RHTML 模板"
+description: "Runa 基于 html/template 的增强 HTML 模板语法"
+---
+
+`view/rhtml` 是 Runa 的增强 HTML 模板渲染器。它仍然基于 Go 标准库 `html/template`，所以默认具备 HTML 转义能力；同时补上业务页面常用的布局、区块、include、条件、循环和自定义 `r:` 标签。
+
+它适合后台页面、服务端渲染页面、邮件模板、CMS 页面和需要把 Go 数据直接渲染成 HTML 的场景。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/view
+```
+
+RHTML 是 `view` 模块下的子包：
+
+```go
+import "github.com/duxweb/runa/view/rhtml"
+```
+
+## 接入应用
+
+如果要在 HTTP handler 里使用 `ctx.Render(...)`，需要安装 `view.Provider()`，并注册一个命名渲染器：
+
+```go
+app.Install(view.Provider())
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    views := provider.MustInvoke[*view.Registry](app)
+    return views.Register(ctx, "web", rhtml.New(
+        view.Dir("views", "**/*.html").Reload(true),
+    ))
+}
+```
+
+handler 中渲染：
+
+```go
+route.Default().Get("/", func(ctx *route.Context) error {
+    return ctx.Render("pages/home", map[string]any{
+        "Title": "Runa",
+    }, "web")
+})
+```
+
+如果只注册一个 view 域，也可以不传最后的 `web`。
+
+## 独立 New 使用
+
+不接入 Runa 应用时，也可以直接创建 renderer：
+
+```go
+renderer := rhtml.New(view.Dir("views", "**/*.html"))
+
+var body bytes.Buffer
+err := renderer.Render(simpleContext{ctx: context.Background()}, &body, "pages/home", map[string]any{
+    "Title": "Runa",
+})
+```
+
+只要传入的 context 实现 `Context() context.Context` 即可。
+
+## 配置
+
+`view/rhtml` 本身不读取 TOML 配置。模板目录、是否热加载、是否使用 embed，都通过 `rhtml.New(...)` 的模板源配置决定。
+
+常见做法是：
+
+- 开发环境使用 `view.Dir("views", "**/*.html").Reload(true)`。
+- 生产环境使用 `view.Embed(...)` 或关闭 `Reload(true)`。
+- 多个渲染域通过 `view.Registry.Register(ctx, name, renderer)` 分开注册。
+
+## 推荐目录
+
+```text
+views/
+  layouts/
+    base.html
+    admin.html
+  partials/
+    nav.html
+    pagination.html
+  pages/
+    home.html
+    users/index.html
+```
+
+模板名可以带扩展名，也可以省略扩展名：
+
+```go
+ctx.Render("pages/home", data)
+ctx.Render("pages/home.html", data)
+```
+
+## 布局和区块
+
+`views/layouts/admin.html`：
+
+```html
+<html>
+  <head>
+    <title>{{ .root.Title }}</title>
+  </head>
+  <body>
+    <aside><r:block name="sidebar">默认菜单</r:block></aside>
+    <main><r:block name="content"></r:block></main>
+  </body>
+</html>
+```
+
+`views/pages/home.html`：
+
+```html
+<r:layout name="layouts/admin">
+  <r:section name="sidebar">用户菜单</r:section>
+  <r:section name="content">
+    <h1>{{ .root.Title }}</h1>
+  </r:section>
+</r:layout>
+```
+
+规则：
+
+- `r:layout` 必须包住整个页面模板
+- `r:section` 只能写在 `r:layout` 里面
+- 同一个页面里同名 section 不能重复
+- layout 里的 `r:block` 可以提供默认内容
+
+## 嵌套布局
+
+布局可以继续继承另一个布局，适合 base → admin → page 这类层级：
+
+```html
+<!-- layouts/base.html -->
+<html>
+  <body><r:block name="body"></r:block></body>
+</html>
+```
+
+```html
+<!-- layouts/admin.html -->
+<r:layout name="layouts/base">
+  <r:section name="body">
+    <aside><r:block name="sidebar">菜单</r:block></aside>
+    <main><r:block name="content"></r:block></main>
+  </r:section>
+</r:layout>
+```
+
+## Include 片段
+
+```html
+<r:include name="partials/nav" label="主导航" title=".Title" />
+```
+
+`r:include` 是自闭合标签。属性值以 `.` 开头时，会从当前数据读取；其他值按字面量传入。
+
+include 内部默认只能看到显式传入的数据和 `.root`，父模板的局部变量不会自动泄漏进去。这能避免局部变量互相污染。
+
+## 条件
+
+```html
+<r:if cond=".User">
+  <p>{{ .User.Name }}</p>
+<r:else>
+  <p>游客</p>
+</r:if>
+```
+
+`cond` 会按模板数据求值。空字符串、false、nil、空集合等都按 false 处理。
+
+## 循环
+
+```html
+<r:for value=".Items" as="item">
+  <span>{{ .item.Name }}</span>
+</r:for>
+```
+
+`as` 必须是合法 Go 标识符。嵌套循环中可以继续访问外层变量。
+
+```html
+<r:for value=".Groups" as="group">
+  <h2>{{ .group.Name }}</h2>
+  <r:for value="group.Items" as="item">
+    <span>{{ .item }}</span>
+  </r:for>
+</r:for>
+```
+
+## 自定义 r: 标签
+
+自定义标签适合封装“从数据库读取数据，然后渲染一段模板”的模式，比如文章列表、菜单、分类、推荐内容。
+
+```go
+renderer := rhtml.New(view.Dir("views", "**/*.html"))
+
+renderer.Tag("articles", func(ctx context.Context, props rhtml.Props) (any, error) {
+    status := props.Int("status")
+    _ = status
+    return []Article{{Title: "Hello"}}, nil
+})
+```
+
+模板中使用自闭合标签，把结果写入变量：
+
+```html
+<r:articles status="1" as="articles" />
+<r:for value=".articles" as="item">
+  <h2>{{ .item.Title }}</h2>
+</r:for>
+```
+
+也可以写成块标签：
+
+```html
+<r:articles status="1" as="item">
+  <h2>{{ .item.Title }}</h2>
+</r:articles>
+```
+
+当自定义标签返回切片时，块内容会循环渲染。返回单个对象时，块内容只渲染一次。
+
+## 模板函数
+
+```go
+renderer.Func("upper", strings.ToUpper)
+renderer.Funcs(template.FuncMap{
+    "asset": func(path string) string { return "/assets/" + path },
+})
+```
+
+模板中使用：
+
+```html
+<h1>{{ upper .root.Title }}</h1>
+<link rel="stylesheet" href="{{ asset "app.css" }}">
+```
+
+## 开发热加载
+
+```go
+renderer := rhtml.New(
+    view.Dir("views", "**/*.html").Reload(true),
+)
+```
+
+`Reload(true)` 会在每次渲染前检查文件数量、大小和修改时间。开发环境方便，生产环境建议关闭。
+
+## Embed 打包模板
+
+```go
+//go:embed views/**/*.html
+var viewsFS embed.FS
+
+renderer := rhtml.New(
+    view.Embed(viewsFS, "views", "**/*.html"),
+)
+```
+
+可以同时配置开发目录覆盖：
+
+```go
+source := view.Embed(viewsFS, "views", "**/*.html").Dev(
+    view.Dir("views", "**/*.html").Reload(true),
+)
+renderer := rhtml.New(source.UseDev())
+```
+
+## 数据作用域
+
+- `.root` 始终指向原始渲染数据
+- `r:include`、`r:block`、`r:section` 和自定义标签会创建局部数据
+- 未显式传入的数据不会自动进入 include
+- 底层仍使用 `html/template`，默认做 HTML 转义
+
+## 常见问题
+
+- 页面使用 `r:layout` 时，layout 标签外不能再写其他内容
+- `r:include` 必须自闭合，不能写成 `<r:include></r:include>`
+- `r:section` 只能出现在 `r:layout` 内
+- 自定义标签名不能使用保留名，比如 `layout`、`section`、`block`、`include`、`if`、`for`
+- 如果 `ctx.Render` 报 `route renderer is not configured`，说明没有安装 `view.Provider()` 或没有把 `view.Registry` 注册到 route service
+
+## API 速查
+
+| API | 说明 |
+| --- | --- |
+| `rhtml.New(sources...)` | 创建增强模板渲染器 |
+| `renderer.Func(name, fn)` | 注册单个模板函数 |
+| `renderer.Funcs(funcMap)` | 批量注册模板函数 |
+| `renderer.Tag(name, handler)` | 注册自定义 `r:` 标签 |
+| `view.Dir(root, patterns...)` | 使用本地目录作为模板源 |
+| `view.Embed(fs, root, patterns...)` | 使用 embed.FS 作为模板源 |
+| `source.Reload(true)` | 开启模板热加载 |
+| `props.Get(name)` | 读取属性原始值 |
+| `props.String(name)` | 读取 string 属性 |
+| `props.Int(name)` | 读取 int 属性 |
+| `props.Bool(name)` | 读取 bool 属性 |
+| `props.Root()` | 读取原始渲染数据 |
+| `props.Map()` | 读取属性副本 |

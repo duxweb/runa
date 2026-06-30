@@ -1,0 +1,57 @@
+---
+title: "Extension Directory"
+description: "Extension directory"
+---
+
+This section collects official and community extensions. At this stage, it lists optional modules already split inside the repository.
+
+These modules are installed on demand. If your project does not import a module, its third-party dependencies do not enter your application.
+
+Do not choose from this directory by module name first. Start from the problem you need to solve: use Redis cache for shared cache, S3 for object storage, and Database Oro for SQL ORM. A driver only connects an external system; the business API still lives in the corresponding capability package.
+
+## Official extensions
+
+| Extension | Install | Description |
+| --- | --- | --- |
+| Cache Redis | `go get github.com/duxweb/runa/cache/redis` | Redis cache driver |
+| Cluster Redis | `go get github.com/duxweb/runa/cluster/redis` | Redis cluster instance registry driver |
+| CRUD Oro Store | `go get github.com/duxweb/runa/crud/orostore` | Oro-based CRUD Store adapter |
+| Queue Redis | `go get github.com/duxweb/runa/queue/redis` | Redis queue driver |
+| Queue AMQP | `go get github.com/duxweb/runa/queue/amqp` | AMQP queue driver |
+| Storage S3 | `go get github.com/duxweb/runa/storage/s3` | S3-compatible object storage driver |
+| Database Oro | `go get github.com/duxweb/runa/database/oro` | Oro SQL database driver |
+| Database Redis | `go get github.com/duxweb/runa/database/redis` | Redis database runtime driver |
+| ID Snowflake | `go get github.com/duxweb/runa/id/snowflake` | Snowflake ID generator |
+| Lock Redis | `go get github.com/duxweb/runa/lock/redis` | Redis distributed lock driver |
+| Message NATS | `go get github.com/duxweb/runa/message/nats` | NATS message driver |
+| Message AMQP | `go get github.com/duxweb/runa/message/amqp` | AMQP message driver |
+| Message MQTT | `go get github.com/duxweb/runa/message/mqtt` | MQTT message driver |
+| Message Redis | `go get github.com/duxweb/runa/message/redis` | Redis pub/sub driver |
+| Observe Prometheus | `go get github.com/duxweb/runa/observe/prometheus` | Prometheus metrics exporter |
+| Rate Redis | `go get github.com/duxweb/runa/rate/redis` | Redis rate limiter driver |
+| WebSocket Redis | `go get github.com/duxweb/runa/ws/redis` | WebSocket horizontal broadcast and presence |
+
+## Choose by scenario
+
+| Scenario | Read |
+| --- | --- |
+| Single-process development cache | [Cache](../capabilities/cache/) is enough; the default memory driver works |
+| Shared cache across instances | [Cache](../capabilities/cache/) + Cache Redis |
+| SQL database and ORM | [Database](../capabilities/database/) + [Database Oro](../drivers/database-oro/) |
+| CRUD APIs backed by a database | [CRUD APIs](../routing/crud/) + [CRUD Oro Store](../drivers/crud-orostore/) |
+| Background jobs | [Queue](../capabilities/queue/) + Queue Redis or Queue AMQP |
+| Object storage upload and download | [Storage](../capabilities/storage/) + Storage S3 |
+| Multi-instance WebSocket | [WebSocket](../transports/websocket/) + WebSocket Redis |
+| Prometheus metrics | [Observe](../ops/observe/) + Observe Prometheus |
+
+## How to read this directory
+
+- Start with the capability you need, such as cache, queue, storage, or database.
+- Then choose the driver, such as Redis, S3, Oro, or NATS.
+- The driver only handles external-system integration. Business usage still follows the capability documentation.
+
+For example, Redis cache usually means reading both [Cache](../capabilities/cache/) and the Cache Redis install path on this page.
+
+## Community extensions
+
+The community extension directory will be maintained after the ecosystem stabilizes. It will list extension names, module paths, install commands, supported versions, and maintenance status.

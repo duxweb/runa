@@ -1,0 +1,73 @@
+---
+title: "Body Limit Middleware"
+description: "Limit HTTP request body size to avoid oversized requests consuming memory and connections"
+---
+
+`middleware/bodylimit` limits request body size. It first checks `Content-Length`, then wraps the request body with `http.MaxBytesReader` so clients cannot keep streaming oversized content without an accurate length.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## Basic usage
+
+```go
+import "github.com/duxweb/runa/middleware/bodylimit"
+
+route.Default().Use(bodylimit.New())
+```
+
+The default limit is `4MB`.
+
+## Custom size
+
+```go
+route.Default().Use(bodylimit.New(bodylimit.Config{
+    Limit: 8 << 20, // 8MB
+}))
+```
+
+`Limit` is measured in bytes.
+
+## Allow larger upload routes
+
+```go
+route.Default().Use(bodylimit.New(bodylimit.Config{
+    Limit: 4 << 20,
+    Next: func(ctx *route.Context) bool {
+        return ctx.Request().URL.Path == "/upload"
+    },
+}))
+
+route.Default().Post("/upload", upload).Use(bodylimit.New(bodylimit.Config{
+    Limit: 100 << 20,
+}))
+```
+
+Use a small global limit for normal APIs, then mount a larger limit only on upload routes.
+
+## Config fields
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | Skip when true |
+| `Limit` | `int64` | `4 << 20` | Max request body bytes |
+
+## Relationship with security
+
+`security.New(...)` includes bodylimit by default. The default size is `32MB`, and you can adjust it like this:
+
+```go
+route.Default().Use(security.New(
+    security.Production(),
+    security.BodyLimit("16MB"),
+))
+```
+
+## Common problems
+
+- bodylimit only limits request bodies. It does not limit URL query, headers, or response size.
+- If your app needs large uploads, loosen the limit only on upload routes instead of globally.
+- When the limit is exceeded, the current implementation returns a normal error; final status is decided by route error rendering.

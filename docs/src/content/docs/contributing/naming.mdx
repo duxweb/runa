@@ -1,0 +1,85 @@
+---
+title: "Naming Conventions"
+description: "Unified naming and structure"
+---
+
+The naming convention should make each child package understandable at a glance: what its core object is, how to use it standalone, how to connect it through Provider, and how to register drivers and instances.
+
+## Driver naming
+
+Use the bare interface name:
+
+```go
+type Driver interface { ... }
+```
+
+Driver factories are called `Driver(...)`:
+
+```go
+redis.Driver(client)
+s3.Driver(options...)
+```
+
+The option used to select a driver is called `Use(name)` to avoid colliding with the `Driver` interface:
+
+```go
+cache.RegisterPool("default", cache.Use("redis"))
+storage.RegisterDisk("cloud", storage.Use("s3"))
+```
+
+## Package file organization
+
+Recommended structure:
+
+```text
+cache/
+  registry.go    # Registry + New
+  provider.go    # Provider + ProviderOption
+  options.go     # Option / DriverOption
+  types.go       # Driver / Info / constants
+  default.go     # Default()
+  memory.go      # default driver
+  redis/         # external dependency driver, independent go.mod
+```
+
+## Keep Provider shape consistent
+
+Provider should return the `provider.Provider` interface and usually embed `provider.Base`:
+
+```go
+func Provider(options ...ProviderOption) provider.Provider {
+    item := &providerImpl{}
+    return item
+}
+```
+
+Lifecycle convention:
+
+- `Init` registers DI default objects.
+- `Register` applies config, registers commands, registers instances, and registers route services.
+- `Resolve` handles delayed mounts.
+- `Boot` starts logic that needs the full application registration to be complete.
+- `Shutdown` releases resources.
+
+## Default only reads the default instance from DI
+
+```go
+func Default() *Registry {
+    return provider.MustInvokeDefault[*Registry]()
+}
+```
+
+`Default()` can only be used after the application completes `Freeze` or `Run`. Use Provider options for startup-time configuration.
+
+## Avoid command name collisions
+
+Commands use `pkg:verb`:
+
+```text
+route:list
+queue:work
+database:ping
+devtools:embed
+```
+
+Do not add new bare command names, otherwise packages may collide.

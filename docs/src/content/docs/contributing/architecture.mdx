@@ -1,0 +1,41 @@
+---
+title: "Architecture Principles"
+description: "Micro-kernel boundaries and dependency rules"
+---
+
+Runa's architecture is a micro-kernel: the core only handles the loader, DI, commands, Host units, config, time, and lifecycle. HTTP, WebSocket, JSON-RPC, and future gRPC are transport blocks installed on demand.
+
+## Why micro-kernel
+
+The goal is not to put everything into the root package. The goal is to let every capability enter the application through the same connection protocol:
+
+```text
+Standalone New -> Provider registration -> DI access -> lifecycle management -> Shutdown close
+```
+
+When users install only the core, they should not carry route, cache, queue, database, storage, or other dependencies.
+
+## Architecture layers
+
+```text
+L0 Kernel       runtime / provider / command / host / config / core / errs
+L1 Transports   route / ws / jsonrpc / future grpc
+L2 Capabilities cache / queue / database / storage / session / auth ...
+L3 Drivers      redis / s3 / nats / amqp / oro ...
+```
+
+Dependency rules:
+
+- The kernel must not import route.
+- route must not import concrete capabilities.
+- Capability core APIs must not import route.
+- All integration goes through Provider.
+- All long-running objects go through Host or lifecycle.
+
+## What this means for users
+
+- Install `route` only when the application needs HTTP.
+- Install each capability explicitly, such as `cache`, `queue`, `database`, `view`, or `lang`.
+- Install driver modules only when you need their external dependency, such as Redis, S3, AMQP, NATS, Oro, or Prometheus.
+- Put business code in modules and let each module register routes, commands, listeners, jobs, schedules, and services through the application lifecycle.
+- Treat gRPC as planned until its transport package is released.

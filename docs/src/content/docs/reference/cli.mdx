@@ -1,0 +1,62 @@
+---
+title: "CLI Reference"
+description: "All commands"
+---
+
+Runa commands are registered by the kernel and installed Providers. When only the core is installed, only kernel commands are available. After installing capability Providers, their commands appear.
+
+## Kernel commands
+
+| Command | Source | Description |
+| --- | --- | --- |
+| `serve` | `github.com/duxweb/runa` | Starts registered Host units, such as HTTP servers and schedulers |
+| `config:show` | `github.com/duxweb/runa/config` | Prints merged config |
+
+## Routing and docs
+
+| Command | Installed Provider | Description |
+| --- | --- | --- |
+| `route:list` | `route.Provider()` | Lists registered routes |
+| `openapi:export` | `openapi.Provider(...)` | Exports OpenAPI docs |
+
+## Data and background jobs
+
+| Command | Installed Provider | Description |
+| --- | --- | --- |
+| `database:list` | `database.Provider(...)` | Lists database connections |
+| `database:ping` | `database.Provider(...)` | Pings a database |
+| `queue:list` | `queue.Provider(...)` | Lists queues, workers, and jobs |
+| `queue:work` | `queue.Provider(...)` | Starts a worker |
+| `task:list` | `task.Provider()` | Lists tasks |
+| `task:run` | `task.Provider()` | Runs a task manually |
+| `schedule:list` | `schedule.Provider()` | Lists schedules |
+| `schedule:run` | `schedule.Provider()` | Starts the scheduler worker |
+| `event:list` | `event.Provider()` | Lists event listeners |
+
+## WebSocket
+
+| Command | Installed Provider | Description |
+| --- | --- | --- |
+| `ws:list` | `ws.Provider(...)` | Lists Hubs |
+| `ws:channels` | `ws.Provider(...)` | Lists channels |
+| `ws:stats` | `ws.Provider(...)` | Shows Hub stats |
+| `ws:kick` | `ws.Provider(...)` | Kicks a client |
+
+## Devtools
+
+| Command | Installed Provider | Description |
+| --- | --- | --- |
+| `devtools:new` | `devtools.Provider(...)` | Creates a minimal project scaffold |
+| `devtools:build` | `devtools.Provider(...)` | Runs `go build` |
+| `devtools:embed` | `devtools.Provider(...)` | Generates a template embed file |
+
+## How to run
+
+```bash
+go run . serve
+go run . route:list
+go run . queue:work default
+go run . config:show
+```
+
+If you run `go run .` directly, the default command behavior depends on how the entrypoint calls `app.Run` or `app.Execute`.

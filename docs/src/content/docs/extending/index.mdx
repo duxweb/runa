@@ -1,0 +1,64 @@
+---
+title: "Extension Ecosystem"
+description: "Extension ecosystem"
+---
+
+Extensions are capability blocks, driver blocks, transport blocks, or toolkit packages outside the framework. They are used the same way as official capabilities: install the module, then connect it to the application.
+
+Application developers usually only need to know three things: which module to install, whether it needs `app.Install(...)`, and how its config file is written. Provider internals matter only when you are building reusable extensions.
+
+## What extensions usually provide
+
+An extension can be:
+
+- A capability block, such as payment, search, SMS, or tenancy.
+- A driver block, such as a new cache driver, queue driver, or storage driver.
+- A transport block, such as gRPC, custom RPC, or a Webhook service.
+- A toolkit package, such as field masking, business validation, or code generation.
+
+## How to connect an extension
+
+This example uses the official Redis cache driver. It is not a core dependency. It enters your project only after you install and import it:
+
+```bash
+go get github.com/duxweb/runa/cache github.com/duxweb/runa/cache/redis
+```
+
+```go
+import (
+    goredis "github.com/redis/go-redis/v9"
+
+    "github.com/duxweb/runa/cache"
+    cacheredis "github.com/duxweb/runa/cache/redis"
+)
+
+client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
+
+app := runa.New()
+app.Install(cache.Provider(
+    cache.RegisterDriver("redis", cacheredis.Driver(client)),
+    cache.RegisterPool("default", cache.Use("redis")),
+))
+```
+
+The extension's own documentation defines its config and usage. Common patterns are:
+
+- Install the extension module with `go get`.
+- Connect it to the application with `app.Install(...)`.
+- Add the extension's own config scope to config files.
+- Call the capability from a business Module.
+
+## Extension vs business Module
+
+| Type | Purpose | Who writes it |
+| --- | --- | --- |
+| Extension | Reusable capability, driver, transport, or toolkit | Framework or extension authors |
+| Module | Business entrypoint for the current application | The application project |
+
+When writing a business system, start with Module. Create an extension only when the same capability needs to be reused across projects.
+
+For example, order, user, and product logic belong in your application Modules. Redis cache drivers, S3 storage drivers, and Prometheus exporters are reusable extensions.
+
+## Where to find extensions
+
+Start with the [Extension Directory](directory/). Official optional drivers, observe adapters, and transport enhancements will be listed there first.

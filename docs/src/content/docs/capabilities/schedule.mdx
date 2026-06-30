@@ -1,0 +1,141 @@
+---
+title: "Schedule"
+description: "Cron scheduling and task dispatch"
+---
+
+`schedule` maps cron expressions to `task` tasks. It handles scheduling time, while real execution is delegated to `task`; it can also dispatch asynchronously through `queue`.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/schedule github.com/duxweb/runa/task
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/provider"
+    "github.com/duxweb/runa/schedule"
+    "github.com/duxweb/runa/task"
+)
+
+type ReportPayload struct {
+    Name string `json:"name"`
+}
+
+type appModule struct {
+    provider.ModuleBase
+}
+
+func (appModule) Name() string { return "app" }
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    tasks, err := provider.Invoke[*task.Registry](app)
+    if err != nil {
+        return err
+    }
+    schedules, err := provider.Invoke[*schedule.Registry](app)
+    if err != nil {
+        return err
+    }
+    tasks.Register("report.daily", func(ctx context.Context, item *task.TaskOf[ReportPayload]) error {
+        fmt.Println("run", item.Payload.Name)
+        return nil
+    })
+    schedules.Register("daily-report", "0 2 * * *", "report.daily", ReportPayload{Name: "daily"})
+    return nil
+}
+
+func main() {
+    app := runa.New()
+    app.Install(task.Provider(), schedule.Provider())
+    app.Module(appModule{})
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+Run the scheduler process with:
+
+```bash
+go run . schedule:run
+```
+
+## Standalone New usage
+
+```go
+tasks := task.New()
+schedules := schedule.New()
+
+schedules.Register("daily-report", "0 2 * * *", "report.daily", ReportPayload{Name: "daily"})
+unit := schedule.NewUnit(schedules, tasks)
+_ = unit
+```
+
+Standalone usage requires starting `schedule.NewUnit(...)` yourself, or using the registry only for schedule metadata.
+
+## Config
+
+`schedule` currently has no TOML config. Schedule entries are registered in code so task names, payload types, and cron expressions stay together.
+
+When a schedule does not set its own timezone, cron expressions use the application timezone. Set it with `runa.Timezone("Asia/Shanghai")` or `timezone` in `config/app.toml`.
+
+## Schedule options
+
+```go
+schedules.Register("daily-report", "0 2 * * *", "report.daily", payload,
+    schedule.Timezone("Asia/Shanghai"),
+    schedule.Queue("default"),
+    schedule.SkipIfRunning(),
+    schedule.Meta("owner", "ops"),
+)
+```
+
+- `Timezone(name)` sets the timezone for this schedule and overrides the application timezone.
+- `Queue(name)` executes through a queue.
+- `Direct()` forces direct execution.
+- `SkipIfRunning()` skips this run if the previous run is still active.
+- `DelayIfRunning()` delays this run if the previous run is still active.
+- `Enabled(false)` pauses the schedule.
+
+## Commands
+
+After installing `schedule.Provider()`, these commands are registered:
+
+```bash
+go run . schedule:list
+go run . schedule:run
+```
+
+`schedule:run` starts the whole scheduler worker and does not accept a single schedule name argument.
+
+## Common mistakes
+
+### Expecting schedule to contain business logic
+
+`schedule` triggers work on time. Put business work in task handlers, services, or Modules, then call them from scheduled jobs.
+
+### Passing a job name to schedule:run
+
+`schedule:run` starts the scheduler service. It does not accept one schedule name as an argument.
+
+### Cron timezone is unclear
+
+If you do not call `schedule.Timezone(...)`, the schedule follows the application timezone. For cross-timezone deployments, set `runa.Timezone("Asia/Shanghai")` at the application entrypoint first; use `schedule.Timezone(...)` only when one schedule needs a different timezone.
+
+## API quick reference
+
+- `schedule.New()` creates a standalone registry.
+- `schedule.Provider()` connects to the framework lifecycle.
+- `schedule.Default()` reads `*schedule.Registry` from default DI.
+- `registry.Register(name, spec, taskName, payload, options...)` registers a schedule.
+- `schedule.NewUnit(registry, tasks)` creates a scheduler Host unit.

@@ -1,0 +1,89 @@
+---
+title: "Timeout Middleware"
+description: "Set a maximum duration for normal HTTP requests"
+---
+
+`middleware/timeout` creates a timeout `context.Context` for the request and returns `408 Request Timeout` when the request exceeds the configured duration. It protects normal HTTP APIs from slow requests occupying connections and goroutines for too long.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## Basic usage
+
+```go
+import "github.com/duxweb/runa/middleware/timeout"
+
+route.Default().Use(timeout.New())
+```
+
+The default timeout is `30s`, and the default response text is `request timeout`.
+
+## Custom timeout
+
+```go
+route.Default().Use(timeout.New(timeout.Config{
+    Timeout: 10 * time.Second,
+    Message: "request timeout",
+}))
+```
+
+## Skip long-running routes
+
+```go
+route.Default().Use(timeout.New(timeout.Config{
+    Timeout: 5 * time.Second,
+    Next: func(ctx *route.Context) bool {
+        return ctx.Request().URL.Path == "/exports"
+    },
+}))
+```
+
+Export, upload, SSE, and long-polling requests may not fit a short global timeout. Use `Next` to skip them and design timeout behavior separately.
+
+## WebSocket and Upgrade
+
+WebSocket and other `Upgrade` requests skip timeout automatically. These are long-lived connections and should not be treated like normal HTTP requests.
+
+## Config fields
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | Skip when true |
+| `Timeout` | `time.Duration` | `30 * time.Second` | Max request duration |
+| `Message` | `string` | `request timeout` | Timeout response body |
+
+## Relationship with context
+
+Handlers should pass `ctx.Context()` to databases, caches, HTTP clients, and other downstream calls:
+
+```go
+route.Default().Get("/users", func(ctx *route.Context) error {
+    users, err := service.ListUsers(ctx.Context())
+    if err != nil {
+        return err
+    }
+    return ctx.JSON(users)
+})
+```
+
+Then downstream calls can stop when timeout triggers.
+
+## Relationship with security
+
+`security.New(...)` includes timeout by default. Production uses `30s`, and development uses `120s`. Adjust it like this:
+
+```go
+route.Default().Use(security.New(
+    security.Production(),
+    security.Timeout(15*time.Second),
+))
+```
+
+## Common problems
+
+- timeout cannot forcibly kill already-running business code; it cancels request context and stops normal response flow.
+- If a handler writes a response after timeout, the write is discarded or invalid.
+- Be careful with global timeout on WebSocket, SSE, and long-running task routes.

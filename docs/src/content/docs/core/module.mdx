@@ -1,0 +1,132 @@
+---
+title: "Business Modules"
+description: "Use Module to organize business entrypoints"
+---
+
+Module is the lifecycle entrypoint for the business layer. Users, orders, billing, admin, and data sync can each become a Module.
+
+It is similar to `Install(Provider)`: both enter Runa's lifecycle, and both can register commands, Host units, routes, and read DI. The difference is responsibility. `Install` connects framework capabilities. `Module` connects your business code.
+
+## Module vs Install
+
+| Entry | Main purpose | Common content |
+| --- | --- | --- |
+| `app.Install(...)` | Install framework capabilities | route, cache, queue, database, storage |
+| `app.Module(...)` | Load business modules | user, order, billing, admin |
+
+Business modules usually do not create new framework capabilities. They compose installed capabilities by registering routes, commands, queue jobs, event listeners, or scheduled jobs.
+
+## Define a business module
+
+```go
+package user
+
+import (
+    "context"
+
+    "github.com/duxweb/runa/provider"
+    "github.com/duxweb/runa/route"
+)
+
+type UserModule struct {
+    provider.ModuleBase
+}
+
+func (UserModule) Name() string { return "user" }
+
+func (UserModule) Register(ctx context.Context, app provider.Context) error {
+    route.Default().Get("/users", listUsers)
+    return app.RegisterCommand(UserSyncCommand{})
+}
+```
+
+`provider.ModuleBase` provides no-op lifecycle methods. Implement only the stages your module uses.
+
+This example registers the `/users` route and the `UserSyncCommand` command.
+
+## Register the module
+
+```go
+app := runa.New()
+app.Install(
+    route.Provider(route.Addr(":8080")),
+    cache.Provider(),
+)
+
+app.Module(UserModule{})
+
+if err := app.Run(context.Background()); err != nil {
+    panic(err)
+}
+```
+
+The root facade provides the same entry:
+
+```go
+runa.Install(route.Provider(route.Addr(":8080")))
+runa.Module(UserModule{})
+```
+
+## What can a Module register
+
+After receiving the framework context, a Module can register business-side content:
+
+- `RegisterCommand(...)` registers business commands.
+- `RegisterHost(...)` registers business background Host units.
+- `provider.MustInvoke[T](app)` reads capabilities registered in DI.
+- `route.Default().Get(...)` registers HTTP routes.
+
+Declarative registrations such as commands, routes, and queue jobs should usually happen during `Register`.
+
+## Module can also shut down
+
+If your business module opens a connection, starts a background goroutine, or owns resources that must be released, implement `Shutdown`:
+
+```go
+func (UserModule) Shutdown(ctx context.Context, app provider.Context) error {
+    return nil
+}
+```
+
+Normal business modules usually do not need to manage resources directly. Database, cache, and queue resources should be managed by the corresponding capability packages and DI lifecycle.
+
+## Module dependency order
+
+A Module can declare dependencies so business modules run lifecycle stages in dependency order:
+
+```go
+func (UserModule) Depends() []string {
+    return []string{"auth"}
+}
+```
+
+If a dependency is missing or a dependency cycle exists, application startup fails.
+
+## When to use Module
+
+- A business domain needs its own routes, commands, tasks, and event listeners.
+- A business domain should live in its own directory.
+- Business registration should go through the unified lifecycle instead of being scattered in `main.go`.
+- Business modules need dependency ordering.
+
+For the application's own business entrypoints, prefer `Module`.
+
+Reusable framework capabilities or third-party extensions should use Provider instead.
+
+## Common mistakes
+
+### Writing framework capabilities as Module
+
+Use Module for the current application's business entrypoints. Use Provider for reusable framework capabilities, drivers, and third-party extensions.
+
+### Creating global connections inside Module
+
+Database, cache, and queue resources should be managed by their Providers. If business-owned resources must be created, release them in `Shutdown`.
+
+### Returning the wrong name from Depends
+
+`Depends()` returns the target module's `Name()`, not the Go package name or directory name.
+
+## Practical advice
+
+A Module does not need to be large. A small admin project can have only `admin.Module`. A complex system can split into `user.Module`, `order.Module`, and `payment.Module`. Split by business boundary, not by technical layer alone.

@@ -1,0 +1,112 @@
+---
+title: "写一个 Provider"
+description: "实现 Provider 生命周期"
+---
+
+Provider 是所有扩展接入 Runa 的唯一协议。它负责把你的对象注册进 DI、读取配置、注册命令、注册 Host，并接入启动和关闭流程。
+
+Provider 是扩展作者视角，不是普通业务开发者的日常入口。业务项目自己的用户、订单、支付模块优先写 Module。
+
+普通业务代码优先写 Module，不需要实现 Provider。只有在开发可复用能力包、驱动适配、传输块或第三方扩展时，才应该写 Provider。
+
+## 先写一个最小 Provider
+
+写一个最小 Provider：
+
+```go
+package hello
+
+import (
+    "context"
+
+    "github.com/duxweb/runa/provider"
+    "github.com/samber/do/v2"
+)
+
+type Service struct {
+    Message string
+}
+
+func New(message string) *Service {
+    return &Service{Message: message}
+}
+
+func Provider(message string) provider.Provider {
+    return providerImpl{message: message}
+}
+
+type providerImpl struct {
+    provider.Base
+    message string
+}
+
+func (providerImpl) Name() string { return "hello" }
+
+func (p providerImpl) Init(_ context.Context, ctx provider.Context) error {
+    provider.ProvideDefault(ctx, func(do.Injector) (*Service, error) {
+        return New(p.message), nil
+    })
+    return nil
+}
+```
+
+## 在应用里这样使用
+
+```go
+app := runa.New()
+app.Install(hello.Provider("Hello Runa"))
+
+if err := app.Freeze(context.Background()); err != nil {
+    panic(err)
+}
+
+service := runa.MustInvoke[*hello.Service]()
+```
+
+## 生命周期里各做什么
+
+- 在 `Init` 注册 DI 构造器
+- 在 `Register` 读取配置、注册命令和实例
+- 在 `Register` 可以通过 `RegisterModule` 安装业务模块
+- 在 `Boot` 做需要所有 Provider 已注册后的启动逻辑
+- 在 `Shutdown` 关闭外部连接
+- 不要在 Provider 里 import `runtime`
+
+## 注册业务模块
+
+Provider 可以把扩展自带的业务模块挂进应用，但业务应用自己的模块通常直接用 `app.Module(...)`。
+
+```go
+func (p providerImpl) Register(ctx provider.Context) error {
+    return ctx.RegisterModule(hello.Module{})
+}
+```
+
+## 命令在 Register 阶段注册
+
+```go
+func (p providerImpl) Register(ctx provider.Context) error {
+    return ctx.RegisterCommand(command{})
+}
+```
+
+## 常见错误
+
+### 在 Provider 里直接启动 goroutine
+
+长期运行服务应该注册 Host，由应用统一 Start 和 Stop。不要在 Provider 生命周期里偷偷启动不可控 goroutine。
+
+### 在 Init 阶段读取配置
+
+配置通常在 Register 阶段读取。Init 更适合注册 DI 构造器。
+
+### import runtime
+
+扩展包不应该依赖 `runtime`。需要应用能力时使用 `provider.Context` 提供的窄接口。
+
+## 写完后这样验收
+
+- `go test ./...` 通过
+- 应用能 `Install(provider)` 后启动
+- `Default()` 或 DI 能取出核心对象
+- `Shutdown` 能释放资源

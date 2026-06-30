@@ -1,0 +1,191 @@
+---
+title: "配置参考"
+description: "按能力分节的配置键"
+---
+
+Runa 默认从 `config/*.toml` 读取配置。文件名会作为配置域，例如 `config/cache.toml` 会写入 `cache` 域，`config/cache.production.toml` 只在 `production` 环境加载。
+
+本页是速查表，只列常见键。更完整的解释和示例看对应能力页。
+
+## 覆盖顺序
+
+配置合并顺序：
+
+1. 默认值
+2. 基础配置文件
+3. 当前环境配置文件
+4. 环境变量
+5. 代码 `Set` 或 Provider 选项
+
+## 基础规则
+
+- 文件名决定配置域，比如 `cache.toml` 对应 `runa.Config("cache")`
+- 环境文件用 `名称.环境.toml`，比如 `cache.production.toml`
+- duration 字段可以写 `10s`、`5m`、`1h`
+- 密钥、密码、token 不建议提交到 Git，生产环境优先用环境变量或密钥系统
+
+## App
+
+```toml
+# config/app.toml
+timezone = "Asia/Shanghai"
+```
+
+键：`timezone`
+
+## Cache
+
+```toml
+[cache.pools.default]
+driver = "memory"
+prefix = "app:"
+ttl = "10m"
+```
+
+键：`driver`、`prefix`、`ttl`、`meta`。
+
+## Queue
+
+```toml
+[queue.queues.default]
+driver = "memory"
+workers = ["default"]
+retry = 3
+retry_delay = "5s"
+timeout = "30s"
+retention = "24h"
+
+[queue.workers.default]
+concurrency = 4
+poll_interval = "100ms"
+lease = "30s"
+stop_timeout = "30s"
+```
+
+## Session
+
+```toml
+[session.sessions.web]
+driver = "memory"
+cookie_name = "sid"
+cookie_domain = ""
+cookie_path = "/"
+ttl = "24h"
+idle_timeout = "30m"
+shared = false
+```
+
+## Storage
+
+```toml
+[storage.disks.public]
+driver = "local"
+prefix = "public"
+public = true
+url_prefix = "/files"
+domain = "https://cdn.example.com"
+```
+
+## Lock
+
+```toml
+[lock.lockers.default]
+driver = "memory"
+prefix = "lock:"
+ttl = "30s"
+wait = "5s"
+retry_interval = "100ms"
+auto_renew = true
+```
+
+## Rate
+
+```toml
+[rate.limiters.api]
+driver = "memory"
+algorithm = "token_bucket"
+limit = 60
+window = "1m"
+burst = 10
+key = ["ip", "route"]
+```
+
+## Message
+
+```toml
+[message.brokers.default]
+driver = "memory"
+```
+
+## Audit
+
+```toml
+[audit]
+methods = ["POST", "PUT", "PATCH", "DELETE"]
+mode = "async"
+strict = false
+capture_input = true
+mask_fields = ["password", "token", "secret"]
+mask_value = "***"
+max_input_size = 16384
+buffer = 100
+write_timeout = "3s"
+```
+
+## Observe
+
+```toml
+[observe]
+service = "api"
+env = "production"
+version = "1.0.0"
+timeout = "2s"
+mount = "/-"
+debug = false
+```
+
+## Cluster
+
+```toml
+[cluster]
+driver = "memory"
+id = "api-1"
+service = "api"
+env = "production"
+version = "1.0.0"
+addr = "http://127.0.0.1:8080"
+heartbeat_interval = "5s"
+ttl = "15s"
+```
+
+## Console
+
+```toml
+[console]
+title = "Runa Console"
+mount = "/_console"
+auth = ["web"]
+interval = "5s"
+slow_threshold = "300ms"
+collect_http = true
+sample_interval = "1s"
+```
+
+## JSON-RPC
+
+```toml
+[jsonrpc]
+path = "/rpc"
+ws_path = "/rpc/ws"
+```
+
+## Devtools
+
+```toml
+[devtools]
+embed_root = "views"
+embed_patterns = ["**/*.html"]
+embed_package = "embed"
+embed_name = "ViewFS"
+embed_out = "internal/embed/view.go"
+```

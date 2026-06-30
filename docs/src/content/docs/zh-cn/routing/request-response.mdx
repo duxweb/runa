@@ -1,0 +1,126 @@
+---
+title: "请求与响应"
+description: "强类型输入输出和常见响应方式"
+---
+
+Runa 支持普通 handler，也支持强类型 Input / Output handler。新手可以先用普通 handler 跑通接口，业务接口变多后再使用强类型写法。
+
+## 普通 Handler
+
+```go
+route.Default().Get("/", func(ctx *route.Context) error {
+    return ctx.Text("ok")
+})
+```
+
+普通 handler 的签名是：
+
+```go
+func(ctx *route.Context) error
+```
+
+它最直接，适合首页、健康检查、简单回调。
+
+## 强类型输入
+
+```go
+type ListUsersInput struct {
+    Page int    `query:"page" default:"1"`
+    Size int    `query:"size" default:"20"`
+    Name string `query:"name"`
+}
+```
+
+常见来源：
+
+| tag | 来源 | 示例 |
+| --- | --- | --- |
+| `param` | 路径参数 | `/users/{id}` |
+| `query` | 查询参数 | `?page=1` |
+| `json` | JSON body | `POST` JSON |
+| `form` | 表单 | `application/x-www-form-urlencoded` |
+| `header` | Header | `X-Token` |
+| `cookie` | Cookie | `session_id` |
+| `default` | 默认值 | 没传时使用默认值 |
+
+`param` 和 `path` 都可以读取路径参数，文档里统一推荐 `param`。
+
+## 强类型输出
+
+```go
+type UserOutput struct {
+    ID   string `json:"id"`
+    Name string `json:"name"`
+}
+
+route.Get[ListUsersInput, []UserOutput](
+    route.Default(),
+    "/users",
+    func(ctx *route.Context, input *ListUsersInput) (*[]UserOutput, error) {
+        users := []UserOutput{{ID: "1", Name: "Runa"}}
+        return &users, nil
+    },
+)
+```
+
+强类型 handler 返回的是输出对象指针和错误。没有错误时，Runa 会自动把输出渲染成响应。
+
+## 输入验证
+
+输入结构体可以实现 `Validate`：
+
+```go
+type CreateUserInput struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+func (input *CreateUserInput) Validate(v *validate.Validator) {
+    v.Field("Name").Required("请输入名称").MinLen(2, "名称至少 2 个字符")
+    v.Field("Email").Required("请输入邮箱").Email("邮箱格式不正确")
+}
+```
+
+强类型路由会在绑定输入后自动执行验证。
+
+## 常见响应
+
+```go
+return ctx.Text("ok")
+return ctx.HTML("<h1>ok</h1>")
+return ctx.JSON(runa.Map{"ok": true})
+return ctx.Blob("application/octet-stream", body)
+```
+
+## 状态码
+
+路由可以设置成功状态码：
+
+```go
+route.Default().Post("/users", createUser).Status(201)
+```
+
+handler 里也可以按当前响应设置：
+
+```go
+return ctx.Status(201).JSON(runa.Map{"created": true})
+```
+
+## 什么时候用哪种写法
+
+| 场景 | 推荐写法 |
+| --- | --- |
+| 健康检查、简单文本 | 普通 handler |
+| 业务 API | 强类型 Input / Output |
+| 需要 OpenAPI | 强类型 Input / Output |
+| 需要验证请求字段 | 强类型 Input + `Validate` |
+
+## 常见错误
+
+### 字段没有绑定成功
+
+确认结构体字段是导出的，也就是首字母大写。`name string` 不能被反射设置，应该写成 `Name string`。
+
+### tag 写错位置
+
+路径参数用 `param:"id"`，查询参数用 `query:"page"`，JSON body 用 `json:"name"`。

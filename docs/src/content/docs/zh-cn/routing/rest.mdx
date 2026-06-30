@@ -1,0 +1,138 @@
+---
+title: "资源路由 Resource"
+description: "基于 route.Group 组织结构化资源接口"
+---
+
+`resource` 包在 `route.Group` 之上提供 REST 风格接口组织方式。它不是 Provider，不需要 `runa.Install`，通常在路由注册阶段直接使用。
+
+Resource 适合后台管理、管理端 API、REST 风格资源接口。它能把一组路由的名称、摘要、标签、权限标记和 OpenAPI 元数据统一起来。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/resource
+```
+
+使用 Resource 前，你仍然需要安装 HTTP 传输模块：
+
+```bash
+go get github.com/duxweb/runa/route
+```
+
+## 创建 Resource
+
+```go
+users := resource.New(route.Default().Group("/admin"), "/users").
+    Name("user").
+    Summary("用户").
+    Tags("User")
+```
+
+这表示在 `/admin` 分组下创建 `/users` 资源。
+
+## 标准动作
+
+```go
+users.List[ListInput, []UserOutput](listUsers)
+users.Show[ShowInput, UserOutput](showUser)
+users.Create[CreateInput, UserOutput](createUser)
+users.Edit[EditInput, UserOutput](editUser)
+users.Store[StoreInput, UserOutput](storeUser)
+users.Delete[DeleteInput, runa.Map](deleteUser)
+```
+
+默认动作路径：
+
+| 方法 | 路径 | 动作 | 常见用途 |
+| --- | --- | --- | --- |
+| GET | `/users` | list | 列表 |
+| GET | `/users/{id}` | show | 详情 |
+| POST | `/users` | create | 创建 |
+| PUT | `/users/{id}` | edit | 全量编辑 |
+| PATCH | `/users/{id}` | store | 部分保存 |
+| DELETE | `/users/{id}` | delete | 删除 |
+
+## 一个完整小例子
+
+```go
+type ShowInput struct {
+    ID string `param:"id"`
+}
+
+type UserOutput struct {
+    ID   string `json:"id"`
+    Name string `json:"name"`
+}
+
+users := resource.New(route.Default().Group("/admin"), "/users").
+    Name("user").
+    Summary("用户").
+    Tags("User")
+
+users.Show[ShowInput, UserOutput](func(ctx *route.Context, input *ShowInput) (*UserOutput, error) {
+    return &UserOutput{ID: input.ID, Name: "Runa"}, nil
+})
+```
+
+访问路径是：
+
+```text
+GET /admin/users/{id}
+```
+
+## 自定义动作
+
+```go
+users.Post[ImportInput, ImportOutput]("import", "/import", importUsers)
+```
+
+这会注册：
+
+```text
+POST /admin/users/import
+```
+
+动作名是 `import`，路由名会基于 Resource 的 `Name("user")` 组合成 `user.import`。
+
+## 路由元数据
+
+Resource 会把名称、摘要、标签、权限标记、文档域等元数据应用到每条路由。
+
+```go
+users.Name("system.user").Doc("admin").Meta("permission", "system.user")
+```
+
+也可以标记跳过认证或权限：
+
+```go
+users.SkipAuth()
+users.SkipPermission()
+```
+
+具体是否生效取决于你的认证和权限中间件如何读取这些元数据。
+
+## 与 OpenAPI 的关系
+
+Resource 本身不生成 OpenAPI，但它会给 route 写入 schema 和元数据。接入 `openapi.Provider(...)` 后，OpenAPI 可以读取这些信息。
+
+## Resource 和 CRUD 的区别
+
+| 工具 | 解决什么问题 |
+| --- | --- |
+| `resource` | 帮你组织一组资源路由和元数据 |
+| `crud` | 在 Resource 基础上自动注册列表、详情、创建、编辑、删除等数据接口 |
+
+如果你只是想统一路由结构，用 Resource。如果还想减少重复 CRUD 逻辑，再使用 CRUD。
+## 常见错误
+
+### Resource 不是 Provider
+
+`resource` 不需要 `app.Install(resource.Provider())`。它是在注册路由时直接使用的工具包。
+
+### 路由名没有规划
+
+Resource 的 `Name("user")` 会影响生成的路由名，例如 `user.list`、`user.show`。建议一开始就按业务域命名。
+
+### 把 Resource 和 CRUD 混为一谈
+
+Resource 只帮你组织路由。CRUD 才会自动连接 Store 并生成数据接口。

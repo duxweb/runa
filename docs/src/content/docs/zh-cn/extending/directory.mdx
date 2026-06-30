@@ -1,0 +1,57 @@
+---
+title: "扩展目录"
+description: "扩展目录"
+---
+
+这里用于收录官方扩展和社区扩展。当前阶段先列出仓库内已经拆分的可选模块。
+
+这些模块都是按需安装的。你的项目没有 import 对应模块，就不会把它们的第三方依赖带进来。
+
+读这个目录时不要从模块名开始选。先想清楚你要解决的问题：需要缓存共享就看 Redis 缓存，需要对象存储就看 S3，需要 SQL ORM 就看 Database Oro。驱动只是接入外部系统，业务 API 仍然在对应能力包里。
+
+## 官方扩展
+
+| 扩展 | 安装 | 说明 |
+| --- | --- | --- |
+| Cache Redis | `go get github.com/duxweb/runa/cache/redis` | Redis 缓存驱动 |
+| Cluster Redis | `go get github.com/duxweb/runa/cluster/redis` | Redis 集群实例注册驱动 |
+| CRUD Oro Store | `go get github.com/duxweb/runa/crud/orostore` | 基于 Oro 的 CRUD Store 适配 |
+| Queue Redis | `go get github.com/duxweb/runa/queue/redis` | Redis 队列驱动 |
+| Queue AMQP | `go get github.com/duxweb/runa/queue/amqp` | AMQP 队列驱动 |
+| Storage S3 | `go get github.com/duxweb/runa/storage/s3` | S3 兼容对象存储驱动 |
+| Database Oro | `go get github.com/duxweb/runa/database/oro` | Oro SQL 数据库驱动 |
+| Database Redis | `go get github.com/duxweb/runa/database/redis` | Redis 数据库运行时驱动 |
+| ID Snowflake | `go get github.com/duxweb/runa/id/snowflake` | 雪花 ID 生成器 |
+| Lock Redis | `go get github.com/duxweb/runa/lock/redis` | Redis 分布式锁驱动 |
+| Message NATS | `go get github.com/duxweb/runa/message/nats` | NATS 消息驱动 |
+| Message AMQP | `go get github.com/duxweb/runa/message/amqp` | AMQP 消息驱动 |
+| Message MQTT | `go get github.com/duxweb/runa/message/mqtt` | MQTT 消息驱动 |
+| Message Redis | `go get github.com/duxweb/runa/message/redis` | Redis 发布订阅驱动 |
+| Observe Prometheus | `go get github.com/duxweb/runa/observe/prometheus` | Prometheus 指标导出 |
+| Rate Redis | `go get github.com/duxweb/runa/rate/redis` | Redis 限流驱动 |
+| WebSocket Redis | `go get github.com/duxweb/runa/ws/redis` | WebSocket 横向广播和在线状态 |
+
+## 按场景选择
+
+| 场景 | 需要读 |
+| --- | --- |
+| 单机开发缓存 | [Cache](../capabilities/cache/) 即可，默认 memory 驱动够用 |
+| 多实例共享缓存 | [Cache](../capabilities/cache/) + Cache Redis |
+| SQL 数据库和 ORM | [Database](../capabilities/database/) + [Database Oro](../drivers/database-oro/) |
+| CRUD 接口接数据库 | [CRUD 接口](../routing/crud/) + [CRUD Oro Store](../drivers/crud-orostore/) |
+| 后台任务异步处理 | [Queue](../capabilities/queue/) + Queue Redis 或 Queue AMQP |
+| 对象存储上传下载 | [Storage](../capabilities/storage/) + Storage S3 |
+| 多实例 WebSocket | [WebSocket](../transports/websocket/) + WebSocket Redis |
+| Prometheus 指标 | [Observe](../ops/observe/) + Observe Prometheus |
+
+## 怎么阅读这个目录
+
+- 先看你需要的能力，比如缓存、队列、存储、数据库
+- 再选择对应驱动，比如 Redis、S3、Oro、NATS
+- 驱动只解决外部系统接入，业务使用方式仍以能力文档为准
+
+例如 Redis 缓存要同时看 [Cache](../capabilities/cache/) 和本页的 Cache Redis 安装路径。
+
+## 社区扩展
+
+社区扩展目录会在生态稳定后维护。这里会列出扩展名称、模块路径、安装方式、适用版本和维护状态。

@@ -1,0 +1,172 @@
+---
+title: "Session"
+description: "HTTP sessions, cookies, and server-side session storage"
+---
+
+`session` provides named sessions, cookie encoding, and multiple session drivers. It uses a memory driver by default, suitable for development. You can also use cookie sessions or a driver backed by `cache`.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/session
+```
+
+If you want to store sessions in cache, also install and connect `cache`:
+
+```bash
+go get github.com/duxweb/runa/cache github.com/duxweb/runa/session
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/session"
+    sessionmw "github.com/duxweb/runa/session/middleware"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        session.Provider(
+            session.RegisterSession("web", session.CookieName("sid"), session.TTL(24*time.Hour)),
+        ),
+    )
+
+    route.Default().Use(sessionmw.Use("web"))
+    route.Default().Get("/login", func(ctx *route.Context) error {
+        sess, _ := ctx.Locals("runa.session.web").(*session.Session)
+        if err := sess.Set("user_id", "1"); err != nil {
+            return err
+        }
+        return ctx.Text("ok")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`session/middleware.Use("web")` loads the session from the request cookie and saves it at the end of the request. Handlers can read the current session from `ctx.Locals("runa.session.<name>")`.
+
+## Standalone New usage
+
+```go
+registry := session.New()
+registry.Session("web", session.CookieName("sid"), session.TTL(time.Hour))
+
+sess, err := registry.Load(context.Background(), "web", "", func(name string, value string, options session.CookieOptions) {
+    _ = name
+    _ = value
+})
+if err != nil {
+    panic(err)
+}
+_ = sess.Set("user_id", "1")
+_ = sess.Save(context.Background())
+```
+
+## Config
+
+`session` reads `session.sessions.<name>` and only applies config to sessions that have already been registered.
+
+```toml
+[session.sessions.web]
+driver = "memory"
+cookie_name = "sid"
+cookie_domain = ""
+cookie_path = "/"
+ttl = "24h"
+idle_timeout = "30m"
+shared = false
+
+[session.sessions.web.meta]
+area = "frontend"
+```
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `driver` | string | `memory`, `cookie`, or custom driver name |
+| `cookie_name` | string | Cookie name |
+| `cookie_domain` | string | Cookie domain |
+| `cookie_path` | string | Cookie path |
+| `ttl` | duration | total session lifetime |
+| `idle_timeout` | duration | idle expiration time |
+| `shared` | bool | whether to share the same session ID |
+| `meta` | table | custom metadata |
+
+`session.Provider()` also derives a signing key from the application secret or environment variables. Set a stable `RUNA_SECRET` in production.
+
+## Drivers
+
+Built-in drivers cover development, local cookies, and server-side storage. `RegisterDriver(name, driver)` registers a driver; `RegisterSession(name, session.Use(name))` makes a named session use it.
+
+Default drivers:
+
+```go
+session.MemoryDriver(session.Name("memory"), session.DriverTTL(time.Hour))
+session.CookieDriver()
+```
+
+Cache-backed driver:
+
+```go
+app.Install(session.Provider(
+    session.RegisterDriver("cache", session.CacheDriverFrom("cache", func() cache.Cache[runa.Map] {
+        return cache.Default().MustOf[runa.Map](cache.Session)
+    })),
+    session.RegisterSession("web", session.Use("cache")),
+))
+```
+
+## Common API
+
+```go
+sess, _ := ctx.Locals("runa.session.web").(*session.Session)
+_ = sess.Set("flash", "saved")
+value, ok, err := sess.Get[string]("flash")
+_ = value
+_ = ok
+_ = err
+_ = sess.Delete("flash")
+_ = sess.Regenerate(ctx.Context())
+```
+
+## Relationship between Session and Auth
+
+`session` only stores request state. It does not decide whether a user is logged in.
+
+`auth` decides authentication and permissions. `auth.SessionAuth("web")` can read login data from the session loaded by session middleware.
+
+## Common mistakes
+
+### Installing session without using middleware
+
+`session.Provider(...)` registers sessions. HTTP requests still need `session/middleware` to load and save the current session.
+
+### Missing RUNA_SECRET in production
+
+Production should set `app.secret`, `runa.secret`, `RUNA_SECRET`, or `APP_SECRET` so cookie signing and encryption keys remain stable across restarts.
+
+### Reading Locals with the wrong name
+
+The middleware stores sessions at `runa.session.<name>`, such as `runa.session.web`.
+
+## API quick reference
+
+- `session.New()` creates a standalone registry.
+- `session.Provider(...)` connects to the framework lifecycle.
+- `session.Default()` reads `*session.Registry` from default DI.
+- `session.RegisterDriver(name, driver)` registers a driver.
+- `session.RegisterSession(name, options...)` registers a named session.
+- `session/middleware.Use(name)` registers HTTP session middleware.
+- `registry.Load(ctx, name, rawCookie, setter)` manually loads a session.

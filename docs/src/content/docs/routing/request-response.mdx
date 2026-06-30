@@ -1,0 +1,126 @@
+---
+title: "Request & Response"
+description: "Typed input/output and common response helpers"
+---
+
+Runa supports regular handlers and typed Input / Output handlers. Beginners can start with regular handlers, then move business APIs to typed handlers when request and response shapes become important.
+
+## Regular Handler
+
+```go
+route.Default().Get("/", func(ctx *route.Context) error {
+    return ctx.Text("ok")
+})
+```
+
+The regular handler signature is:
+
+```go
+func(ctx *route.Context) error
+```
+
+It is direct and works well for home pages, health checks, and simple callbacks.
+
+## Typed input
+
+```go
+type ListUsersInput struct {
+    Page int    `query:"page" default:"1"`
+    Size int    `query:"size" default:"20"`
+    Name string `query:"name"`
+}
+```
+
+Common sources:
+
+| tag | Source | Example |
+| --- | --- | --- |
+| `param` | Path parameter | `/users/{id}` |
+| `query` | Query string | `?page=1` |
+| `json` | JSON body | `POST` JSON |
+| `form` | Form body | `application/x-www-form-urlencoded` |
+| `header` | Header | `X-Token` |
+| `cookie` | Cookie | `session_id` |
+| `default` | Default value | Used when the input is missing |
+
+Both `param` and `path` can read path parameters. The docs use `param` consistently.
+
+## Typed output
+
+```go
+type UserOutput struct {
+    ID   string `json:"id"`
+    Name string `json:"name"`
+}
+
+route.Get[ListUsersInput, []UserOutput](
+    route.Default(),
+    "/users",
+    func(ctx *route.Context, input *ListUsersInput) (*[]UserOutput, error) {
+        users := []UserOutput{{ID: "1", Name: "Runa"}}
+        return &users, nil
+    },
+)
+```
+
+Typed handlers return a pointer to the output object and an error. If there is no error, Runa renders the output automatically.
+
+## Input validation
+
+Input structs can implement `Validate`:
+
+```go
+type CreateUserInput struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+func (input *CreateUserInput) Validate(v *validate.Validator) {
+    v.Field("Name").Required("name is required").MinLen(2, "name must contain at least 2 characters")
+    v.Field("Email").Required("email is required").Email("email format is invalid")
+}
+```
+
+Typed routes run validation automatically after binding input.
+
+## Common responses
+
+```go
+return ctx.Text("ok")
+return ctx.HTML("<h1>ok</h1>")
+return ctx.JSON(runa.Map{"ok": true})
+return ctx.Blob("application/octet-stream", body)
+```
+
+## Status code
+
+Routes can set a success status code:
+
+```go
+route.Default().Post("/users", createUser).Status(201)
+```
+
+Handlers can also set the status on the current response:
+
+```go
+return ctx.Status(201).JSON(runa.Map{"created": true})
+```
+
+## Which style to use
+
+| Scenario | Recommended style |
+| --- | --- |
+| Health checks and simple text | Regular handler |
+| Business APIs | Typed Input / Output |
+| OpenAPI generation | Typed Input / Output |
+| Request field validation | Typed Input + `Validate` |
+
+## Common mistakes
+
+### Fields are not bound
+
+Make sure struct fields are exported. `name string` cannot be set by reflection; use `Name string`.
+
+### Tags are placed on the wrong source
+
+Use `param:"id"` for path parameters, `query:"page"` for query strings, and `json:"name"` for JSON bodies.

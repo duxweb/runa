@@ -1,0 +1,121 @@
+---
+title: "Console"
+description: "Runtime console and application introspection"
+---
+
+`console` is an optional runtime console. It aggregates routes, Host units, queues, messages, databases, logs, metrics, and other information, then displays application state in a panel.
+
+It fits development, test, and protected internal operations environments. If enabled in production, protect it with authentication and network restrictions.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/console
+```
+
+It is commonly used with `route`, `observe`, `ws`, `queue`, and other capabilities.
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/console"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        console.Provider(console.MountAt("/_console"), console.Title("Runa Console")),
+    )
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+Open:
+
+```bash
+open http://localhost:8080/_console
+```
+
+## Config
+
+`console` reads `[console]` config.
+
+```toml
+[console]
+title = "Runa Console"
+mount = "/_console"
+auth = ["web"]
+interval = "5s"
+slow_threshold = "300ms"
+collect_http = true
+sample_interval = "1s"
+```
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `title` | string | Console title |
+| `mount` | string | Mount path |
+| `auth` | []string | Required auth authenticator names |
+| `interval` | duration | Frontend refresh interval |
+| `slow_threshold` | duration | Slow request threshold |
+| `collect_http` | bool | Whether to collect HTTP request samples |
+| `sample_interval` | duration | Metric sampling interval |
+
+## Custom panels
+
+```go
+panel := console.PanelFunc{
+    Name:  "hello",
+    Title: "Hello",
+    Mount: func(group *route.Group) {
+        group.Get("/data", func(ctx *route.Context) error {
+            return ctx.JSON(runa.Map{"message": "hello"})
+        })
+    },
+}
+
+app.Install(console.Provider(console.Panels(panel)))
+```
+
+## Monitor storage
+
+The default monitor store is in-memory:
+
+```go
+app.Install(console.Provider(
+    console.MountAt("/_console"),
+    console.Store(console.NewMemoryMonitorStore(1000)),
+))
+```
+
+If you want monitor data in your own storage, implement `console.MonitorStore` and pass it with `console.Store(store)`.
+
+## Common mistakes
+
+### Exposing the console to the public internet
+
+Console can show runtime information. Production deployments must use authentication, internal-network access, or reverse-proxy access control.
+
+### Expecting console to install every capability
+
+Console only reads capabilities that are already installed. If queue, database, or observe is not installed, its runtime information is not shown.
+
+## API quick reference
+
+- `console.Provider(options...)` connects the console.
+- `console.Default()` reads `*console.Registry` from default DI.
+- `console.Mount(target, app, configs...)` manually mounts the console.
+- `console.Panels(items...)` appends panels.
+- `console.BuiltinPanels()` returns built-in panels.
+- `console.NewMemoryMonitorStore(limit...)` creates an in-memory monitor store.

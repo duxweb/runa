@@ -1,0 +1,41 @@
+---
+title: "架构原则"
+description: "微内核边界与依赖规则"
+---
+
+Runa 的架构是微内核：核心只做加载器、DI、命令、Host、配置、时间和生命周期。HTTP、WebSocket、JSON-RPC、未来 gRPC 都是按需安装的传输块。
+
+## 为什么要做微内核
+
+目标不是把所有东西塞进根包，而是让所有能力通过同一套接入协议进入应用：
+
+```text
+New 独立使用 -> Provider 注册 -> DI 获取 -> 生命周期管理 -> Shutdown 关闭
+```
+
+用户只安装核心时，不应背上 route、cache、queue、database、storage 等依赖。
+
+## 架构分层
+
+```text
+L0 内核       runtime / provider / command / host / config / core / errs
+L1 传输块     route / ws / jsonrpc / 未来 grpc
+L2 能力块     cache / queue / database / storage / session / auth ...
+L3 驱动块     redis / s3 / nats / amqp / oro ...
+```
+
+依赖规则：
+
+- 内核不 import route
+- route 不 import 具体能力
+- 能力核心 API 不 import route
+- 所有接入都走 Provider
+- 所有长期运行对象都走 Host 或生命周期
+
+## 对使用者意味着什么
+
+- 应用需要 HTTP 时才安装 `route`
+- 需要哪个能力就显式安装哪个能力，例如 `cache`、`queue`、`database`、`view`、`lang`
+- 只有需要外部依赖时才安装驱动模块，例如 Redis、S3、AMQP、NATS、Oro、Prometheus
+- 业务代码放在模块里，通过应用生命周期注册路由、命令、监听器、队列任务、调度任务和服务
+- gRPC 在传输包发布前仍按规划中处理

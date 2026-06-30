@@ -1,0 +1,81 @@
+---
+title: "安全 Security"
+description: "安全中间件预设"
+---
+
+`security` 是 HTTP 安全中间件组合。它把 recover、request id、真实 IP、访问日志、body limit、timeout、helmet 等中间件组合成一条链。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/security
+```
+
+## 快速使用
+
+```go
+app.Install(route.Provider(route.Addr(":8080")))
+route.Default().Use(security.New(security.Production()))
+```
+
+开发环境：
+
+```go
+route.Default().Use(security.New(security.Development()))
+```
+
+## 配置选项
+
+```go
+route.Default().Use(security.New(
+    security.Production(),
+    security.BodyLimit("2MB"),
+    security.Timeout(30*time.Second),
+    security.TrustedProxies("127.0.0.1"),
+    security.SkipPaths("/health", "/metrics"),
+))
+```
+
+## 跳过部分请求
+
+```go
+route.Default().Use(security.New(security.Next(func(ctx *route.Context) bool {
+    return ctx.Request().URL.Path == "/health"
+})))
+```
+
+## 禁用单项中间件
+
+```go
+route.Default().Use(security.New(security.Disable("logger", "helmet")))
+```
+
+可禁用名称：`recover`、`requestid`、`realip`、`logger`、`bodylimit`、`timeout`、`helmet`。
+
+
+## 常见错误
+
+### 以为 Security 包含 CORS
+
+CORS 和具体前端域名强相关，`security.New(...)` 不默认包含 CORS。需要跨域时请单独使用 CORS 中间件。
+
+### 代理环境没有配置 TrustedProxies
+
+部署在 Nginx、负载均衡或网关后面时，应配置可信代理，否则真实 IP 可能不准确。
+
+### 生产环境禁用 recover
+
+通常不建议禁用 recover。它能避免单个请求 panic 影响整个进程。
+
+## API 速查
+
+- `security.New(options...)` 创建安全中间件
+- `security.Development()` 开发环境默认值
+- `security.Production()` 生产环境默认值
+- `security.BodyLimit(value)` 设置请求体限制
+- `security.Timeout(duration)` 设置请求超时
+- `security.TrustedProxies(values...)` 设置信任代理
+- `security.Disable(names...)` 禁用指定中间件
+
+
+更完整的中间件说明见 [安全预设](../extending/middleware/security/)。

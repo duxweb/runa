@@ -1,0 +1,40 @@
+---
+title: "Module Boundaries"
+description: "Monorepo module layout"
+---
+
+Runa uses one repository and multiple Go modules. This keeps one unified architecture while letting users install capabilities and drivers on demand.
+
+## Modules are split into four layers
+
+```text
+Kernel layer       github.com/duxweb/runa
+Transport layer    route / ws / jsonrpc / future grpc
+Capability layer   cache / queue / database / storage / auth / session ...
+Driver layer       redis / s3 / nats / amqp / oro ...
+```
+
+## Dependency directions that must not be broken
+
+- Drivers can depend on their corresponding capabilities.
+- Capabilities can depend on kernel contract packages.
+- Transports can depend on kernel contract packages.
+- The kernel must not depend on transports, capabilities, or drivers.
+- route must not hardcode capability types such as cache, database, or session.
+- Child packages should not import `runtime`.
+
+## How to release nested modules
+
+Subdirectory modules use Go's standard tag rule:
+
+```text
+storage/s3/v1.2.0
+queue/redis/v1.2.0
+observe/prometheus/v1.2.0
+```
+
+The root module and child modules can be released independently, but official modules should follow the latest core patch as much as possible to avoid version skew.
+
+## Shared cross-module code should not live in internal
+
+Shared code used across modules cannot live in `internal/`, otherwise other Go modules cannot import it. Put shared code in a public but low-level package when needed, such as `kernel/registry`.

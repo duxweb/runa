@@ -1,0 +1,102 @@
+---
+title: "核心总览"
+description: "Runa 的微内核模型"
+---
+
+Runa 的核心不是 HTTP router，而是应用运行时。它负责创建应用、加载配置、管理 DI、注册命令、启动 Host，并按固定顺序关闭资源。
+
+HTTP、WebSocket、缓存、队列、数据库、存储都不是内核的一部分。应用需要什么，就安装什么。
+
+## Runa 分成哪几层
+
+| 层级 | 说明 | 示例 |
+| --- | --- | --- |
+| 内核 | 应用骨架与生命周期 | `runa`、`provider`、`config`、`command`、`host` |
+| 传输 | 对外入口或后台 Host | `route`、`ws`、`jsonrpc` |
+| 能力 | 通用业务能力 | `cache`、`queue`、`database`、`storage` |
+| 驱动 | 具体外部系统适配 | `redis`、`s3`、`oro`、`nats` |
+
+这四层的关系可以简单理解为：
+
+```text
+你的应用 -> 安装传输和能力 -> 传输/能力使用内核生命周期
+```
+
+内核不反向依赖上层模块，所以不用的模块不会进入你的编译路径。
+
+## 只启动内核是什么样
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+)
+
+func main() {
+    app := runa.New()
+    if err := app.Execute(context.Background(), []string{"config:show"}); err != nil {
+        panic(err)
+    }
+}
+```
+
+这个应用只有内核、配置、命令和生命周期，没有 HTTP 路由。
+
+## 需要 HTTP 时再接入 route
+
+```go
+app.Install(route.Provider(route.Addr(":8080")))
+```
+
+`route` 是传输模块。接入后，应用才会启动 HTTP 服务。
+
+## 需要业务能力时再安装能力包
+
+```go
+app.Install(
+    cache.Provider(),
+    queue.Provider(),
+)
+```
+
+能力包会把自己的核心对象注册进 DI，并在生命周期中完成配置、命令、Host 或路由服务注册。
+
+## 业务代码通过 Module 组织
+
+```go
+app.Module(user.Module{}, order.Module{})
+```
+
+Module 是你的业务入口。它可以注册路由、命令、队列任务、事件监听和业务自己的服务对象。
+
+这样 `main.go` 只负责装配，业务细节留在各自模块里。
+
+## Install 和 Module 的关系
+
+| 入口 | 面向谁 | 常见内容 |
+| --- | --- | --- |
+| `Install` | 框架能力 | route、cache、queue、database、storage |
+| `Module` | 你的业务代码 | user、order、admin、billing |
+
+普通应用开发者大多数时候只需要知道：能力用 `Install`，业务用 `Module`。
+
+## 依赖为什么必须单向
+
+正确方向：
+
+```text
+驱动 -> 能力 -> 传输 -> 内核
+```
+
+这个方向保证内核足够轻，能力可以按需安装，驱动不会污染不使用它的项目。
+
+## 什么时候需要读核心文档
+
+- 想理解应用入口怎么组织
+- 想知道业务 Module 和安装能力的区别
+- 想知道 `Default()` 什么时候能用
+- 想理解启动和关闭顺序
+- 想把小项目逐步扩成业务系统

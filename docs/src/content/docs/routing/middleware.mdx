@@ -1,0 +1,99 @@
+---
+title: "Route Middleware Mechanism"
+description: "HTTP middleware type, usage positions, and execution order"
+---
+
+Middleware handles cross-cutting HTTP behavior such as logs, panic recovery, rate limits, authentication, security headers, and request IDs.
+
+This page only explains the route middleware mechanism. Official built-in middleware, security presets, and business middleware are documented in [Middleware Overview](../extending/middleware/).
+
+## What middleware is
+
+Runa middleware has this type:
+
+```go
+type Middleware func(route.Handler) route.Handler
+```
+
+It receives the next handler and returns a new handler.
+
+## Write middleware
+
+```go
+func Trace() route.Middleware {
+    return func(next route.Handler) route.Handler {
+        return func(ctx *route.Context) error {
+            ctx.Response().Header().Set("X-Trace", "demo")
+            return next(ctx)
+        }
+    }
+}
+```
+
+This middleware writes an `X-Trace` response header and then continues to the next handler.
+
+## Use middleware
+
+Use globally:
+
+```go
+route.Default().Use(Trace())
+```
+
+Use on a group:
+
+```go
+api := route.Default().Group("/api")
+api.Use(Trace())
+```
+
+Use on a single route:
+
+```go
+route.Default().Get("/profile", profile).Use(Trace())
+```
+
+## Execution order
+
+```go
+route.Default().Use(A(), B(), C())
+```
+
+Execution flow:
+
+```text
+A before -> B before -> C before -> handler -> C after -> B after -> A after
+```
+
+Middleware registered first wraps the later middleware and finishes last.
+
+## Example with before and after logic
+
+```go
+func Logger() route.Middleware {
+    return func(next route.Handler) route.Handler {
+        return func(ctx *route.Context) error {
+            start := time.Now()
+            err := next(ctx)
+            log.Println(ctx.Request().Method, ctx.Request().URL.Path, time.Since(start))
+            return err
+        }
+    }
+}
+```
+
+## Built-in middleware
+
+- [Built-in Middleware](../extending/middleware/builtin/): recover, CORS, bodylimit, timeout, requestid, realip, logger, healthcheck, static, helmet.
+- [Security Preset](../extending/middleware/security/): common production middleware chain.
+- [Business Middleware](../extending/middleware/business/): session, auth, rate, audit.
+
+## Common mistakes
+
+### Forgetting return next(ctx)
+
+If middleware does not call `next(ctx)`, later middleware and the final handler do not run. That can be used to block requests, but make sure it is intentional.
+
+### Swallowing errors
+
+Usually return the error from `next(ctx)` so centralized error handling can process it.

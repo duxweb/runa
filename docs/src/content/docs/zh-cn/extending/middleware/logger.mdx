@@ -1,0 +1,119 @@
+---
+title: "Logger 中间件"
+description: "记录 HTTP 访问日志、状态码、耗时、慢请求和错误"
+---
+
+`middleware/logger` 用来记录每个 HTTP 请求的访问日志。它会包裹响应写入器，拿到最终状态码、耗时、请求 ID、路径、IP 和错误信息。
+
+Logger 中间件会尝试从 route service 中读取 `*log.Registry`。如果应用没有安装 `log.Provider()`，请求不会失败，只是不会写入 Runa 日志注册表。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+如果希望日志进入 Runa 的日志通道，还需要安装 log 能力：
+
+```bash
+go get github.com/duxweb/runa/log
+```
+
+## 基本用法
+
+```go
+import "github.com/duxweb/runa/middleware/logger"
+
+route.Default().Use(logger.New())
+```
+
+默认写入 `http` 日志通道。
+
+## 配合 log.Provider
+
+```go
+app.Install(log.Provider(
+    log.Register("http", log.Console(log.Text())),
+))
+
+route.Default().Use(logger.New(logger.Config{Channel: "http"}))
+```
+
+## 跳过健康检查和静态文件
+
+```go
+route.Default().Use(logger.New(logger.Config{
+    SkipPaths: []string{"/health", "/metrics", "/assets/"},
+}))
+```
+
+`SkipPaths` 支持：
+
+- 精确路径：`/health`
+- 目录前缀：`/assets/`
+- 简单通配：`/api/*/internal`
+
+## 慢请求
+
+```go
+route.Default().Use(logger.New(logger.Config{
+    Slow: 300 * time.Millisecond,
+}))
+```
+
+当请求耗时大于等于 `Slow` 时，日志级别会变成 warn，并带上 `slow=true`
+
+## 自定义字段
+
+```go
+route.Default().Use(logger.New(logger.Config{
+    Fields: []string{"request_id", "method", "path", "status", "latency_ms"},
+}))
+```
+
+默认字段包括：`component`、`request_id`、`method`、`path`、`status`、`ip`、`latency_ms`、`slow`、`error`
+
+## 自定义回调
+
+```go
+route.Default().Use(logger.New(logger.Config{
+    OnLogged: func(ctx *route.Context, entry logger.Entry) error {
+        if entry.Status >= 500 {
+            // 这里可以接入告警或指标
+        }
+        return nil
+    },
+}))
+```
+
+`OnLogged` 会在写日志前执行。如果 `OnLogged` 返回错误，并且 handler 本身没有错误，中间件会返回这个错误。
+
+## 配置项
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | 返回 `true` 时跳过 |
+| `SkipPaths` | `[]string` | `nil` | 跳过访问日志的路径规则 |
+| `Channel` | `string` | `http` | Runa 日志通道 |
+| `Fields` | `[]string` | 默认字段集合 | 控制输出字段 |
+| `Slow` | `time.Duration` | `0` | 慢请求阈值 |
+| `OnLogged` | `func(*route.Context, logger.Entry) error` | `nil` | 日志写入前回调 |
+
+## 推荐顺序
+
+```go
+route.Default().Use(
+    recover.New(),
+    requestid.New(),
+    realip.New(),
+    logger.New(),
+)
+```
+
+这样 logger 能拿到 request id 和真实 IP，也能记录后续中间件与 handler 的最终耗时。
+
+## 常见问题
+
+- 没安装 `log.Provider()` 时不会报错，只是不会写入 Runa 日志通道
+- 如果想跳过 `/health`，可以用 `SkipPaths`，不需要自己写 `Next`
+- 已使用 `security.New(...)` 时默认包含 logger，可以通过 `security.SkipPaths(...)` 控制跳过路径，或 `security.Disable("logger")` 禁用后自行挂载

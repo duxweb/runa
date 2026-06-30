@@ -1,0 +1,94 @@
+---
+title: "写一个传输块"
+description: "Host / Resolver / RouteServiceBinder"
+---
+
+传输块负责接入一种请求协议，例如 HTTP、WebSocket、JSON-RPC 或未来 gRPC。传输块不是内核的一部分，它通过 Provider 和 Host 接入应用。
+
+传输块文档要特别谨慎：只有已经实现的 API 才能给可复制代码。规划中的传输只能说明方向，不能写假示例。
+
+## 传输块需要负责什么
+
+一个传输块通常需要：
+
+- 自己的 Server 或 Registry
+- `Provider()` 注册 DI 和 Host
+- 可选命令
+- 可选 `Resolve` 阶段处理延迟挂载
+- `Shutdown` 或 Host Stop 释放资源
+
+## 先实现最小形态
+
+```go
+type Server struct {}
+
+func New() *Server { return &Server{} }
+
+func Provider(server *Server) provider.Provider {
+    return providerImpl{server: server}
+}
+
+type providerImpl struct {
+    provider.Base
+    server *Server
+}
+
+func (providerImpl) Name() string { return "custom" }
+
+func (p providerImpl) Init(_ context.Context, ctx provider.Context) error {
+    provider.ProvideValueOnce(ctx, p.server)
+    return nil
+}
+
+func (p providerImpl) Register(ctx provider.Context) error {
+    return ctx.RegisterHost(NewHost(p.server))
+}
+```
+
+## 长期运行服务必须走 Host
+
+Host 需要实现：
+
+```go
+type Unit interface {
+    Name() string
+    Start(context.Context) error
+    Stop(context.Context) error
+    Status() host.Status
+}
+```
+
+长期运行的传输服务都应该走 Host，而不是在 Provider 里直接 goroutine 启动。
+
+## 需要 HTTP 时再和 route 集成
+
+如果传输块挂在 HTTP 上，例如 JSON-RPC 或 WebSocket，可以在 `Register` 阶段取 `*route.Registry` 并挂载：
+
+```go
+routes := provider.MustInvoke[*route.Registry](ctx)
+Mount(routes.RouteGroup(), server)
+```
+
+这种传输块应该明确依赖 `route`，但内核仍不依赖它。
+
+## 常见错误
+
+### 传输块反向依赖业务能力
+
+传输块可以提供通用上下文和挂载机制，但不要把 cache、database、session 等能力类型写死到核心 API。
+
+### 内核依赖传输块
+
+传输块必须由应用按需安装，内核不能 import 它。
+
+### Stop 不完整
+
+所有监听器、连接、订阅和后台协程都必须能在 Host Stop 或 Shutdown 中释放。
+
+## 写完后这样验收
+
+- 不 import `runtime`
+- 能独立 `New()`
+- Provider 能注册 Host 或挂载到 route
+- Shutdown/Stop 能释放资源
+- 文档写清安装路径、Provider 示例和配置

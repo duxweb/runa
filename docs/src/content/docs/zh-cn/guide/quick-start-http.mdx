@@ -1,0 +1,180 @@
+---
+title: "快速开始：HTTP"
+description: "创建一个最小 HTTP API"
+---
+
+本页从空目录创建一个 HTTP 服务。这个例子只接入 `route`，适合第一次体验 Runa。
+
+## 创建项目
+
+```bash
+mkdir runa-demo
+cd runa-demo
+go mod init example.com/runa-demo
+go get github.com/duxweb/runa github.com/duxweb/runa/route
+```
+
+## 写入 main.go
+
+创建 `main.go`：
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        return ctx.Text("Hello Runa")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+这段代码做了四件事：
+
+- `runa.New()` 创建应用
+- `app.Install(route.Provider(...))` 安装 HTTP 路由能力
+- `route.Default().Get(...)` 注册一个 GET 路由
+- `app.Run(...)` 启动应用，默认运行 `serve` 命令
+
+## 启动并访问
+
+启动服务：
+
+```bash
+go run .
+```
+
+访问首页：
+
+```bash
+curl http://localhost:8080/
+```
+
+输出：
+
+```text
+Hello Runa
+```
+
+浏览器访问 `http://localhost:8080/` 也可以看到同样内容。
+
+## 添加一个 JSON 接口
+
+```go
+route.Default().Get("/ping", func(ctx *route.Context) error {
+    return ctx.JSON(runa.Map{
+        "message": "pong",
+    })
+})
+```
+
+访问：
+
+```bash
+curl http://localhost:8080/ping
+```
+
+输出类似：
+
+```json
+{"message":"pong"}
+```
+
+## 需要类型约束时使用强类型路由
+
+普通 handler 适合简单接口。接口变多后，建议用强类型 Input / Output，把请求参数和响应结构写清楚。
+
+```go
+type GetUserInput struct {
+    ID string `param:"id"`
+}
+
+type GetUserOutput struct {
+    ID   string `json:"id"`
+    Name string `json:"name"`
+}
+
+route.Get[GetUserInput, GetUserOutput](
+    route.Default(),
+    "/users/{id}",
+    func(ctx *route.Context, input *GetUserInput) (*GetUserOutput, error) {
+        return &GetUserOutput{ID: input.ID, Name: "Runa"}, nil
+    },
+).Name("user.show").Summary("用户详情").Tags("User")
+```
+
+强类型路由会把输入、输出 schema 挂到路由元数据，后续可以被 OpenAPI 使用。
+
+## 需要缓存时再接入 cache
+
+先安装缓存能力：
+
+```bash
+go get github.com/duxweb/runa/cache
+```
+
+然后在 `main.go` 里 import 并安装：
+
+```go
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/cache"
+    "github.com/duxweb/runa/route"
+)
+```
+
+```go
+app.Install(
+    route.Provider(route.Addr(":8080")),
+    cache.Provider(),
+)
+
+route.Default().Get("/cache", func(ctx *route.Context) error {
+    store := cache.Default().MustOf[string]("default")
+    value, err := store.Remember(ctx.Context(), "hello", 0, func(context.Context) (string, error) {
+        return "world", nil
+    })
+    if err != nil {
+        return err
+    }
+    return ctx.Text(value)
+})
+```
+
+这里只是示例。实际项目里，业务路由通常放进 Module，而不是全部写在 `main.go`。
+
+## 常见问题
+
+### 只安装了 runa，为什么不能写 HTTP
+
+Runa 内核不包含 HTTP。写 HTTP 服务必须安装并 import `github.com/duxweb/runa/route`。
+
+### route.Default() 什么时候能用
+
+先安装 `route.Provider(...)`，再注册路由。最小示例里是在同一个 `main` 函数里完成。
+
+### cache.Default() 什么时候能用
+
+`cache.Default()` 依赖应用生命周期。普通应用代码里，在安装 `cache.Provider()` 后，把缓存读取放到 handler、命令或 Module 生命周期中使用，不要在 `Install` 后立刻在顶层全局变量里读取。
+
+## 接下来继续看
+
+- 路由细节看 [路由](../routing/)
+- 请求与响应看 [请求与响应](../routing/request-response/)
+- OpenAPI 看 [OpenAPI](../routing/openapi/)
+- 业务模块看 [业务模块](../core/module/)

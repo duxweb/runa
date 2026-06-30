@@ -1,0 +1,142 @@
+---
+title: "Rate Limit 中间件"
+description: "按命名限流器保护 HTTP 接口，返回标准限流 Header"
+---
+
+`rate/middleware` 把 rate 能力接入 HTTP 路由。它会从 route service 中读取 `*rate.Registry`，根据命名限流器判断当前请求是否允许通过。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/rate
+```
+
+## 基本接入
+
+```go
+import (
+    "time"
+
+    "github.com/duxweb/runa/rate"
+    ratemw "github.com/duxweb/runa/rate/middleware"
+)
+
+app.Install(rate.Provider(
+    rate.RegisterLimiter("api", rate.TokenBucket(60, time.Minute)),
+))
+
+route.Default().Use(ratemw.Use("api"))
+```
+
+命中限制时返回 `429 Too Many Requests`，并写入：
+
+- `RateLimit-Limit`
+- `RateLimit-Remaining`
+- `RateLimit-Reset`
+- `Retry-After`
+
+## 分组限流
+
+```go
+api := route.Default().Group("/api")
+api.Use(ratemw.Use("api"))
+
+admin := route.Default().Group("/admin")
+admin.Use(ratemw.Use("admin"))
+```
+
+## 配置文件
+
+`rate.Provider` 会读取 `rate.limiters.<name>`：
+
+```toml
+# config/rate.toml
+[limiters.api]
+driver = "memory"
+algorithm = "token_bucket"
+limit = 60
+window = "1m"
+burst = 60
+key = ["ip"]
+```
+
+代码：
+
+```go
+app.Install(rate.Provider(
+    rate.RegisterLimiter("api"),
+))
+route.Default().Use(ratemw.Use("api"))
+```
+
+## 按用户限流
+
+你可以注册自定义 KeySource，再在 limiter 中使用：
+
+```go
+userKey := rate.ByFunc(func(ctx any) string {
+    rctx, _ := ctx.(*route.Context)
+    if rctx == nil {
+        return ""
+    }
+    if info, _ := rctx.Locals("runa.auth").(*auth.Info); info != nil {
+        return core.Cast[string](info.Data["id"])
+    }
+    return ""
+})
+
+app.Install(rate.Provider(
+    rate.RegisterKey("user", userKey),
+    rate.RegisterLimiter("user-api",
+        rate.TokenBucket(120, time.Minute),
+        rate.Key(userKey),
+    ),
+))
+```
+
+如果没有配置 key，middleware 默认使用 `ip:<ctx.IP()>`
+
+## 算法选择
+
+```go
+rate.RegisterLimiter("api", rate.TokenBucket(60, time.Minute))
+rate.RegisterLimiter("login", rate.FixedWindow(5, time.Minute))
+rate.RegisterLimiter("search", rate.SlidingWindow(100, time.Minute))
+```
+
+| 算法 | 适合场景 |
+| --- | --- |
+| `TokenBucket` | 通用 API，允许短时间突发 |
+| `FixedWindow` | 登录、短信验证码等简单窗口限制 |
+| `SlidingWindow` | 对窗口边界更敏感的限流场景 |
+
+## Redis 驱动
+
+多实例部署时要使用共享驱动，例如 Redis：
+
+```bash
+go get github.com/duxweb/runa/rate/redis
+```
+
+业务代码里如果直接创建 Redis client，也需要按你的代码 import 对应 Redis 客户端。
+
+```go
+import (
+    goredis "github.com/redis/go-redis/v9"
+    rateredis "github.com/duxweb/runa/rate/redis"
+)
+
+client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
+
+app.Install(rate.Provider(
+    rate.RegisterDriver("redis", rateredis.Driver(client, rate.Prefix("runa:rate:"))),
+    rate.RegisterLimiter("api", rate.Use("redis"), rate.TokenBucket(60, time.Minute)),
+))
+```
+
+## 常见问题
+
+- 没安装 `rate.Provider` 时会返回 `rate registry is not configured`
+- `ratemw.Use("api")` 的名称必须和 `rate.RegisterLimiter("api")` 一致
+- 内存驱动只限制当前进程，多实例部署要用 Redis 等共享驱动
+- 如果需要按登录用户限流，auth 中间件应该在 rate 前面执行，或把限流挂到已经完成认证的分组上

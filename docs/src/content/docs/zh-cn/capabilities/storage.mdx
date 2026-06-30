@@ -1,0 +1,152 @@
+---
+title: "存储 Storage"
+description: "本地磁盘与对象存储统一访问"
+---
+
+`storage` 管理命名磁盘。默认使用本地文件驱动，生产环境可以按需接入 S3 兼容对象存储。
+
+可以把它理解成“文件系统抽象”：业务代码只关心 `Put`、`Get`、`URL`，不关心底层是本地目录还是对象存储。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/storage
+```
+
+S3 驱动按需安装：
+
+```bash
+go get github.com/duxweb/runa/storage/s3
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/storage"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(storage.Provider(
+        storage.RegisterDisk("public", storage.Prefix("public"), storage.Public()),
+    ))
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    disk := storage.Default().MustOf("public")
+    _ = disk.PutString(context.Background(), "hello.txt", "Hello Runa", storage.ContentType("text/plain"))
+}
+```
+
+`storage.Provider()` 会把 `*storage.Registry` 注册进 DI，并读取磁盘配置。
+
+## 独立 New 使用
+
+```go
+registry := storage.New(storage.Root("./data/storage"), storage.DriverURLPrefix("/files"))
+disk := registry.MustOf(storage.DiskPublic)
+
+_ = disk.PutString(context.Background(), "hello.txt", "Hello", storage.ContentType("text/plain"))
+body, _ := disk.GetString(context.Background(), "hello.txt")
+_ = body
+```
+
+## 配置
+
+`storage` 读取 `storage.disks.<name>`，只作用到已经注册的磁盘。`New()` 默认注册 `local`、`public`、`private`、`cloud`。
+
+```toml
+[storage.disks.public]
+driver = "local"
+prefix = "public"
+public = true
+url_prefix = "/files"
+domain = "https://cdn.example.com"
+
+[storage.disks.private]
+driver = "local"
+prefix = "private"
+public = false
+```
+
+| 键 | 类型 | 说明 |
+| --- | --- | --- |
+| `driver` | string | 驱动名，默认 `local` |
+| `prefix` | string | 磁盘路径前缀 |
+| `public` | bool | 是否公开访问 |
+| `url_prefix` | string | URL 前缀 |
+| `domain` | string | URL 域名 |
+| `meta` | table | 自定义元数据 |
+
+## public 和 private 怎么选
+
+| 类型 | 用途 |
+| --- | --- |
+| `Public()` | 头像、公开附件、前端可直接访问的文件 |
+| `Private()` | 合同、报表、内部文件，需要后端鉴权后再访问 |
+
+公开文件可以直接生成 URL。私有文件通常需要你自己写下载接口并做权限判断。
+
+## S3 驱动
+
+```go
+import s3storage "github.com/duxweb/runa/storage/s3"
+
+app.Install(storage.Provider(
+    storage.RegisterDriver("s3", s3storage.Driver(
+        s3storage.Bucket("app"),
+        s3storage.Region("us-east-1"),
+        s3storage.Endpoint("https://s3.example.com"),
+        s3storage.Credentials("access", "secret"),
+        s3storage.PathStyle(true),
+    )),
+    storage.RegisterDisk("cloud", storage.Use("s3"), storage.Public()),
+))
+```
+
+## 常用 API
+
+```go
+disk := storage.Default().MustOf("public")
+
+_ = disk.PutString(ctx, "avatars/1.txt", "hello", storage.ContentType("text/plain"))
+body, err := disk.GetString(ctx, "avatars/1.txt")
+exists, err := disk.Exists(ctx, "avatars/1.txt")
+url, err := disk.URL(ctx, "avatars/1.txt")
+_ = body
+_ = exists
+_ = url
+_ = err
+```
+
+## 常见错误
+
+### 本地磁盘路径不清楚
+
+本地驱动的根目录由 `storage.Root(...)` 或应用 data 路径决定，磁盘的 `Prefix(...)` 会继续拼到根目录下面。
+
+### URL 为空或不是预期域名
+
+生成公开 URL 需要磁盘设置 `storage.Public()`，并按需要设置 `storage.URLPrefix(...)` 或 `storage.Domain(...)`。
+
+### 生产环境还用本地磁盘存公开文件
+
+单机部署可以用本地磁盘。多实例部署通常应使用 S3 兼容对象存储或共享存储。
+
+## API 速查
+
+- `storage.New(options...)` 创建独立注册表
+- `storage.Provider(...)` 接入框架生命周期
+- `storage.Default()` 从默认 DI 取 `*storage.Registry`
+- `storage.RegisterDriver(name, driver)` 注册驱动
+- `storage.RegisterDisk(name, options...)` 注册磁盘
+- `registry.MustOf(name)` 获取磁盘
+- `storage.LocalDriver(...)` 创建本地驱动

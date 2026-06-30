@@ -1,0 +1,92 @@
+---
+title: "Commands"
+description: "Register and run application commands"
+---
+
+Commands are a Runa kernel capability. Providers can register commands, and applications can run commands or workers without starting HTTP.
+
+## Define a command
+
+```go
+type HelloCommand struct{}
+
+func (HelloCommand) Name() string { return "hello" }
+func (HelloCommand) Summary() string { return "Print hello" }
+func (HelloCommand) Run(ctx context.Context, cmd *command.Context) error {
+    return cmd.Println("hello")
+}
+```
+
+## Register the command
+
+Register directly on the application:
+
+```go
+app.Command(HelloCommand{})
+```
+
+Register from a Provider:
+
+```go
+func (Provider) Register(ctx provider.Context) error {
+    return ctx.RegisterCommand(HelloCommand{})
+}
+```
+
+## Execute a command directly
+
+```go
+if err := app.Execute(context.Background(), []string{"hello"}); err != nil {
+    panic(err)
+}
+```
+
+If your entry passes `os.Args[1:]`, it can be used as a real CLI.
+
+```go
+if err := app.Execute(context.Background(), os.Args[1:]); err != nil {
+    panic(err)
+}
+```
+
+## Read arguments and write output
+
+```go
+func (HelloCommand) Run(ctx context.Context, cmd *command.Context) error {
+    name := cmd.Get[string]("name", "runa")
+    return cmd.Println("hello", name)
+}
+```
+
+The command context provides:
+
+- `Args()` reads positional arguments.
+- `Get[T](name)` reads and converts flags.
+- `Print` / `Println` writes text.
+- `Table` writes tables or JSON.
+- `App()` returns the current application object.
+
+## Command naming convention
+
+Prefer `package:action` names:
+
+```text
+config:show
+route:list
+queue:work
+openapi:export
+```
+
+## Common questions
+
+### What is the difference between app.Run and app.Execute
+
+`app.Run(ctx)` starts the default command, usually `serve`. `app.Execute(ctx, args)` runs the command specified by `args`.
+
+### Do commands need HTTP
+
+No. Commands can use the kernel, config, DI, and installed capabilities without starting HTTP.
+
+### How do commands use database or cache
+
+Install the capability Provider, then read the object from DI or the capability `Default()` helper after startup.

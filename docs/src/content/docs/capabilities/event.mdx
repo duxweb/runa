@@ -1,0 +1,103 @@
+---
+title: "Event"
+description: "Domain events and sync/async listeners"
+---
+
+`event` publishes domain events. By default, listeners run in the current process. If `queue` and `task` are also installed, queue can take over async event dispatch during startup.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/event
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/event"
+    "github.com/duxweb/runa/provider"
+)
+
+type UserCreated struct {
+    ID string `json:"id"`
+}
+
+type appModule struct {
+    provider.ModuleBase
+}
+
+func (appModule) Name() string { return "app" }
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    events, err := provider.Invoke[*event.Registry](app)
+    if err != nil {
+        return err
+    }
+    events.On("user.created", func(ctx context.Context, evt *event.EventOf[UserCreated]) error {
+        fmt.Println("created", evt.Payload.ID)
+        return nil
+    })
+    return nil
+}
+
+func main() {
+    app := runa.New()
+    app.Install(event.Provider())
+    app.Module(appModule{})
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    _ = event.Default().Emit(context.Background(), "user.created", UserCreated{ID: "1"})
+}
+```
+
+## Standalone New usage
+
+```go
+registry := event.New()
+registry.On("user.created", listener)
+_ = registry.Emit(context.Background(), "user.created", UserCreated{ID: "1"})
+```
+
+## Config
+
+`event` currently has no TOML config. Listener order, async queues, and metadata are declared in code.
+
+## Listener options
+
+```go
+events.On("user.created", listener,
+    event.ListenerName("send-welcome"),
+    event.Priority(10),
+    event.Queue("default"),
+)
+```
+
+- `ListenerName` sets the listener name.
+- `Priority` controls execution order within the same event.
+- `Queue` marks the listener for queue dispatch and requires `queue` and `task`.
+
+## Commands
+
+After installing `event.Provider()`, this command is registered:
+
+```bash
+go run . event:list
+```
+
+## API quick reference
+
+- `event.New()` creates a standalone registry.
+- `event.Provider()` connects to the framework lifecycle.
+- `event.Default()` reads `*event.Registry` from default DI.
+- `registry.On(name, listener, options...)` registers a listener.
+- `registry.Emit(ctx, name, payload, options...)` publishes an event.

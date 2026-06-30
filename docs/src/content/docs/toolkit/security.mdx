@@ -1,0 +1,80 @@
+---
+title: "Security"
+description: "Security middleware presets"
+---
+
+`security` is an HTTP security middleware chain. It combines recover, request id, real IP, access log, body limit, timeout, helmet, and other middleware into one chain.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/security
+```
+
+## Quick usage
+
+```go
+app.Install(route.Provider(route.Addr(":8080")))
+route.Default().Use(security.New(security.Production()))
+```
+
+Development environment:
+
+```go
+route.Default().Use(security.New(security.Development()))
+```
+
+## Options
+
+```go
+route.Default().Use(security.New(
+    security.Production(),
+    security.BodyLimit("2MB"),
+    security.Timeout(30*time.Second),
+    security.TrustedProxies("127.0.0.1"),
+    security.SkipPaths("/health", "/metrics"),
+))
+```
+
+## Skip some requests
+
+```go
+route.Default().Use(security.New(security.Next(func(ctx *route.Context) bool {
+    return ctx.Request().URL.Path == "/health"
+})))
+```
+
+## Disable individual middleware
+
+```go
+route.Default().Use(security.New(security.Disable("logger", "helmet")))
+```
+
+Disable names: `recover`, `requestid`, `realip`, `logger`, `bodylimit`, `timeout`, `helmet`.
+
+## Common mistakes
+
+### Expecting Security to include CORS
+
+Security does not include CORS because CORS depends on the frontend origin and credential strategy. Configure CORS explicitly.
+
+### Missing TrustedProxies behind a gateway
+
+Production preset clears trusted proxies. If the app runs behind Nginx, CDN, or Ingress, configure `TrustedProxies` explicitly.
+
+### Disabling recover in production
+
+If you disable recover, panics may be handled by the HTTP server directly. Keep recover enabled unless you have another panic strategy.
+
+## API quick reference
+
+- `security.New(options...)` creates security middleware.
+- `security.Development()` applies development defaults.
+- `security.Production()` applies production defaults.
+- `security.BodyLimit(value)` sets the request body limit.
+- `security.Timeout(duration)` sets the request timeout.
+- `security.TrustedProxies(values...)` sets trusted proxies.
+- `security.Disable(names...)` disables named middleware.
+
+
+More complete middleware docs are available in [Security Preset](../extending/middleware/security/).

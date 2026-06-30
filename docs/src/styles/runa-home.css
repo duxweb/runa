@@ -1,0 +1,136 @@
+/* Runa homepage — below-hero sections (distinct from the shared theme) */
+
+.runa-home { --runa-tint: color-mix(in srgb, var(--dux-accent) 10%, transparent); }
+
+.runa-sec {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 4.5rem 1.5rem;
+  border-top: 1px solid var(--dux-line);
+}
+.runa-sec--flush { border-top: 0; }
+
+.runa-sec__head { max-width: 660px; margin: 0 auto 2.75rem; text-align: center; }
+.runa-eyebrow {
+  display: inline-block;
+  font-family: var(--vela-font-mono);
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  color: var(--dux-accent);
+  margin-bottom: 0.85rem;
+}
+.runa-sec__head h2 {
+  font-size: clamp(1.55rem, 3vw, 2.1rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.75rem;
+  color: var(--dux-ink);
+}
+.runa-sec__head p { margin: 0; color: var(--dux-muted); font-size: 1.02rem; line-height: 1.6; }
+
+/* ── Blocks: kernel + snap-on chips ───────────────────────── */
+.runa-compose { display: flex; flex-direction: column; align-items: center; gap: 1.4rem; }
+.runa-kernel {
+  font-family: var(--vela-font-mono);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1;
+  color: #052e16;
+  background: var(--dux-primary-bg);
+  padding: 0.7rem 1.4rem;
+  border-radius: 999px;
+}
+.runa-plug { color: var(--dux-muted); font-size: 1.4rem; line-height: 1; }
+.runa-chips { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: center; max-width: 820px; }
+.runa-chip {
+  font-family: var(--vela-font-mono);
+  font-size: 0.84rem;
+  padding: 0.42rem 0.8rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--dux-line);
+  background: var(--dux-surface);
+  color: var(--dux-ink);
+}
+.runa-chip--t { border-color: var(--dux-accent); color: var(--dux-accent); background: var(--runa-tint); }
+.runa-chip--d { border-style: dashed; color: var(--dux-muted); background: transparent; }
+.runa-legend { display: flex; gap: 1.25rem; flex-wrap: wrap; justify-content: center; margin-top: 0.5rem; font-size: 0.8rem; color: var(--dux-muted); }
+.runa-legend i { font-style: normal; }
+.runa-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 2px; margin-right: 0.4rem; vertical-align: middle; }
+.runa-dot--t { background: var(--dux-accent); }
+.runa-dot--c { background: var(--dux-line-strong, var(--dux-line)); }
+.runa-dot--d { border: 1px dashed var(--dux-muted); }
+
+/* ── Comparison: no install, no dependency ────────────────── */
+.runa-cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.runa-card {
+  border: 1px solid var(--dux-line);
+  border-radius: 1rem;
+  padding: 1.6rem;
+  background: var(--dux-surface);
+}
+.runa-card--accent { border-color: var(--dux-accent); background: var(--runa-tint); }
+.runa-card h3 { margin: 0 0 0.3rem; font-size: 1.02rem; color: var(--dux-ink); }
+.runa-card__sub { margin: 0 0 1rem; font-size: 0.85rem; color: var(--dux-muted); }
+.runa-deps { display: flex; flex-direction: column; gap: 0.4rem; font-family: var(--vela-font-mono); font-size: 0.84rem; }
+.runa-deps span { color: var(--dux-muted); }
+.runa-deps span::before { content: "✓ "; color: var(--dux-accent); }
+.runa-deps span.add { color: var(--dux-ink); }
+.runa-deps span.add::before { content: "+ "; color: #e0982b; }
+
+/* ── Architecture stack ───────────────────────────────────── */
+.runa-stack { display: grid; gap: 0.55rem; max-width: 760px; margin: 0 auto; }
+.runa-layer {
+  border: 1px solid var(--dux-line);
+  border-radius: 0.85rem;
+  padding: 1rem 1.25rem;
+  background: var(--dux-surface);
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 0.75rem;
+}
+.runa-layer strong { font-size: 0.95rem; color: var(--dux-ink); min-width: 7.5rem; }
+.runa-layer span { font-family: var(--vela-font-mono); font-size: 0.82rem; color: var(--dux-muted); }
+.runa-layer--kernel { border-color: var(--dux-accent); background: var(--runa-tint); }
+
+/* ── Lifecycle steps ──────────────────────────────────────── */
+.runa-steps { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; align-items: center; }
+.runa-step {
+  font-family: var(--vela-font-mono); font-size: 0.84rem;
+  padding: 0.5rem 0.95rem; border-radius: 2rem;
+  border: 1px solid var(--dux-line); background: var(--dux-surface); color: var(--dux-ink);
+}
+.runa-steps em { font-style: normal; color: var(--dux-muted); }
+
+/* ── Transport cards ──────────────────────────────────────── */
+.runa-grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+.runa-tcard {
+  border: 1px solid var(--dux-line); border-radius: 0.9rem; padding: 1.25rem; background: var(--dux-surface);
+}
+.runa-tcard b { display: block; font-family: var(--vela-font-mono); font-size: 0.95rem; color: var(--dux-accent); margin-bottom: 0.35rem; }
+.runa-tcard span { font-size: 0.85rem; color: var(--dux-muted); line-height: 1.5; }
+
+/* ── CTA ──────────────────────────────────────────────────── */
+.runa-cta { text-align: center; padding: 4.5rem 1.5rem; border-top: 1px solid var(--dux-line); }
+.runa-cta h2 { font-size: clamp(1.5rem, 3vw, 2rem); margin: 0 0 0.6rem; color: var(--dux-ink); }
+.runa-cta p { margin: 0 auto 1.75rem; max-width: 520px; color: var(--dux-muted); }
+.runa-cta__row { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+.runa-btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.7rem 1.3rem; border-radius: 0.7rem; font-weight: 600; font-size: 0.92rem; text-decoration: none;
+}
+.runa-home a.runa-btn--primary {
+  background: var(--dux-accent);
+  color: var(--dux-cta-primary-text, #052e16);
+}
+.runa-home a.runa-btn--ghost {
+  border: 1px solid var(--dux-line-strong, var(--dux-line));
+  color: var(--dux-ink);
+}
+.runa-btn:hover { transform: translateY(-1px); }
+
+.runa-home .dux-footer__meta {
+  gap: 0.45rem;
+}
+
+@media (max-width: 820px) {
+  .runa-cmp, .runa-grid4 { grid-template-columns: 1fr; }
+  .runa-layer strong { min-width: 0; width: 100%; }
+}

@@ -1,0 +1,103 @@
+---
+title: "依赖注入"
+description: "通过 DI 获取能力实例"
+---
+
+DI 是 dependency injection 的缩写，中文通常叫依赖注入。你可以把它理解成一个由应用管理的对象仓库。
+
+能力包和业务模块把对象注册进 DI，后续命令、Module、handler 再从 DI 里取出来使用。这样对象的创建、复用和关闭都由应用生命周期统一管理。
+
+## 初学者先记住这三点
+
+- 能力包通常会把自己的核心对象注册进 DI
+- 子包的 `Default()` 通常就是从默认 DI 容器里取对象
+- 应用还没完成生命周期前，不要太早读取 `Default()`
+
+## Module 里怎么注册依赖
+
+如果你的业务模块有自己的服务对象，可以在 `Init` 阶段注册：
+
+```go
+func (UserModule) Init(ctx context.Context, app provider.Context) error {
+    provider.ProvideDefault(app, func(do.Injector) (*Registry, error) {
+        return &Registry{}, nil
+    })
+    return nil
+}
+```
+
+`ProvideDefault` 表示如果同类型对象还没注册，就注册它。
+
+## Module 里怎么读取依赖
+
+```go
+func (UserModule) Register(ctx context.Context, app provider.Context) error {
+    registry := provider.MustInvoke[*Registry](app)
+    _ = registry
+    return nil
+}
+```
+
+`MustInvoke` 取不到对象时会 panic，适合启动阶段快速暴露配置错误。业务运行时如果需要自己处理错误，可以使用 `provider.Invoke[T](app)`。
+
+## 应用启动后怎么读取能力
+
+应用启动后可以使用子包的 `Default()`：
+
+```go
+store := cache.Default().MustOf[string]("default")
+```
+
+也可以直接使用根门面：
+
+```go
+registry := runa.MustInvoke[*cache.Registry]()
+```
+
+普通业务代码优先使用能力包提供的 `Default()`，需要更底层控制时再直接用 DI。
+
+## Provide 与 ProvideValue
+
+根门面提供默认容器注册：
+
+```go
+runa.Provide(func(app *runa.App) (*MyService, error) {
+    return NewMyService(), nil
+})
+
+runa.ProvideValue(NewStaticService())
+```
+
+`Provide` 适合需要延迟创建的对象，`ProvideValue` 适合已经创建好的对象。
+
+## DI 什么时候可以安全读取
+
+能力包和 Module 在 `Init` 阶段注册依赖，在 `Register` 阶段通常可以读取依赖。
+
+应用层直接调用 `Default()` 时，要保证应用已经 `Run` 或 `Freeze`。HTTP handler、命令执行函数、Module 生命周期内部，通常都是安全位置。
+
+测试里如果只调用 `Install`，DI 对象还没有完成生命周期，不应该直接调用 `cache.Default()`。
+
+## HTTP 请求里怎么读取能力
+
+大多数业务代码直接使用能力包的 `Default()`：
+
+```go
+route.Default().Get("/cache", func(ctx *route.Context) error {
+    store := cache.Default().MustOf[string]("default")
+    stats := store.Stats(ctx.Context())
+    return ctx.Text(stats.Name)
+})
+```
+
+如果某个能力提供了专门的请求上下文方法，以对应能力文档为准。
+
+## 常见错误
+
+### 把 DI 当全局变量替代品
+
+DI 的目的是统一管理对象生命周期，不是鼓励到处取全局对象。业务代码里能通过函数参数传递的对象，仍然可以直接传。
+
+### 在 init 函数里读取能力
+
+不要在 Go 的 `init()` 函数里读取 `cache.Default()`、`database.Default()` 这类对象。那时应用还没有启动。

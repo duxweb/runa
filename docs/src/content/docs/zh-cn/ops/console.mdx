@@ -1,0 +1,121 @@
+---
+title: "控制台 Console"
+description: "运行时控制台与应用自省"
+---
+
+`console` 是可选运行时控制台。它聚合路由、Host、队列、消息、数据库、日志、指标等信息，通过面板展示应用状态。
+
+它适合开发、测试和内网运维环境。公网生产环境启用时必须加认证和网络限制。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/console
+```
+
+通常还会配合 `route`、`observe`、`ws`、`queue` 等能力使用。
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/console"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        console.Provider(console.MountAt("/_console"), console.Title("Runa Console")),
+    )
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+访问：
+
+```bash
+open http://localhost:8080/_console
+```
+
+## 配置
+
+`console` 读取 `[console]` 配置。
+
+```toml
+[console]
+title = "Runa Console"
+mount = "/_console"
+auth = ["web"]
+interval = "5s"
+slow_threshold = "300ms"
+collect_http = true
+sample_interval = "1s"
+```
+
+| 键 | 类型 | 说明 |
+| --- | --- | --- |
+| `title` | string | 控制台标题 |
+| `mount` | string | 挂载路径 |
+| `auth` | []string | 需要的 auth 认证器名 |
+| `interval` | duration | 前端刷新间隔 |
+| `slow_threshold` | duration | 慢请求阈值 |
+| `collect_http` | bool | 是否采集 HTTP 请求样本 |
+| `sample_interval` | duration | 指标采样间隔 |
+
+## 自定义面板
+
+```go
+panel := console.PanelFunc{
+    Name:  "hello",
+    Title: "Hello",
+    Mount: func(group *route.Group) {
+        group.Get("/data", func(ctx *route.Context) error {
+            return ctx.JSON(runa.Map{"message": "hello"})
+        })
+    },
+}
+
+app.Install(console.Provider(console.Panels(panel)))
+```
+
+## 监控存储
+
+默认使用内存监控存储：
+
+```go
+app.Install(console.Provider(
+    console.MountAt("/_console"),
+    console.Store(console.NewMemoryMonitorStore(1000)),
+))
+```
+
+如果你要把监控数据写入自己的存储，可以实现 `console.MonitorStore`，再通过 `console.Store(store)` 交给 Provider。
+
+## 常见错误
+
+### 控制台暴露到公网
+
+Console 会展示运行时信息，生产环境必须加认证、内网限制或反向代理访问控制。
+
+### 以为 console 会自动安装所有能力
+
+Console 只读取已经安装的能力。没有安装 queue、database、observe，就不会展示对应运行信息。
+
+## API 速查
+
+- `console.Provider(options...)` 接入控制台
+- `console.Default()` 从默认 DI 取 `*console.Registry`
+- `console.Mount(target, app, configs...)` 手动挂载控制台
+- `console.Panels(items...)` 追加面板
+- `console.BuiltinPanels()` 获取内置面板
+- `console.NewMemoryMonitorStore(limit...)` 创建内存监控存储

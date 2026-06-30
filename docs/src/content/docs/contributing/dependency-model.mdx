@@ -1,0 +1,47 @@
+---
+title: "Dependency Model"
+description: "Dependency boundaries behind on-demand installation"
+---
+
+Runa's dependency model has one goal: unused capabilities should not enter the dependency graph, and unused drivers should not enter `go.sum`.
+
+## Dependencies converge toward the kernel
+
+Dependencies must converge toward the kernel:
+
+```text
+Driver block -> Capability block -> Kernel contracts
+Transport block -> Kernel contracts
+Application -> Blocks it needs
+```
+
+The kernel does not import transports, capabilities, or drivers. Because of this, a program that only imports `github.com/duxweb/runa` is not polluted by HTTP, Redis, S3, ORM, or similar dependencies.
+
+## How to decide module boundaries
+
+A module boundary should match a real dependency boundary. Heavy dependencies, external service drivers, and optional UI should be split into separate modules.
+
+Recommended split points:
+
+- External dependencies such as Redis, S3, NATS, AMQP, MQTT, Oro, Excel, and WebSocket.
+- Opt-in capabilities such as console, observe adapters, and devtools.
+- Future large transport blocks.
+
+Not recommended:
+
+- Very small pure function helpers.
+- Internal helper code with no external dependencies and strong cohesion.
+- Adding modules only to make directories look cleaner.
+
+## Boundaries CI should enforce
+
+CI should check:
+
+```bash
+GOWORK=off go list -deps .
+for mod in $(find . -name go.mod -not -path './.git/*'); do
+  (cd "$(dirname "$mod")" && go test ./...)
+done
+```
+
+If a module introduces a heavy dependency, the PR must explain why that dependency belongs to the module instead of the core.

@@ -1,0 +1,126 @@
+---
+title: "日志 Log"
+description: "命名日志通道和多输出日志"
+---
+
+`log` 基于标准库 `slog`，提供命名日志通道和多输出能力。默认注册常用通道，未命中的通道会回退到默认日志器。
+
+如果你刚开始使用，可以先只配置 `default` 通道。项目变大后，再把 HTTP、队列、ORM、Redis 等日志拆到不同通道。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/log
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+    "log/slog"
+
+    "github.com/duxweb/runa"
+    runalog "github.com/duxweb/runa/log"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(runalog.Provider(
+        runalog.Register("default", runalog.Console(runalog.Pretty(), runalog.Level(slog.LevelInfo))),
+        runalog.Register("queue", runalog.File("data/logs/queue.log", runalog.JSON())),
+    ))
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    runalog.Default().Get("queue").Info("queued")
+}
+```
+
+## 独立 New 使用
+
+```go
+registry := runalog.New()
+registry.Set("default", runalog.Console(runalog.Text()))
+registry.Get("default").Info("hello")
+```
+
+## 配置
+
+`log` 当前不读取 TOML 配置。日志输出通常和部署环境绑定，建议在入口或业务 Provider 中用代码注册。
+
+```go
+app.Install(runalog.Provider(
+    runalog.Register("default", runalog.Console(runalog.JSON(), runalog.Source(true))),
+))
+```
+
+## 在业务代码里写日志
+
+```go
+logger := runalog.Default().Get("default")
+logger.Info("user created", "id", "1")
+```
+
+在 handler 里也一样：
+
+```go
+route.Default().Get("/", func(ctx *route.Context) error {
+    runalog.Default().Get(runalog.HTTP).Info("home")
+    return ctx.Text("ok")
+})
+```
+
+## 输出类型
+
+```go
+runalog.Console(runalog.Pretty())
+runalog.File("data/logs/app.log", runalog.JSON())
+runalog.Writer(os.Stdout, runalog.Text())
+runalog.Discard()
+runalog.Handler(slog.NewTextHandler(os.Stdout, nil))
+```
+
+Runa 创建的 `Text`、`JSON` 和 `Pretty` 输出会把日志时间转换到应用时区。直接传入 `runalog.Handler(...)` 时，时间格式由你自己的 `slog.Handler` 决定。
+
+一个通道可以注册多个输出，内部会使用 fanout handler。
+
+```go
+runalog.Register("http",
+    runalog.Console(runalog.Pretty()),
+    runalog.File("data/logs/http.log", runalog.JSON()),
+)
+```
+
+## 常用通道
+
+内置通道名包括：`default`、`http`、`error`、`queue`、`schedule`、`task`、`orm`、`redis`。
+
+```go
+logger := runalog.Default().Get(runalog.HTTP)
+logger.Info("request", "method", "GET")
+```
+
+## 常见错误
+
+### 通道名写散
+
+建议统一使用固定通道名，例如 `default`、`http`、`queue`、`orm`。不要在业务代码里随手拼很多临时通道。
+
+### 生产环境只输出到控制台或只输出到文件
+
+容器环境通常输出到控制台，由平台采集。传统部署可以输出到文件。具体选择应跟部署方式一致。
+
+## API 速查
+
+- `log.New()` 创建独立注册表
+- `log.Provider(...)` 接入框架生命周期
+- `log.Default()` 从默认 DI 取 `*log.Registry`
+- `log.Register(name, outputs...)` 注册 Provider 输出
+- `registry.Set(name, outputs...)` 手动设置通道
+- `registry.Get(name)` 获取 `*slog.Logger`
+- `log.Console`、`log.File`、`log.Writer`、`log.Handler` 创建输出

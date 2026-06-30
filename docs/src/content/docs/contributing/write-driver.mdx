@@ -1,0 +1,61 @@
+---
+title: "Write a Driver"
+description: "Driver interface and factory"
+---
+
+A driver block connects an external dependency to a capability package. The driver module should depend on the capability package; the capability package must not depend backward on the driver module.
+
+## Where to put a driver module
+
+Using a cache driver as an example, the driver module path can be:
+
+```text
+github.com/acme/runa-cache-driver
+```
+
+## Drivers only implement interfaces defined by capability packages
+
+The driver implements the interface defined by the capability package:
+
+```go
+type Driver struct {
+    client *Client
+}
+
+func NewDriver(client *Client) cache.Driver {
+    return &Driver{client: client}
+}
+```
+
+Official driver factories are named `Driver(...)`:
+
+```go
+func Driver(client *Client, options ...Option) cache.Driver {
+    return &driver{client: client}
+}
+```
+
+## Register through the capability package
+
+```go
+app.Install(cache.Provider(
+    cache.RegisterDriver("acme", acme.Driver(client)),
+    cache.RegisterPool("default", cache.Use("acme")),
+))
+```
+
+## Join shutdown when holding connections
+
+If a driver holds a connection, it must implement the `Close(ctx)` required by the capability interface so DI shutdown can release resources.
+
+```go
+func (d *driver) Close(ctx context.Context) error {
+    return d.client.Close()
+}
+```
+
+## Acceptance checklist
+
+- The driver package passes `go test ./...` independently.
+- It can be registered without modifying the capability package source.
+- When the driver is not used, its external dependencies do not enter the user's `go.sum`.

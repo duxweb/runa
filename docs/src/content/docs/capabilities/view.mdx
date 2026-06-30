@@ -1,0 +1,150 @@
+---
+title: "View"
+description: "Template rendering and named view domains"
+---
+
+`view` manages named template domains. It provides a standard-library `html/template` renderer by default and supports local directories, embedded filesystems, development reload, and template functions.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/view
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/provider"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/view"
+)
+
+type appModule struct {
+    provider.ModuleBase
+}
+
+func (appModule) Name() string { return "app" }
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    views, err := provider.Invoke[*view.Registry](app)
+    if err != nil {
+        return err
+    }
+    return views.Register(ctx, "web", view.HTML(view.Dir("views").Reload(true)))
+}
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")), view.Provider())
+    app.Module(appModule{})
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        return ctx.Render("index", runa.Map{"title": "Runa"}, "web")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## Standalone New usage
+
+```go
+registry := view.New()
+_ = registry.Register(context.Background(), "web", view.HTML(view.Dir("views")))
+
+html, err := registry.RenderString(routeContext, "web", "index", map[string]any{"title": "Runa"})
+_ = html
+_ = err
+```
+
+`Render` requires a context that implements `Context() context.Context`. In HTTP usage, use `*route.Context` directly.
+
+## Config
+
+`view` currently has no TOML config. Template sources and functions are usually registered in code, making it easy to switch between local directories and embedded filesystems by environment.
+
+## RHTML enhanced templates
+
+Default `view.HTML(...)` uses the standard library `html/template`. If you need layouts, blocks, includes, conditions, loops, and custom `r:` tags, use `view/rhtml`.
+
+```go
+import "github.com/duxweb/runa/view/rhtml"
+
+renderer := rhtml.New(view.Dir("views", "**/*.html").Reload(true))
+_ = views.Register(context.Background(), "web", renderer)
+```
+
+Full syntax is documented in [RHTML Templates](./rhtml/).
+
+## Template sources
+
+```go
+view.Dir("views", "**/*.html").Reload(true)
+view.Embed(viewFS, "views", "**/*.html")
+view.Embed(viewFS, "views").Dev(view.Dir("views").Reload(true))
+```
+
+## Template functions
+
+Static helpers can be registered on a concrete renderer:
+
+```go
+renderer := view.HTML(view.Dir("views")).Func("asset", func(path string) string {
+    return "/assets/" + path
+})
+
+_ = views.Register(context.Background(), "web", renderer)
+```
+
+You can also register helpers on `view.Registry`, so every later renderer gets the same functions:
+
+```go
+views.Func("asset", func(path string) string {
+    return "/assets/" + path
+})
+```
+
+Use `ContextFunc` for request-scoped helpers. It exposes the function name while parsing templates, then builds the real function from `context.Context` on every render:
+
+```go
+views.ContextFunc("tenant", func(ctx context.Context) any {
+    return func() string {
+        return tenantFromContext(ctx)
+    }
+})
+```
+
+Both `view.HTML` and `view/rhtml` use this same `Func` / `ContextFunc` mechanism. The translation helper `{{ t "key" }}` is injected by `lang/view.Provider()` through `ContextFunc`.
+
+## Common mistakes
+
+### Installing view.Provider but not registering a renderer
+
+`view.Provider()` registers the view registry. You still need to register at least one renderer, such as an RHTML renderer.
+
+### ctx.Render reports renderer is not configured
+
+Check that the renderer name passed to `ctx.Render(..., name)` matches the name registered in `view.Registry.Register(...)`.
+
+### Template changes do not appear in development
+
+For local template files, enable reload with `view.Dir("views", "**/*.html").Reload(true)` during development.
+
+## API quick reference
+
+- `view.New()` creates a standalone registry.
+- `view.Provider()` connects to the framework lifecycle.
+- `view.Default()` reads `*view.Registry` from default DI.
+- `registry.Register(ctx, name, renderer)` registers a view domain.
+- `registry.Render(ctx, writer, domain, name, data)` renders to a writer.
+- `registry.RenderString(ctx, domain, name, data)` renders to a string.
+- `view.HTML(sources...)` creates an html/template renderer.
+- `view.Dir`, `view.Embed` create template sources.

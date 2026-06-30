@@ -1,0 +1,138 @@
+---
+title: "资源 Asset"
+description: "静态资源 URL、清单和文件服务"
+---
+
+`asset` 管理命名静态资源域。它可以扫描本地或嵌入文件系统，生成静态资源 URL，也可以读取构建工具输出的 manifest。
+
+如果你的项目只有 JSON API，可以不安装 `asset`。它主要服务于服务端渲染页面、后台页面或需要管理前端构建产物的项目。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/asset github.com/duxweb/runa/view
+```
+
+`asset` 复用 `view.Source` 来描述文件来源，所以通常会和 `view` 一起使用。
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/asset"
+    "github.com/duxweb/runa/provider"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/view"
+)
+
+type appModule struct {
+    provider.ModuleBase
+}
+
+func (appModule) Name() string { return "app" }
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    assets, err := provider.Invoke[*asset.Registry](app)
+    if err != nil {
+        return err
+    }
+    set := asset.Assets(view.Dir("public", "**/*")).Prefix("/assets")
+    return assets.Register(ctx, "web", set)
+}
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")), asset.Provider())
+    app.Module(appModule{})
+
+    route.Default().Get("/assets/{path...}", func(ctx *route.Context) error {
+        asset.Default().Handler("web").ServeHTTP(ctx.Response(), ctx.Request())
+        return nil
+    }).SkipDoc()
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        css := asset.Default().URL("web", "app.css")
+        return ctx.HTML(`<link rel="stylesheet" href="` + css + `">`)
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## 独立 New 使用
+
+```go
+registry := asset.New()
+set := asset.Assets(view.Dir("public", "**/*")).Prefix("/assets")
+_ = registry.Register(context.Background(), "web", set)
+
+url := registry.URL("web", "app.css")
+handler := registry.Handler("web")
+_ = url
+_ = handler
+```
+
+## 配置
+
+`asset` 当前没有 TOML 配置。资源来源、prefix 和 manifest 路径由代码注册。
+
+## Manifest
+
+如果前端构建工具生成了 manifest，可以让资源域优先使用 manifest 中的文件名。
+
+```go
+set := asset.Assets(view.Dir("public", "**/*")).
+    Prefix("/assets").
+    Manifest("manifest.json")
+```
+
+当 manifest 中存在 `app.css -> app.abc123.css`，`URL("web", "app.css")` 会返回 `/assets/app.abc123.css`。
+
+## 在模板里使用
+
+可以把 asset URL 封装成模板函数：
+
+```go
+renderer := view.HTML(view.Dir("views")).Func("asset", func(path string) string {
+    return asset.Default().URL("web", path)
+})
+```
+
+模板里：
+
+```html
+<link rel="stylesheet" href="{{ asset "app.css" }}">
+```
+
+## 常见错误
+
+### URL 返回原始路径
+
+确认资源域已经 `assets.Register(ctx, "web", set)`，并且 URL 里传的 domain 和注册名一致。
+
+### 静态文件 404
+
+`asset` 负责 URL 和文件 handler。你仍然需要把 `asset.Default().Handler("web")` 挂到 route，或者用自己的 HTTP 文件服务挂载。
+
+### manifest 路径写错
+
+`Manifest("manifest.json")` 是相对资源源的路径，不是一定相对项目根目录。
+
+## API 速查
+
+- `asset.New()` 创建独立注册表
+- `asset.Provider()` 接入框架生命周期
+- `asset.Default()` 从默认 DI 取 `*asset.Registry`
+- `asset.Assets(sources...)` 创建资源集合
+- `set.Prefix(prefix)` 设置 URL 前缀
+- `set.Manifest(path)` 设置 manifest 文件
+- `registry.Register(ctx, name, set)` 注册资源域
+- `registry.URL(domain, path)` 生成资源 URL
+- `registry.Handler(domain)` 返回 HTTP 文件服务 handler

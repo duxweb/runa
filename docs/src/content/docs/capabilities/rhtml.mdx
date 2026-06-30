@@ -1,0 +1,300 @@
+---
+title: "RHTML Templates"
+description: "Runa's enhanced HTML template syntax built on html/template"
+---
+
+`view/rhtml` is Runa's enhanced HTML renderer. It still uses Go's standard `html/template`, so HTML escaping is enabled by default, while adding layouts, blocks, includes, conditions, loops, and custom `r:` tags
+
+It is useful for admin pages, server-rendered pages, emails, CMS pages, and any feature that renders Go data directly into HTML
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/view
+```
+
+RHTML is a subpackage in the `view` module:
+
+```go
+import "github.com/duxweb/runa/view/rhtml"
+```
+
+## Connect through view.Provider
+
+To use `ctx.Render(...)` in HTTP handlers, install `view.Provider()` and register a named renderer:
+
+```go
+app.Install(view.Provider())
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    views := provider.MustInvoke[*view.Registry](app)
+    return views.Register(ctx, "web", rhtml.New(
+        view.Dir("views", "**/*.html").Reload(true),
+    ))
+}
+```
+
+Render in a handler:
+
+```go
+route.Default().Get("/", func(ctx *route.Context) error {
+    return ctx.Render("pages/home", map[string]any{
+        "Title": "Runa",
+    }, "web")
+})
+```
+
+If you register only one view domain, you can omit the final `"web"` argument.
+
+## Standalone usage
+
+```go
+renderer := rhtml.New(view.Dir("views", "**/*.html"))
+
+var body bytes.Buffer
+err := renderer.Render(simpleContext{ctx: context.Background()}, &body, "pages/home", map[string]any{
+    "Title": "Runa",
+})
+```
+
+The context value only needs to implement `Context() context.Context`
+
+## Configuration
+
+`view/rhtml` does not read TOML config by itself. Template directories, hot reload, and embedded files are configured through template sources passed to `rhtml.New(...)`.
+
+Common patterns:
+
+- Use `view.Dir("views", "**/*.html").Reload(true)` in development.
+- Use `view.Embed(...)` or disable `Reload(true)` in production.
+- Register multiple renderers with `view.Registry.Register(ctx, name, renderer)` when different view domains need different sources or functions.
+
+## Recommended layout
+
+```text
+views/
+  layouts/
+    base.html
+    admin.html
+  partials/
+    nav.html
+    pagination.html
+  pages/
+    home.html
+    users/index.html
+```
+
+Template names can include or omit the extension:
+
+```go
+ctx.Render("pages/home", data)
+ctx.Render("pages/home.html", data)
+```
+
+## Layouts and blocks
+
+`views/layouts/admin.html`:
+
+```html
+<html>
+  <head>
+    <title>{{ .root.Title }}</title>
+  </head>
+  <body>
+    <aside><r:block name="sidebar">Default menu</r:block></aside>
+    <main><r:block name="content"></r:block></main>
+  </body>
+</html>
+```
+
+`views/pages/home.html`:
+
+```html
+<r:layout name="layouts/admin">
+  <r:section name="sidebar">User menu</r:section>
+  <r:section name="content">
+    <h1>{{ .root.Title }}</h1>
+  </r:section>
+</r:layout>
+```
+
+Rules:
+
+- `r:layout` must wrap the whole page template
+- `r:section` can only appear inside `r:layout`
+- Duplicate section names are rejected
+- `r:block` can provide fallback content
+
+## Nested layouts
+
+Layouts can extend another layout. This works well for base → admin → page structures:
+
+```html
+<!-- layouts/base.html -->
+<html>
+  <body><r:block name="body"></r:block></body>
+</html>
+```
+
+```html
+<!-- layouts/admin.html -->
+<r:layout name="layouts/base">
+  <r:section name="body">
+    <aside><r:block name="sidebar">Menu</r:block></aside>
+    <main><r:block name="content"></r:block></main>
+  </r:section>
+</r:layout>
+```
+
+## Include partials
+
+```html
+<r:include name="partials/nav" label="Main" title=".Title" />
+```
+
+`r:include` is self-closing. Attribute values starting with `.` are read from current data. Other values are passed as literals
+
+Included templates only see explicit data and `.root` by default, so local variables do not leak between templates
+
+## Conditions
+
+```html
+<r:if cond=".User">
+  <p>{{ .User.Name }}</p>
+<r:else>
+  <p>Guest</p>
+</r:if>
+```
+
+`cond` is evaluated from template data. Empty strings, false, nil, and empty collections are treated as false.
+
+## Loops
+
+```html
+<r:for value=".Items" as="item">
+  <span>{{ .item.Name }}</span>
+</r:for>
+```
+
+`as` must be a valid Go identifier. Nested loops can still access outer variables
+
+```html
+<r:for value=".Groups" as="group">
+  <h2>{{ .group.Name }}</h2>
+  <r:for value="group.Items" as="item">
+    <span>{{ .item }}</span>
+  </r:for>
+</r:for>
+```
+
+## Custom r: tags
+
+Custom tags are useful for encapsulating “load data, then render a template block” patterns such as article lists, menus, categories, or recommended content.
+
+```go
+renderer := rhtml.New(view.Dir("views", "**/*.html"))
+
+renderer.Tag("articles", func(ctx context.Context, props rhtml.Props) (any, error) {
+    status := props.Int("status")
+    _ = status
+    return []Article{{Title: "Hello"}}, nil
+})
+```
+
+Self-closing form:
+
+```html
+<r:articles status="1" as="articles" />
+<r:for value=".articles" as="item">
+  <h2>{{ .item.Title }}</h2>
+</r:for>
+```
+
+Block form:
+
+```html
+<r:articles status="1" as="item">
+  <h2>{{ .item.Title }}</h2>
+</r:articles>
+```
+
+When the tag returns a slice, the block renders once per item. When it returns one object, the block renders once
+
+## Template functions
+
+```go
+renderer.Func("upper", strings.ToUpper)
+renderer.Funcs(template.FuncMap{
+    "asset": func(path string) string { return "/assets/" + path },
+})
+```
+
+Use them in templates:
+
+```html
+<h1>{{ upper .root.Title }}</h1>
+<link rel="stylesheet" href="{{ asset "app.css" }}">
+```
+
+## Hot reload
+
+```go
+renderer := rhtml.New(
+    view.Dir("views", "**/*.html").Reload(true),
+)
+```
+
+`Reload(true)` checks file count, size, and modification time before each render. It is useful in development. Keep it disabled in production unless runtime template reloads are required.
+
+## Embed templates
+
+```go
+//go:embed views/**/*.html
+var viewsFS embed.FS
+
+renderer := rhtml.New(
+    view.Embed(viewsFS, "views", "**/*.html"),
+)
+```
+
+You can also configure a development directory override:
+
+```go
+source := view.Embed(viewsFS, "views", "**/*.html").Dev(
+    view.Dir("views", "**/*.html").Reload(true),
+)
+renderer := rhtml.New(source.UseDev())
+```
+
+## Scope rules
+
+- `.root` always points to the original render data
+- `r:include`, `r:block`, `r:section`, and custom tags create local data scopes
+- Data not explicitly passed does not enter includes
+- Rendering still uses `html/template`, so HTML escaping is enabled by default
+
+## Common mistakes
+
+- Content outside `r:layout` is rejected when a page uses a layout
+- `r:include` must be self-closing
+- `r:section` can only be used inside `r:layout`
+- Custom tag names cannot use reserved names such as `layout`, `section`, `block`, `include`, `if`, or `for`
+- `route renderer is not configured` means `view.Provider()` or route service registration is missing
+
+## API quick reference
+
+| API | Description |
+| --- | --- |
+| `rhtml.New(sources...)` | Create an enhanced renderer |
+| `renderer.Func(name, fn)` | Register one template function |
+| `renderer.Funcs(funcMap)` | Register template functions in bulk |
+| `renderer.Tag(name, handler)` | Register a custom `r:` tag |
+| `view.Dir(root, patterns...)` | Use a local directory as source |
+| `view.Embed(fs, root, patterns...)` | Use embed.FS as source |
+| `source.Reload(true)` | Enable reload checks |
+| `props.Get(name)` | Read a raw attribute |
+| `props.String(name)` | Read a string attribute |
+| `props.Int(name)` | Read an int attribute |
+| `props.Bool(name)` | Read a bool attribute |
+| `props.Root()` | Read original render data |
+| `props.Map()` | Read cloned props |

@@ -1,0 +1,113 @@
+---
+title: "Application Entry"
+description: "Create an app, install capabilities, and register business modules"
+---
+
+A Runa application entry only needs to care about three things: create the application, install the capabilities it needs, and register its business modules.
+
+Capability packages provide `Provider()`. The application passes providers to `Install`. Business code lives in Module and is started and stopped by the application.
+
+## Create an application
+
+```go
+app := runa.New()
+```
+
+Common path options:
+
+```go
+app := runa.New(
+    runa.BasePath("."),
+    runa.ConfigPath("config"),
+    runa.DataPath("data"),
+    runa.PublicPath("public"),
+    runa.Env("production"),
+)
+```
+
+## Install framework capabilities with Install
+
+```go
+app.Install(
+    route.Provider(route.Addr(":8080")),
+    cache.Provider(),
+    queue.Provider(),
+)
+```
+
+Each `Provider()` comes from a capability package. After installation, these capabilities enter the application's DI, config, commands, and lifecycle.
+
+## Register business domains with Module
+
+```go
+app.Module(
+    user.Module{},
+    order.Module{},
+)
+```
+
+Business modules register the application's own routes, commands, tasks, and event listeners. They enter the same unified lifecycle as installed capabilities, but serve a different purpose:
+
+- `Install` installs framework capabilities.
+- `Module` installs business domains.
+
+## Start the application
+
+```go
+if err := app.Run(context.Background()); err != nil {
+    panic(err)
+}
+```
+
+`Run` reads terminal arguments. When no arguments are passed, it runs the default `serve` command. `serve` only starts Host units that have been registered in the application.
+
+`route.Provider(route.Addr(...))` automatically registers the HTTP server as a Host, so a normal HTTP app starts when you call `Run`.
+
+`queue.Provider(...)` registers queues, workers, and the `queue:work` command, but it does not automatically register workers as Host units. The default production-friendly approach is to start workers as separate processes:
+
+```bash
+go run . queue:work default
+```
+
+If you want `Run` to start HTTP and a queue worker in the same process, register the worker Host explicitly from a business Module:
+
+```go
+func (Module) Register(ctx context.Context, app provider.Context) error {
+    queues, err := provider.Invoke[*queue.Registry](app)
+    if err != nil {
+        return err
+    }
+    return app.RegisterHost(queue.NewUnit(queues, "default"))
+}
+```
+
+Running HTTP and workers in one process is fine for small projects and development. For production scaling, separate `serve` and `queue:work` processes are usually cleaner.
+
+## Use the global default application
+
+Small projects can also use the root facade:
+
+```go
+runa.Install(route.Provider(route.Addr(":8080")))
+runa.Module(user.Module{})
+
+if err := runa.Run(context.Background()); err != nil {
+    panic(err)
+}
+```
+
+This is the same model as calling methods on `app := runa.New()`, just shorter.
+
+## Common mistakes
+
+### Putting all business logic in main.go
+
+`main.go` should assemble the app. Put routes, commands, jobs, and event listeners in business Modules.
+
+### Forgetting to install capabilities
+
+If code uses route, cache, queue, or database, install the corresponding Provider first.
+
+### Reading Default too early
+
+Most `Default()` helpers depend on DI and lifecycle. Read them after `Freeze` or inside handlers, commands, and lifecycle code.

@@ -1,0 +1,73 @@
+---
+title: "Body Limit 中间件"
+description: "限制 HTTP 请求体大小，避免超大请求消耗内存和连接"
+---
+
+`middleware/bodylimit` 用来限制请求体大小。它会先检查 `Content-Length`，再用 `http.MaxBytesReader` 包裹请求体，防止客户端不带准确长度时继续读取超大内容。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## 基本用法
+
+```go
+import "github.com/duxweb/runa/middleware/bodylimit"
+
+route.Default().Use(bodylimit.New())
+```
+
+默认限制是 `4MB`
+
+## 自定义大小
+
+```go
+route.Default().Use(bodylimit.New(bodylimit.Config{
+    Limit: 8 << 20, // 8MB
+}))
+```
+
+`Limit` 单位是字节。
+
+## 给上传接口单独放宽
+
+```go
+route.Default().Use(bodylimit.New(bodylimit.Config{
+    Limit: 4 << 20,
+    Next: func(ctx *route.Context) bool {
+        return ctx.Request().URL.Path == "/upload"
+    },
+}))
+
+route.Default().Post("/upload", upload).Use(bodylimit.New(bodylimit.Config{
+    Limit: 100 << 20,
+}))
+```
+
+全局限制保护普通接口，上传接口单独挂更大的限制。
+
+## 配置项
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | 返回 `true` 时跳过 |
+| `Limit` | `int64` | `4 << 20` | 最大请求体字节数 |
+
+## 和 security 的关系
+
+`security.New(...)` 默认包含 bodylimit，默认大小是 `32MB`，可以这样调整：
+
+```go
+route.Default().Use(security.New(
+    security.Production(),
+    security.BodyLimit("16MB"),
+))
+```
+
+## 常见问题
+
+- bodylimit 只限制请求体，不限制 URL query、Header 或响应大小
+- 如果业务需要大文件上传，建议只对上传路由放宽，不要全局放大
+- 超过限制时当前实现返回普通错误，最终状态码由 route 错误渲染决定

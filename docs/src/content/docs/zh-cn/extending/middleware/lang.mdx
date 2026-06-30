@@ -1,0 +1,120 @@
+---
+title: "Lang 语言协商中间件"
+description: "从 Query、Cookie 和 Accept-Language 为每个请求创建翻译器"
+---
+
+`middleware/lang` 是 HTTP 语言协商中间件。它不加载语言包，语言包由 `lang.Provider()` 负责；它只负责从请求里读取语言偏好，并把当前请求的 `*lang.Translator` 写入 `ctx.Context()`。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/lang
+go get github.com/duxweb/runa/middleware/lang
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/lang"
+    langmw "github.com/duxweb/runa/middleware/lang"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        lang.Provider(),
+    )
+
+    route.Default().Use(langmw.New(
+        langmw.Query("lang"),
+        langmw.Cookie("lang"),
+        langmw.Header("Accept-Language"),
+    ))
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        tr := lang.From(ctx.Context())
+        return ctx.Text(tr.T("user_welcome", "Name", "Runa"))
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## 默认来源
+
+不传参数时，`langmw.New()` 默认使用：
+
+```go
+langmw.Query("lang")
+langmw.Cookie("lang")
+langmw.Header("Accept-Language")
+```
+
+也就是说：URL 上的 `?lang=zh-CN` 优先，其次 Cookie，最后浏览器 `Accept-Language`。
+
+## 和 route.Context 的关系
+
+中间件会同时做两件事：
+
+- `ctx.SetContext(lang.WithTranslator(ctx.Context(), translator))`
+- `ctx.SetLang(translator.Locale())`
+
+所以业务代码可以用：
+
+```go
+tr := lang.From(ctx.Context())
+current := ctx.Lang()
+```
+
+`lang.From(ctx.Context())` 用于翻译，`ctx.Lang()` 用于读取当前语言字符串。
+
+## 配合模板 t 函数
+
+如果同时安装 `lang/view.Provider()`，模板里的 `{{ t "key" }}` 会自动使用这个中间件写入请求 context 的翻译器：
+
+```go
+app.Install(
+    lang.Provider(),
+    view.Provider(),
+    langview.Provider(),
+)
+route.Default().Use(langmw.New())
+```
+
+模板：
+
+```html
+<h1>{{ t "user_welcome" "Name" .Name }}</h1>
+```
+
+## 常见错误
+
+### 只挂中间件，没有安装 lang.Provider
+
+中间件需要 `lang.Default()` 创建请求翻译器。应用里必须先安装 `lang.Provider()`。
+
+### Header 写错
+
+浏览器语言通常在 `Accept-Language`，不是 `Language`。
+
+### 把语言协商写在 handler 里
+
+语言协商是横切逻辑，建议放在全局或 API 分组中间件里。handler 里只读取 `lang.From(ctx.Context())`。
+
+## API 速查
+
+- `langmw.New(sources...)` 创建语言协商中间件
+- `langmw.Query(name)` 从 Query 读取语言
+- `langmw.Cookie(name)` 从 Cookie 读取语言
+- `langmw.Header(name)` 从 Header 读取语言
+- `lang.From(ctx.Context())` 读取当前请求翻译器

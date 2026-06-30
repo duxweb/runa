@@ -1,0 +1,176 @@
+---
+title: "Auth"
+description: "Authenticators, login state, and permission checks"
+---
+
+`auth` manages multiple authenticators and writes authentication results into request context. It can combine Session, JWT, API Key, and RBAC permission checks.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/auth
+```
+
+HTTP middleware lives in a subpackage:
+
+```bash
+go get github.com/duxweb/runa/auth github.com/duxweb/runa/session
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/auth"
+    authmw "github.com/duxweb/runa/auth/middleware"
+    "github.com/duxweb/runa/provider"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/session"
+    sessionmw "github.com/duxweb/runa/session/middleware"
+)
+
+type appModule struct {
+    provider.ModuleBase
+}
+
+func (appModule) Name() string { return "app" }
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    auths, err := provider.Invoke[*auth.Registry](app)
+    if err != nil {
+        return err
+    }
+    auths.Auth("web", auth.SessionAuth("web"))
+    return nil
+}
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        session.Provider(session.RegisterSession("web")),
+        auth.Provider(),
+    )
+    app.Module(appModule{})
+
+    route.Default().Use(sessionmw.Use("web"))
+    route.Default().Get("/me", func(ctx *route.Context) error {
+        info, _ := ctx.Locals("runa.auth").(*auth.Info)
+        return ctx.JSON(info)
+    }).Use(authmw.Use("web"))
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`auth.Provider()` only registers `*auth.Registry`. Concrete authenticators are registered by code. Auth middleware executes authentication and puts `*auth.Info` into route service data.
+
+A common business pattern is to register authenticators and routes in the same Module:
+
+```go
+func (UserModule) Register(ctx context.Context, app provider.Context) error {
+    auths := provider.MustInvoke[*auth.Registry](app)
+    auths.Auth("web", auth.SessionAuth("web"))
+
+    route.Default().Use(sessionmw.Use("web"))
+    route.Default().Get("/me", meHandler).Use(authmw.Use("web"))
+    return nil
+}
+```
+
+## Standalone New usage
+
+```go
+registry := auth.New()
+registry.Auth("api", auth.APIKeyAuth(func(token string) (runa.Map, bool, error) {
+    if token == "secret" {
+        return runa.Map{"id": "1"}, true, nil
+    }
+    return nil, false, nil
+}, auth.Header("Authorization")))
+```
+
+## Config
+
+`auth` currently has no file config structure. Authenticators usually involve secrets, user queries, and business permissions. It is recommended to read config in a business Provider and register authenticators in code.
+
+```toml
+[auth]
+jwt_secret = "change-me"
+```
+
+```go
+secret := []byte(runa.Config("auth").GetString("jwt_secret", "change-me"))
+auths.Auth("jwt", auth.JWTAuth(secret, auth.Header("Authorization")))
+```
+
+## Authenticators
+
+Built-in authenticators:
+
+```go
+auth.SessionAuth("web")
+auth.JWTAuth([]byte("secret"), auth.Header("Authorization"), auth.Cookie("token"))
+auth.APIKeyAuth(verifyToken, auth.Header("X-API-Key"), auth.Query("api_key"))
+auth.AuthMux(auth.SessionAuth("web"), auth.JWTAuth(secret))
+```
+
+Token sources:
+
+- `auth.Header(name)` reads from Header.
+- `auth.Cookie(name)` reads from Cookie.
+- `auth.Query(name)` reads from Query.
+
+## Permission checks
+
+```go
+route.Default().Get("/admin", adminHandler).
+    Name("admin.dashboard").
+    Use(authmw.Permission(rbac.Checker(store)))
+```
+
+`authmw.Permission(...)` reads the route name as the permission ID. It can also be customized through route metadata.
+
+## RBAC
+
+RBAC lives in the standalone toolkit `github.com/duxweb/runa/rbac`:
+
+```go
+store := rbac.NewMemoryStore()
+store.AssignRole("1", "admin")
+store.Grant("admin", "admin.*")
+
+checker := rbac.Checker(store)
+route.Default().Use(authmw.Permission(checker))
+```
+
+## Common mistakes
+
+### Installing auth.Provider without registering authenticators
+
+`auth.Provider()` creates the registry. You still need `auth.Default().Auth(...)` or Provider-time registration so routes have an authenticator to use.
+
+### Forgetting auth middleware
+
+The auth capability does not protect routes by itself. Mount `auth/middleware` on the routes or groups that require authentication.
+
+### Using SessionAuth without session
+
+`auth.SessionAuth("web")` expects session middleware to load the `web` session first.
+
+## API quick reference
+
+- `auth.New()` creates a standalone auth registry.
+- `auth.Provider()` connects to the framework lifecycle.
+- `auth.Default()` reads `*auth.Registry` from default DI.
+- `registry.Auth(name, authenticator)` registers an authenticator.
+- `authmw.Use(names...)` requires authentication.
+- `authmw.Optional(names...)` makes authentication optional.
+- `authmw.Permission(checkers...)` runs permission checks.

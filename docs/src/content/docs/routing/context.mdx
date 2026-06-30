@@ -1,0 +1,120 @@
+---
+title: "Route Context"
+description: "Read requests, write responses, and access application capabilities"
+---
+
+`route.Context` is the request context for HTTP handlers. It wraps `http.Request`, the response writer, route parameters, config, and request-level Scope.
+
+Every HTTP request gets a new `route.Context`. Do not store it in a global variable or keep using it after the request has ended.
+
+## Basic usage
+
+```go
+route.Default().Get("/users/{id}", func(ctx *route.Context) error {
+    id := ctx.ParamString("id")
+    return ctx.JSON(runa.Map{"id": id})
+})
+```
+
+This reads `id` from `/users/{id}` and returns JSON.
+
+## Read request data
+
+```go
+route.Default().Get("/search/{category}", func(ctx *route.Context) error {
+    category := ctx.ParamString("category")
+    keyword := ctx.QueryString("keyword")
+    userAgent := ctx.Request().UserAgent()
+
+    return ctx.JSON(runa.Map{
+        "category": category,
+        "keyword": keyword,
+        "ua": userAgent,
+    })
+})
+```
+
+Common methods:
+
+| Method | Description |
+| --- | --- |
+| `ParamString(name)` | Reads a path parameter |
+| `QueryString(name)` | Reads a query parameter |
+| `Request()` | Returns the raw `*http.Request` |
+| `Response()` | Returns the raw `http.ResponseWriter` |
+| `Context()` | Returns the request `context.Context` |
+| `Body()` | Reads the request body and restores it for later logic |
+
+## Write responses
+
+```go
+return ctx.Text("ok")
+return ctx.HTML("<h1>ok</h1>")
+return ctx.JSON(runa.Map{"ok": true})
+return ctx.Blob("application/octet-stream", body)
+```
+
+Set a status code:
+
+```go
+return ctx.Status(201).JSON(runa.Map{"created": true})
+```
+
+## Read config
+
+```go
+route.Default().Get("/config", func(ctx *route.Context) error {
+    name := ctx.Config("app").Get[string]("name")
+    return ctx.Text(name)
+})
+```
+
+`ctx.Config("app")` reads the config scope backed by `config/app.toml`.
+
+## Read capabilities from Context
+
+Capability objects are usually accessed through their package `Default()`, such as `cache.Default()`, `database.Default()`, and `queue.Default()`.
+
+```go
+route.Default().Get("/cache", func(ctx *route.Context) error {
+    store := cache.Default().MustOf[string]("default")
+    value, ok, err := store.Get(ctx.Context(), "hello")
+    if err != nil {
+        return err
+    }
+    if !ok {
+        return ctx.Status(404).Text("cache not found")
+    }
+    return ctx.Text(value)
+})
+```
+
+`ctx.Context()` is the current request's standard library context. Pass it to databases, caches, queues, and external calls.
+
+## Request-level data
+
+Request-level objects are useful for trace IDs, the current user, permission context, and other temporary data. Middleware can write first, and later handlers can read.
+
+If the object is shared across requests, do not put it in `route.Context`. Put it in DI, cache, database, or a business service.
+
+## Error responses
+
+```go
+return ctx.Error(404, "user not found")
+```
+
+For more complex errors, use the `errs` toolkit so error codes and params stay consistent.
+
+```go
+return errs.New("user not found", errs.Code("user.not_found"))
+```
+
+## Common mistakes
+
+### Passing route.Context to a background goroutine
+
+After the request ends, `route.Context` should not be used. If you need async work, copy the required data and pass it to a queue or background task.
+
+### Forgetting ctx.Context()
+
+When calling databases, caches, or HTTP clients, prefer `ctx.Context()` so downstream work can stop when the request is canceled.

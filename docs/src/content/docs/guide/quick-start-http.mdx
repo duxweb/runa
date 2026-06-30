@@ -1,0 +1,178 @@
+---
+title: "Quick Start: HTTP"
+description: "Create a minimal HTTP API"
+---
+
+This page creates an HTTP service that only installs `route`.
+
+## Create a project
+
+```bash
+mkdir runa-demo
+cd runa-demo
+go mod init example.com/runa-demo
+go get github.com/duxweb/runa github.com/duxweb/runa/route
+```
+
+## Write main.go
+
+Create `main.go`:
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        return ctx.Text("Hello Runa")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+This code does four things:
+
+- `runa.New()` creates the application.
+- `app.Install(route.Provider(...))` installs HTTP routing.
+- `route.Default().Get(...)` registers a GET route.
+- `app.Run(...)` starts the application and runs the default `serve` command.
+
+## Start and call it
+
+Start it:
+
+```bash
+go run .
+```
+
+Call it:
+
+```bash
+curl http://localhost:8080/
+```
+
+Output:
+
+```text
+Hello Runa
+```
+
+You can also open `http://localhost:8080/` in a browser.
+
+## Add a JSON endpoint
+
+```go
+route.Default().Get("/ping", func(ctx *route.Context) error {
+    return ctx.JSON(runa.Map{
+        "message": "pong",
+    })
+})
+```
+
+Call it:
+
+```bash
+curl http://localhost:8080/ping
+```
+
+Output is similar to:
+
+```json
+{"message":"pong"}
+```
+
+## Use typed routes when you need type constraints
+
+Regular handlers work for simple endpoints. When APIs grow, typed Input / Output makes request parameters and response shapes explicit.
+
+```go
+type GetUserInput struct {
+    ID string `param:"id"`
+}
+
+type GetUserOutput struct {
+    ID   string `json:"id"`
+    Name string `json:"name"`
+}
+
+route.Get[GetUserInput, GetUserOutput](
+    route.Default(),
+    "/users/{id}",
+    func(ctx *route.Context, input *GetUserInput) (*GetUserOutput, error) {
+        return &GetUserOutput{ID: input.ID, Name: "Runa"}, nil
+    },
+).Name("user.show").Summary("User detail").Tags("User")
+```
+
+Typed routes attach input and output schema to route metadata so OpenAPI can use it later.
+
+## Install cache only when you need it
+
+For example, install cache:
+
+```bash
+go get github.com/duxweb/runa/cache
+```
+
+```go
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/cache"
+    "github.com/duxweb/runa/route"
+)
+```
+
+```go
+app.Install(
+    route.Provider(route.Addr(":8080")),
+    cache.Provider(),
+)
+
+route.Default().Get("/cache", func(ctx *route.Context) error {
+    store := cache.Default().MustOf[string]("default")
+    value, err := store.Remember(ctx.Context(), "hello", 0, func(context.Context) (string, error) {
+        return "world", nil
+    })
+    if err != nil {
+        return err
+    }
+    return ctx.Text(value)
+})
+```
+
+This is only an example. In real projects, business routes usually live in Module instead of all being written in `main.go`.
+
+## Common problems
+
+### Why can I not write HTTP after installing only runa
+
+The Runa kernel does not include HTTP. Install and import `github.com/duxweb/runa/route` to write HTTP services.
+
+### When can route.Default() be used
+
+Install `route.Provider(...)` first, then register routes. The minimal example does both in the same `main` function.
+
+### When can cache.Default() be used
+
+`cache.Default()` depends on the application lifecycle. After installing `cache.Provider()`, use it inside handlers, commands, or Module lifecycle code. Do not read it into top-level global variables immediately after `Install`.
+
+## Next steps
+
+- Routing details: [Routing](../routing/).
+- Requests and responses: [Request & Response](../routing/request-response/).
+- OpenAPI: [OpenAPI](../routing/openapi/).
+- Business modules: [Business Modules](../core/module/).

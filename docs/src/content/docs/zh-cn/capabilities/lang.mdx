@@ -1,0 +1,177 @@
+---
+title: "语言 Lang"
+description: "语言包、翻译、复数和请求语言协商"
+---
+
+`lang` 是 Runa 的 i18n 能力。它负责加载语言包、按 locale 翻译消息、处理模板变量和复数，并把请求里的翻译器放进标准 `context.Context`。
+
+它本身不依赖 HTTP、route 或 view。HTTP 语言协商放在 `middleware/lang`，模板里的 `t` 函数注入放在 `lang/view`。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/lang
+```
+
+HTTP 请求里按 Query、Cookie、`Accept-Language` 协商语言时，再安装中间件：
+
+```bash
+go get github.com/duxweb/runa/middleware/lang
+```
+
+模板里要自动使用 `{{ t "key" }}` 时，再安装模板胶水：
+
+```bash
+go get github.com/duxweb/runa/lang/view
+```
+
+## 接入应用
+
+```go
+app := runa.New()
+app.Install(lang.Provider())
+```
+
+`lang.Provider()` 会注册 `*lang.Registry`，并默认加载 `config/lang/*.toml`。
+
+## 语言包目录
+
+推荐目录：
+
+```text
+config/
+  lang.toml
+  lang/
+    en.toml
+    zh.toml
+```
+
+`config/lang.toml`：
+
+```toml
+default = "zh"
+dir = "lang"
+```
+
+`config/lang/zh.toml`：
+
+```toml
+[user_welcome]
+other = "欢迎 {{.Name}}"
+
+[cart_items]
+one = "{{.Count}} 个商品"
+other = "{{.Count}} 个商品"
+```
+
+`config/lang/en.toml`：
+
+```toml
+[user_welcome]
+other = "Welcome {{.Name}}"
+
+[cart_items]
+one = "{{.Count}} item"
+other = "{{.Count}} items"
+```
+
+语言包格式使用 `go-i18n/v2`，支持 TOML、JSON、模板变量和复数。
+
+## 代码里翻译
+
+```go
+text := lang.Default().Translator("zh-CN").T("user_welcome", "Name", "Runa")
+```
+
+也可以从 `context.Context` 取当前请求翻译器：
+
+```go
+tr := lang.From(ctx)
+text := tr.T("user_welcome", "Name", "Runa")
+```
+
+没有请求翻译器时，`lang.From(ctx)` 会回退到默认注册表；如果应用没有安装 `lang.Provider()`，它会返回只做参数替换的 fallback translator。
+
+## HTTP 语言协商
+
+```go
+import langmw "github.com/duxweb/runa/middleware/lang"
+
+route.Default().Use(langmw.New(
+    langmw.Query("lang"),
+    langmw.Cookie("lang"),
+    langmw.Header("Accept-Language"),
+))
+```
+
+中间件会：
+
+- 按来源顺序收集语言偏好
+- 使用 `lang.Default().Translator(...)` 创建请求翻译器
+- 把翻译器写入 `ctx.Context()`
+- 同步设置 `route.Context` 的当前语言，方便 `ctx.Lang()` 使用
+
+## 模板里使用 t 函数
+
+```go
+import langview "github.com/duxweb/runa/lang/view"
+
+app.Install(
+    lang.Provider(),
+    view.Provider(),
+    langview.Provider(),
+)
+```
+
+模板里直接使用：
+
+```html
+<h1>{{ t "user_welcome" "Name" .Name }}</h1>
+<p>{{ t "cart_items" "Count" .Count }}</p>
+```
+
+`t` 是每请求函数。它会在渲染时从 `view.Context.Context()` 读取当前请求翻译器，所以同一份模板可以按不同请求语言输出不同内容。
+
+## 独立 New 使用
+
+```go
+registry := lang.New(lang.DefaultLocale("en"))
+_ = registry.LoadDir("config/lang")
+
+text := registry.Translator("zh-CN").T("user_welcome", "Name", "Runa")
+```
+
+不接入 Runa 应用时，手动调用 `LoadFile` 或 `LoadDir` 加载语言包。
+
+## 轻量替换工具
+
+`lang.Replace(message, params)` 保留给简单 `{name}` 替换场景，不需要语言包时可以直接用。
+
+Query、Cookie、`Accept-Language` 这些 HTTP 语言来源放在 `middleware/lang`，不放在 `lang` 核心包里。这样 i18n 注册表不会依赖 HTTP 和 route。
+
+## 常见错误
+
+### 只安装 lang.Provider，没有挂中间件
+
+`lang.Provider()` 只加载语言包，不会自动读取 HTTP 请求语言。HTTP 项目要配合 `middleware/lang`。
+
+### 模板里用了 t，但没有安装 lang/view
+
+`{{ t "key" }}` 来自 `lang/view.Provider()`。没有安装它，模板解析阶段就会报 `function "t" not defined`。
+
+### 在模板解析后才注入函数
+
+Runa 的 `view.Registry.ContextFunc` 会让已注册 renderer 重新加载，正常通过 Provider 安装即可。不要自己绕过 registry 直接操作底层模板对象。
+
+## API 速查
+
+- `lang.New(options...)` 创建独立 i18n 注册表
+- `lang.Provider(options...)` 接入应用生命周期
+- `lang.Default()` 从默认 DI 取 `*lang.Registry`
+- `lang.DefaultLocale(locale)` 设置默认语言
+- `registry.LoadFile(path)` 加载语言文件
+- `registry.LoadDir(dir)` 加载语言目录
+- `registry.Translator(locales...)` 创建翻译器
+- `translator.T(key, params...)` 翻译消息
+- `lang.WithTranslator(ctx, tr)` 把翻译器写入 context
+- `lang.From(ctx)` 从 context 读取翻译器

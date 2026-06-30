@@ -1,0 +1,197 @@
+---
+title: Runa
+description: Start with a single route and grow on demand into an enterprise full-stack app, keeping Go web applications lean, clear, and scalable
+template: splash
+prev: false
+next: false
+hero:
+  title: A Go web framework that grows on demand
+  tagline: "Start from a lean core and load capabilities on demand. From a single route to an enterprise full-stack app, compose freely and scale with confidence"
+  actions:
+    - text: Get Started
+      link: guide/quick-start-http/
+      variant: primary
+    - text: GitHub
+      link: https://github.com/duxweb/runa
+      variant: minimal
+home:
+  eyebrow: Runa
+  badge: Go 1.27+
+  install: go get github.com/duxweb/runa
+  codeTitle: main.go
+  pills:
+    - Lean core
+    - On-demand providers
+    - Controlled dependencies
+    - Freely extensible
+  symbols:
+    - runa
+    - route
+    - cache
+    - context
+    - Module
+    - Install
+    - Get
+    - Default
+    - Run
+  code: |
+    func main() {
+        app := runa.New()
+        app.Install(
+            route.Provider(route.Addr(":8080")),
+            cache.Provider(),
+        )
+
+        route.Default().Get("/", func(c *route.Context) error {
+            return c.Text("Hello Runa")
+        })
+
+        if err := app.Run(context.Background()); err != nil {
+            panic(err)
+        }
+    }
+---
+
+import LanguageRedirect from '@duxweb/vela/components/LanguageRedirect.astro';
+
+<LanguageRedirect />
+
+<div class="runa-home not-content">
+
+<section class="runa-sec runa-sec--flush">
+  <div class="runa-sec__head">
+    <span class="runa-eyebrow">Compose</span>
+    <h2>Start with a lean core, then add capabilities on demand</h2>
+    <p>The core only handles loading, dependency injection and the unified lifecycle. Routing, cache, queue, database, auth and storage all enter through providers</p>
+  </div>
+  <div class="runa-compose">
+    <span class="runa-kernel">runa · kernel</span>
+    <span class="runa-plug">+</span>
+    <div class="runa-chips">
+      <span class="runa-chip runa-chip--t">route</span>
+      <span class="runa-chip runa-chip--t">grpc · planned</span>
+      <span class="runa-chip runa-chip--t">ws</span>
+      <span class="runa-chip runa-chip--t">jsonrpc</span>
+      <span class="runa-chip">cache</span>
+      <span class="runa-chip">queue</span>
+      <span class="runa-chip">database</span>
+      <span class="runa-chip">session</span>
+      <span class="runa-chip">auth</span>
+      <span class="runa-chip">storage</span>
+      <span class="runa-chip">lock</span>
+      <span class="runa-chip">rate</span>
+      <span class="runa-chip">event</span>
+      <span class="runa-chip">task</span>
+      <span class="runa-chip">schedule</span>
+      <span class="runa-chip runa-chip--d">redis</span>
+      <span class="runa-chip runa-chip--d">s3</span>
+      <span class="runa-chip runa-chip--d">oro</span>
+      <span class="runa-chip runa-chip--d">nats</span>
+    </div>
+    <div class="runa-legend">
+      <i><span class="runa-dot runa-dot--t"></span>transport</i>
+      <i><span class="runa-dot runa-dot--c"></span>capability</i>
+      <i><span class="runa-dot runa-dot--d"></span>driver</i>
+    </div>
+  </div>
+</section>
+
+<section class="runa-sec">
+  <div class="runa-sec__head">
+    <span class="runa-eyebrow">Supply chain</span>
+    <h2>Use it only when you need it</h2>
+    <p>Module boundaries follow imports. Capabilities you do not install do not bring their third-party dependencies into your <code>go.sum</code>. Small projects stay lean, large projects can grow steadily</p>
+  </div>
+  <div class="runa-cmp">
+    <div class="runa-card runa-card--accent">
+      <h3>Microkernel framework</h3>
+      <p class="runa-card__sub">Keep only the application skeleton and command entry</p>
+      <div class="runa-deps">
+        <span>runa · app kernel</span>
+        <span>config · config loading</span>
+        <span>command · command entry</span>
+        <span>lifecycle · startup and shutdown</span>
+      </div>
+    </div>
+    <div class="runa-card">
+      <h3>On-demand imports</h3>
+      <p class="runa-card__sub">Install and connect the provider for each capability you need</p>
+      <div class="runa-deps">
+        <span>runa · kernel</span>
+        <span>route · HTTP entry</span>
+        <span class="add">cache / queue · cache and queue</span>
+        <span class="add">database / storage · data and storage</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="runa-sec">
+  <div class="runa-sec__head">
+    <span class="runa-eyebrow">Architecture</span>
+    <h2>Clear layers, one-way dependencies</h2>
+    <p>Drivers, capabilities and transports only depend downward on the core. The kernel never reaches back into upper modules, so the architecture stays clear as the project grows</p>
+  </div>
+  <div class="runa-stack">
+    <div class="runa-layer"><strong>Drivers</strong><span>redis · s3 · oro · nats · amqp · mqtt</span></div>
+    <div class="runa-layer"><strong>Capabilities</strong><span>cache · queue · database · session · auth · storage · …</span></div>
+    <div class="runa-layer"><strong>Transports</strong><span>route (HTTP) · ws · jsonrpc · grpc (planned)</span></div>
+    <div class="runa-layer runa-layer--kernel"><strong>Kernel</strong><span>loading · DI · lifecycle · command · host · config</span></div>
+  </div>
+</section>
+
+<section class="runa-sec">
+  <div class="runa-sec__head">
+    <span class="runa-eyebrow">Lifecycle</span>
+    <h2>Every capability follows the same lifecycle</h2>
+    <p>Providers enter Init, Register, Resolve, Boot and Shutdown by priority, giving application startup and shutdown a clear order</p>
+  </div>
+  <div class="runa-steps">
+    <span class="runa-step">Init</span><em>→</em>
+    <span class="runa-step">Register</span><em>→</em>
+    <span class="runa-step">Resolve</span><em>→</em>
+    <span class="runa-step">Boot</span><em>→</em>
+    <span class="runa-step">Shutdown</span>
+  </div>
+</section>
+
+<section class="runa-sec">
+  <div class="runa-sec__head">
+    <span class="runa-eyebrow">Beyond HTTP</span>
+    <h2>Built for web apps, ready for background services</h2>
+    <p>HTTP is the common entry point, but the kernel is not tied to HTTP. You can add routing services, or run commands, queue workers and other hosts without routing code</p>
+  </div>
+  <div class="runa-grid4">
+    <div class="runa-tcard"><b>HTTP</b><span>Typed routes, domains and middleware through route</span></div>
+    <div class="runa-tcard"><b>gRPC</b><span>A planned transport block that joins the kernel as a host</span></div>
+    <div class="runa-tcard"><b>WebSocket</b><span>Hub and broadcast support, with redis for horizontal scaling</span></div>
+    <div class="runa-tcard"><b>JSON-RPC</b><span>Run over HTTP or WebSocket and mount through route</span></div>
+  </div>
+</section>
+
+<div class="runa-cta">
+  <h2>Start from the smallest application</h2>
+  <p>Begin with the minimal core, add routing to serve an HTTP API, then install cache, queue or database capabilities when you need them</p>
+  <div class="runa-cta__row">
+    <a class="runa-btn runa-btn--primary" href="guide/quick-start-http/">Quick Start <span aria-hidden="true">→</span></a>
+    <a class="runa-btn runa-btn--ghost" href="core/">Read the architecture</a>
+  </div>
+</div>
+
+<footer class="dux-footer not-content">
+  <div class="dux-footer__brand">
+    <span class="dux-footer__logo">Runa</span>
+    <span class="dux-footer__tagline">Start with one route, grow on demand</span>
+  </div>
+  <div class="dux-footer__meta">
+    <nav class="dux-footer__nav" aria-label="Footer">
+      <a href="guide/">Guide</a>
+      <a href="core/">Architecture</a>
+      <a href="capabilities/">Capabilities</a>
+      <a href="https://github.com/duxweb/runa">GitHub</a>
+    </nav>
+    <p class="dux-footer__copy">© 2026 Runa · MIT License</p>
+  </div>
+</footer>
+
+</div>

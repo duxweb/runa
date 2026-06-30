@@ -1,0 +1,138 @@
+---
+title: "配置"
+description: "配置文件、环境覆盖和能力作用域"
+---
+
+Runa 的配置由内核统一加载，然后能力包和业务模块从自己的作用域读取配置。
+
+配置文件使用 TOML。刚开始可以只有一个 `config/app.toml`，项目变大后再按能力和模块拆分。
+
+## 配置文件放在哪里
+
+默认配置目录是 `config/`，可以在创建应用时调整：
+
+```go
+app := runa.New(runa.ConfigPath("config"))
+```
+
+文件名就是配置作用域：
+
+```text
+config/cache.toml   -> cache 配置
+config/queue.toml   -> queue 配置
+config/app.toml     -> app 配置
+```
+
+## 一个最小配置例子
+
+```toml
+# config/app.toml
+name = "demo"
+debug = true
+timezone = "Asia/Shanghai"
+```
+
+读取：
+
+```go
+name := runa.Config("app").Get[string]("name")
+debug := runa.Config("app").Get[bool]("debug")
+```
+
+`Config("app")` 表示读取 `app` 作用域，也就是 `config/app.toml`。
+
+`timezone` 是内核使用的应用时区，会影响审计、队列、调度默认时区等框架时间戳。也可以用 `runa.Timezone("Asia/Shanghai")` 在代码里设置，代码选项优先级更高。
+
+## 按环境加载配置
+
+环境文件格式：
+
+```text
+config/app.toml
+config/app.production.toml
+```
+
+设置环境：
+
+```go
+app := runa.New(runa.Env("production"))
+```
+
+加载顺序是基础配置，再当前环境配置，再环境变量。后加载的值会覆盖先加载的值。
+
+## 按能力和模块拆分配置
+
+配置文件名就是作用域。能力配置按能力名拆，业务配置按模块名拆：
+
+```text
+config/cache.toml   -> cache 配置
+config/queue.toml   -> queue 配置
+config/user.toml    -> user 模块配置
+```
+
+这样业务配置和能力配置不会混在一个文件里。
+
+## 代码里怎么读取配置
+
+应用侧可以通过门面读取：
+
+```go
+value := runa.Config("cache").Get[string]("pools.default.driver")
+```
+
+不传名称时返回根配置：
+
+```go
+store := runa.Config()
+```
+
+HTTP handler 里也可以从请求上下文读取：
+
+```go
+route.Default().Get("/", func(ctx *route.Context) error {
+    appName := ctx.Config("app").Get[string]("name")
+    return ctx.Text(appName)
+})
+```
+
+## 用命令查看配置
+
+配置能力会注册命令：
+
+```bash
+go run . config:show
+```
+
+敏感键如 `secret`、`password`、`token` 会被隐藏。
+
+## 能力配置示例
+
+```toml
+# config/cache.toml
+[pools.default]
+driver = "memory"
+prefix = "app:"
+ttl = "10m"
+```
+
+不同能力的具体配置键见各自能力页和 [配置键参考](../reference/config/)。
+
+## 常见问题
+
+### 配置读取为空
+
+先确认文件路径、文件名和作用域是否一致。`runa.Config("cache")` 读取的是 `config/cache.toml`，不是 `config/app.toml`。
+
+### 环境配置没有生效
+
+确认启动应用时设置了环境：
+
+```go
+runa.New(runa.Env("production"))
+```
+
+并确认文件名是 `app.production.toml` 这类格式。
+
+### 密码应该放哪里
+
+开发环境可以放在本地 TOML。生产环境建议通过环境变量或部署平台的密钥管理系统注入，不要把真实密钥提交到 Git。

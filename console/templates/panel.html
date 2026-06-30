@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="zh-CN" x-data="componentPanel()" x-init="boot()">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.PanelTitle}} · {{.Title}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak]{display:none!important}
+  </style>
+</head>
+<body class="min-h-screen bg-[#f1f1f1] text-[#2e3338] antialiased">
+  <div class="mx-auto max-w-[1480px] px-6 py-8 md:px-12">
+    <header class="flex items-center gap-4 pb-9">
+      <div class="text-[32px] font-light tracking-[-0.03em] text-[#46596d]"><strong class="font-extrabold text-[#405266]">Runa</strong> Console</div>
+    </header>
+    <div class="grid gap-8 lg:grid-cols-[210px_minmax(0,1fr)]">
+      <aside class="hidden pt-1 lg:block">
+        <template x-for="panel in panels" :key="panel.name">
+          <a class="mb-2.5 flex h-11 items-center gap-4 text-xl font-medium text-[#46596d] transition hover:text-[#8d5cf6]" :class="panel.name === '{{.PanelName}}' ? 'font-bold text-[#8d5cf6]' : ''" :href="panelPath(panel)">
+            <template x-if="isIconName(panel.icon)"><i class="h-7 w-7" :class="panel.name === '{{.PanelName}}' ? 'text-[#8d5cf6]' : 'text-neutral-400'" :data-lucide="panel.icon"></i></template>
+            <template x-if="!isIconName(panel.icon)"><span class="grid h-7 w-7 place-items-center text-lg" :class="panel.name === '{{.PanelName}}' ? 'text-[#8d5cf6]' : 'text-neutral-400'" x-text="panel.icon || '□'"></span></template>
+            <span x-text="panel.title || panel.name"></span>
+          </a>
+        </template>
+      </aside>
+      <main class="min-w-0">
+        <div class="mb-5 lg:hidden">
+          <select class="h-11 w-full border border-neutral-300 bg-white px-3 text-[#2e3338]" @change="window.location.href=$event.target.value">
+            <template x-for="panel in panels" :key="panel.name">
+              <option :selected="panel.name === '{{.PanelName}}'" :value="panelPath(panel)" x-text="panel.title || panel.name"></option>
+            </template>
+          </select>
+        </div>
+        <template x-if="error"><div class="mb-6 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" x-text="error"></div></template>
+        <section class="overflow-hidden rounded-md bg-white shadow-[0_2px_10px_rgba(17,24,39,0.12)]">
+          <div class="flex items-center justify-between gap-4 border-b border-neutral-200 px-7 py-6">
+            <h1 class="m-0 text-[32px] font-normal tracking-[-0.04em] text-[#2e3338]">{{.PanelTitle}}</h1>
+            <div class="flex items-center gap-3 text-xs uppercase tracking-wider text-neutral-400">
+              <span x-show="refreshing" x-cloak>Refreshing</span>
+              <span>Updated <span x-text="lastUpdated || '-' "></span></span>
+              <button type="button" class="grid h-8 w-8 place-items-center border border-neutral-200 bg-white text-neutral-400 transition hover:border-[#8d5cf6] hover:text-[#8d5cf6]" @click="refresh(true)" aria-label="Refresh">
+                <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+              </button>
+            </div>
+          </div>
+          <div class="bg-white" x-show="compactComponents().length" x-cloak>
+            <template x-for="(row, rowIndex) in compactRows()" :key="'compact-row-' + rowIndex">
+              <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4" :class="rowIndex === 0 ? '' : 'border-t border-neutral-200'">
+                <template x-for="(component, colIndex) in row" :key="component ? component.id : 'empty-' + rowIndex + '-' + colIndex">
+                  <article class="min-h-[142px] bg-white" :class="colIndex === 0 ? '' : 'border-l border-neutral-200'">
+                    <template x-if="component">
+                      <div class="p-7">
+                        <h2 class="mb-7 text-[17px] font-extrabold uppercase tracking-[-0.02em] text-neutral-400" x-text="component.title"></h2>
+                        <template x-if="component.error"><p class="mb-5 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" x-text="component.error"></p></template>
+                        <template x-if="!component.error && component.kind === 'metric'"><div><div class="text-[31px] font-normal tracking-[-0.04em] text-[#272b30]" x-text="displayMetric(component.data)"></div><div class="mt-2 text-sm text-neutral-400" x-text="metricHint(component.data)"></div></div></template>
+                        <template x-if="!component.error && component.kind === 'status'"><div><div class="flex items-center gap-3"><span class="inline-grid h-6 w-6 place-items-center rounded-full border-2 after:mt-[-2px] after:h-3 after:w-2 after:rotate-45 after:border-b-2 after:border-r-2 after:border-current after:content-['']" :class="statusClass(component.data)"></span><span class="text-[31px] font-normal tracking-[-0.04em] text-[#272b30]" x-text="statusText(component.data)"></span></div><div class="mt-2 text-sm text-neutral-400" x-text="statusHint(component.data)"></div></div></template>
+                        <template x-if="!component.error && component.kind === 'table'"><div><template x-if="empty(component)"><div class="grid min-h-[120px] place-items-center px-4 py-8 text-center"><div><i data-lucide="circle-check" class="mx-auto mb-3 h-7 w-7 text-emerald-500"></i><p class="text-[15px] text-neutral-500" x-text="emptyText(component)"></p></div></div></template><template x-if="!empty(component)"><div class="overflow-auto"><table class="min-w-full table-fixed border-collapse text-[15px]" :style="tableStyle(component)"><thead x-show="headers(component.data).length"><tr class="bg-neutral-50"><template x-for="head in headers(component.data)" :key="head"><th class="whitespace-nowrap px-4 py-3 text-left text-xs font-extrabold uppercase tracking-wide text-neutral-400" :class="columnClass(head, component.data)" x-text="head"></th></template></tr></thead><tbody><template x-for="row in rows(component.data)" :key="JSON.stringify(row)"><tr class="border-b border-neutral-100 last:border-0"><template x-for="cell in cells(row, component.data)" :key="cell.key"><td class="min-w-0 px-4 py-3 text-[#555d65]" :class="cellClass(cell.key, component.data)"><template x-if="isStatusColumn(cell.key)"><span class="inline-flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-full" :class="statusDotClass(cell.value)"></span><span :class="statusTextClass(cell.value)" x-text="cell.value"></span></span></template><template x-if="!isStatusColumn(cell.key)"><span class="block truncate" :class="valueClass(cell.key, component.data)" :title="cell.value" x-text="cell.value"></span></template></td></template></tr></template></tbody></table></div></template></div></template>
+                        <template x-if="!component.error && !known(component.kind)"><pre class="max-h-80 overflow-auto border border-neutral-200 bg-neutral-50 p-4 text-xs text-[#59616a]" x-text="JSON.stringify(component.data, null, 2)"></pre></template>
+                      </div>
+                    </template>
+                  </article>
+                </template>
+              </div>
+            </template>
+          </div>
+        </section>
+        <template x-for="component in wideComponents()" :key="component.id">
+          <section class="mt-6 overflow-hidden rounded-md bg-white shadow-[0_2px_10px_rgba(17,24,39,0.12)]">
+            <div class="px-7 py-6" :class="component.kind === 'table' ? 'border-b border-neutral-200' : ''">
+              <h2 class="text-[17px] font-extrabold uppercase tracking-[-0.02em] text-neutral-400" x-text="component.title"></h2>
+              <template x-if="component.error"><p class="mb-5 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" x-text="component.error"></p></template>
+            </div>
+            <template x-if="!component.error && component.kind === 'table'">
+              <div>
+                <template x-if="empty(component)">
+                  <div class="grid min-h-[150px] place-items-center px-7 py-10 text-center">
+                    <div><i data-lucide="circle-check" class="mx-auto mb-3 h-8 w-8 text-emerald-500"></i><p class="text-[15px] text-neutral-500" x-text="emptyText(component)"></p></div>
+                  </div>
+                </template>
+                <template x-if="!empty(component)">
+                  <div>
+                    <div class="flex flex-col gap-3 border-b border-neutral-100 px-7 py-4 xl:flex-row xl:items-center xl:justify-between" x-show="showTableControls(component)" x-cloak>
+                      <div class="flex flex-1 flex-col gap-3 md:flex-row md:items-center">
+                        <input class="h-10 w-full border border-neutral-200 bg-white px-3 text-[14px] text-[#555d65] outline-none transition placeholder:text-neutral-400 focus:border-[#8d5cf6] md:max-w-sm" type="search" placeholder="Filter rows" :value="tableStateFor(component).query" @input="setTableQuery(component, $event.target.value)">
+                        <select class="h-10 border border-neutral-200 bg-white px-3 text-[14px] text-[#555d65] outline-none transition focus:border-[#8d5cf6]" x-show="hasColumn(component.data, 'method')" :value="tableStateFor(component).method" @change="setTableMethod(component, $event.target.value)">
+                          <option value="">All methods</option>
+                          <template x-for="method in methodOptions(component.data)" :key="method"><option :value="method" x-text="method"></option></template>
+                        </select>
+                        <select class="h-10 border border-neutral-200 bg-white px-3 text-[14px] text-[#555d65] outline-none transition focus:border-[#8d5cf6]" x-show="hasHTTPStatus(component.data)" :value="tableStateFor(component).status" @change="setTableStatus(component, $event.target.value)">
+                          <option value="">All status</option>
+                          <option value="2xx">2xx</option>
+                          <option value="3xx">3xx</option>
+                          <option value="4xx">4xx</option>
+                          <option value="5xx">5xx</option>
+                        </select>
+                      </div>
+                      <div class="flex items-center justify-between gap-3 text-[13px] text-neutral-400">
+                        <span x-text="tableRangeText(component)"></span>
+                        <select class="h-10 border border-neutral-200 bg-white px-2 text-[13px] text-[#555d65] outline-none focus:border-[#8d5cf6]" :value="tableStateFor(component).pageSize" @change="setTablePageSize(component, $event.target.value)">
+                          <option value="10">10 / page</option>
+                          <option value="25">25 / page</option>
+                          <option value="50">50 / page</option>
+                          <option value="100">100 / page</option>
+                        </select>
+                      </div>
+                    </div>
+                    <template x-if="filteredRows(component).length === 0">
+                      <div class="grid min-h-[150px] place-items-center px-7 py-10 text-center">
+                        <div><i data-lucide="search-x" class="mx-auto mb-3 h-8 w-8 text-neutral-400"></i><p class="text-[15px] text-neutral-500">No matching rows</p></div>
+                      </div>
+                    </template>
+                    <template x-if="filteredRows(component).length > 0">
+                      <div>
+                        <div class="overflow-auto">
+                          <table class="min-w-full table-fixed border-collapse text-[15px]" :style="tableStyle(component)">
+                            <thead x-show="headers(component.data).length">
+                              <tr class="bg-neutral-50">
+                                <template x-for="head in headers(component.data)" :key="head"><th class="whitespace-nowrap px-7 py-4 text-left text-xs font-extrabold uppercase tracking-wide text-neutral-400" :class="columnClass(head, component.data)" x-text="head"></th></template>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <template x-for="(row, rowIndex) in pagedRows(component)" :key="component.id + '-' + tableStateFor(component).page + '-' + rowIndex + '-' + JSON.stringify(row)">
+                                <tr class="border-b border-neutral-100 last:border-0">
+                                  <template x-for="cell in cells(row, component.data)" :key="cell.key"><td class="min-w-0 px-7 py-4 text-[#555d65]" :class="cellClass(cell.key, component.data)"><template x-if="isStatusColumn(cell.key)"><span class="inline-flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-full" :class="statusDotClass(cell.value)"></span><span :class="statusTextClass(cell.value)" x-text="cell.value"></span></span></template><template x-if="!isStatusColumn(cell.key)"><span class="block truncate" :class="valueClass(cell.key, component.data)" :title="cell.value" x-text="cell.value"></span></template></td></template>
+                                </tr>
+                              </template>
+                            </tbody>
+                          </table>
+                        </div>
+                        <div class="flex flex-col gap-3 border-t border-neutral-100 px-7 py-4 text-[13px] text-neutral-400 md:flex-row md:items-center md:justify-between" x-show="showTableFooter(component)" x-cloak>
+                          <span x-text="tableRangeText(component)"></span>
+                          <div class="flex items-center gap-2">
+                            <button type="button" class="h-9 border border-neutral-200 px-3 text-[#555d65] transition hover:border-[#8d5cf6] hover:text-[#8d5cf6] disabled:cursor-not-allowed disabled:opacity-40" :disabled="tableStateFor(component).page <= 1" @click="prevTablePage(component)">Prev</button>
+                            <span class="min-w-20 text-center" x-text="tableStateFor(component).page + ' / ' + tablePages(component)"></span>
+                            <button type="button" class="h-9 border border-neutral-200 px-3 text-[#555d65] transition hover:border-[#8d5cf6] hover:text-[#8d5cf6] disabled:cursor-not-allowed disabled:opacity-40" :disabled="tableStateFor(component).page >= tablePages(component)" @click="nextTablePage(component)">Next</button>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
+            <template x-if="!component.error && isChart(component.kind)"><div class="h-64 p-7"><canvas class="h-full w-full" :data-chart-id="component.id" @mouseenter="hoverChart = component.id" @mouseleave="leaveChart(component.id)"></canvas></div></template>
+            <template x-if="!component.error && !known(component.kind)"><pre class="m-7 max-h-80 overflow-auto border border-neutral-200 bg-neutral-50 p-4 text-xs text-[#59616a]" x-text="JSON.stringify(component.data, null, 2)"></pre></template>
+          </section>
+        </template>
+      </main>
+    </div>
+  </div>
+  <script>
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('componentPanel', () => ({
+        panels: [],
+        components: [],
+        charts: {},
+        tableState: {},
+        hoverChart: '',
+        pendingChartRefresh: false,
+        compactColumns: 1,
+        error: '',
+        lastUpdated: '',
+        refreshing: false,
+        async boot() {
+          this.setCompactColumns()
+          window.addEventListener('resize', () => this.setCompactColumns())
+          document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) this.refresh()
+          })
+          await this.refresh()
+          setInterval(() => {
+            if (!document.hidden) this.refresh()
+          }, {{.RefreshMS}})
+        },
+        basePath() {
+          return window.location.pathname.replace(/\/$/, '')
+        },
+        consolePath() {
+          return this.basePath().replace(/\/[^/]+$/, '') || '/'
+        },
+        panelPath(panel) {
+          if (!panel || !panel.path) return '#'
+          if (panel.path.startsWith('/')) return panel.path
+          return this.consolePath().replace(/\/$/, '') + '/' + panel.path
+        },
+        async getJSON(path) {
+          const response = await fetch(path, { headers: { Accept: 'application/json' } })
+          if (!response.ok) throw new Error(path + ' -> ' + response.status)
+          return await response.json()
+        },
+        async refresh(force) {
+          if (this.refreshing && !force) return
+          this.refreshing = true
+          try {
+            const consoleBase = this.consolePath().replace(/\/$/, '')
+            const [components, panels] = await Promise.all([
+              this.getJSON(this.basePath() + '/api/components'),
+              this.getJSON(consoleBase + '/api/panels'),
+            ])
+            this.components = components || []
+            this.panels = panels || []
+            this.error = ''
+            this.lastUpdated = new Date().toLocaleTimeString()
+            this.$nextTick(() => {
+              this.renderIcons()
+              if (this.hoverChart && !force) {
+                this.pendingChartRefresh = true
+                return
+              }
+              this.renderCharts()
+            })
+          } catch (error) {
+            this.error = error.message
+          } finally {
+            this.refreshing = false
+          }
+        },
+        isIconName(value) {
+          return /^[a-z][a-z0-9-]*$/.test(String(value || ''))
+        },
+        renderIcons() {
+          if (window.lucide) window.lucide.createIcons()
+        },
+        known(kind) {
+          return ['metric', 'status', 'table', 'line', 'bar'].includes(kind)
+        },
+        isChart(kind) {
+          return ['line', 'bar'].includes(kind)
+        },
+        leaveChart(id) {
+          if (this.hoverChart === id) this.hoverChart = ''
+          if (!this.pendingChartRefresh) return
+          this.pendingChartRefresh = false
+          this.$nextTick(() => this.renderCharts())
+        },
+        wide(component) {
+          return ['table', 'line', 'bar'].includes(component.kind)
+        },
+        compactComponents() {
+          return this.components.filter((component) => !this.wide(component))
+        },
+        setCompactColumns() {
+          if (window.matchMedia('(min-width: 1280px)').matches) {
+            this.compactColumns = 4
+            return
+          }
+          this.compactColumns = window.matchMedia('(min-width: 768px)').matches ? 2 : 1
+        },
+        compactRows() {
+          const columns = Math.max(1, this.compactColumns || 1)
+          const rows = []
+          const components = this.compactComponents()
+          for (let index = 0; index < components.length; index += columns) {
+            const row = components.slice(index, index + columns)
+            while (row.length < columns) row.push(null)
+            rows.push(row)
+          }
+          return rows
+        },
+        wideComponents() {
+          return this.components.filter((component) => this.wide(component))
+        },
+        empty(component) {
+          return this.rows(component && component.data).length === 0
+        },
+        emptyText(component) {
+          if (component && component.id === 'attention') return 'No issues detected'
+          return 'No data available'
+        },
+        displayMetric(value) {
+          if (value && typeof value === 'object') return value.value ?? value.total ?? JSON.stringify(value)
+          return value ?? '-'
+        },
+        metricHint(value) {
+          return value && typeof value === 'object' ? (value.label || value.hint || value.unit || '') : ''
+        },
+        statusText(value) {
+          return value && typeof value === 'object' ? (value.label || value.status || value.value || '-') : value ?? '-'
+        },
+        statusHint(value) {
+          return value && typeof value === 'object' ? (value.hint || value.message || '') : ''
+        },
+        statusClass(value) {
+          const state = String((value && typeof value === 'object' ? (value.state || value.status || value.value) : value) || '').toLowerCase()
+          if (['ok', 'pass', 'healthy', 'up', 'ready', 'active', 'running'].includes(state)) return 'border-emerald-500 text-emerald-500'
+          if (['warn', 'warning', 'degraded', 'no workers', 'not configured', 'idle'].includes(state)) return 'border-amber-500 text-amber-500'
+          if (['error', 'fail', 'failed', 'down', 'missing', 'unhealthy'].includes(state)) return 'border-red-500 text-red-500'
+          return 'border-neutral-400 text-neutral-400'
+        },
+        statusDotClass(value) {
+          const code = Number(value)
+          if (Number.isFinite(code) && code >= 100) {
+            if (code >= 500) return 'bg-red-500'
+            if (code >= 400) return 'bg-amber-500'
+            if (code >= 300) return 'bg-sky-500'
+            if (code >= 200) return 'bg-emerald-500'
+          }
+          const state = String(value || '').toLowerCase()
+          if (['ok', 'pass', 'healthy', 'up', 'ready', 'active', 'running', 'enabled', 'success', 'succeeded'].includes(state)) return 'bg-emerald-500'
+          if (['warn', 'warning', 'degraded', 'no workers', 'not configured', 'idle', 'disabled'].includes(state)) return 'bg-amber-500'
+          if (['error', 'fail', 'failed', 'down', 'missing', 'unhealthy'].includes(state)) return 'bg-red-500'
+          return 'bg-neutral-400'
+        },
+        statusTextClass(value) {
+          const code = Number(value)
+          if (Number.isFinite(code) && code >= 100) {
+            if (code >= 500) return 'text-red-700'
+            if (code >= 400) return 'text-amber-700'
+            if (code >= 300) return 'text-sky-700'
+            if (code >= 200) return 'text-emerald-700'
+          }
+          const state = String(value || '').toLowerCase()
+          if (['ok', 'pass', 'healthy', 'up', 'ready', 'active', 'running', 'enabled', 'success', 'succeeded'].includes(state)) return 'text-emerald-700'
+          if (['warn', 'warning', 'degraded', 'no workers', 'not configured', 'idle', 'disabled'].includes(state)) return 'text-amber-700'
+          if (['error', 'fail', 'failed', 'down', 'missing', 'unhealthy'].includes(state)) return 'text-red-700'
+          return 'text-[#555d65]'
+        },
+        isStatusColumn(key) {
+          return String(key || '').toLowerCase() === 'status'
+        },
+        isLastColumn(key, value) {
+          const heads = this.headers(value)
+          return heads.length > 0 && String(heads[heads.length - 1]) === String(key)
+        },
+        numericColumn(key) {
+          const name = String(key || '').toLowerCase()
+          return ['count', 'errors', 'failed', 'pending', 'reserved', 'delayed', 'processed', 'succeeded', 'retried', 'instances', 'concurrency', 'busy', 'files', 'outputs', 'limit', 'burst', 'middlewares', 'min_ms', 'avg_ms', 'max_ms', 'latency_ms', 'status', 'last_status'].includes(name)
+        },
+        fixedColumn(key) {
+          const name = String(key || '').toLowerCase()
+          return this.numericColumn(key) || ['time', 'method', 'name', 'driver', 'default', 'mode', 'enabled', 'public', 'shared', 'ttl', 'window', 'wait', 'retry', 'priority'].includes(name)
+        },
+        cellClass(key, value) {
+          const classes = []
+          if (this.isStatusColumn(key)) classes.push('w-44', 'whitespace-nowrap')
+          if (this.fixedColumn(key)) classes.push('whitespace-nowrap')
+          if (this.numericColumn(key) || this.isStatusColumn(key) || this.isLastColumn(key, value)) classes.push('text-right')
+          return classes.join(' ')
+        },
+        columnClass(key, value) {
+          return this.cellClass(key, value)
+        },
+        valueClass(key, value) {
+          const name = String(key || '').toLowerCase()
+          const classes = []
+          if (['path', 'route', 'cookiename', 'cookie_name', 'request_id', 'source', 'error', 'payload', 'listener', 'description', 'summary'].includes(name)) {
+            classes.push('max-w-[360px]')
+          } else if (['meta', 'workers', 'queues', 'tags', 'security'].includes(name)) {
+            classes.push('max-w-[280px]')
+          } else {
+            classes.push('max-w-[220px]')
+          }
+          if (this.numericColumn(key) || this.isStatusColumn(key) || this.isLastColumn(key, value)) classes.push('ml-auto', 'text-right')
+          return classes.join(' ')
+        },
+        tableStyle(component) {
+          const columns = this.headers(component && component.data).length
+          const width = Math.max(640, columns * 150)
+          return 'min-width: max(100%, ' + width + 'px)'
+        },
+        rows(value) {
+          if (Array.isArray(value)) return value
+          if (value && Array.isArray(value.rows)) return value.rows
+          return []
+        },
+        headers(value) {
+          const rows = this.rows(value)
+          if (value && Array.isArray(value.columns)) return value.columns
+          const row = rows[0]
+          return row && typeof row === 'object' && !Array.isArray(row) ? Object.keys(row) : []
+        },
+        cells(row, value) {
+          const heads = this.headers(value)
+          if (row && typeof row === 'object' && !Array.isArray(row)) {
+            const keys = heads.length ? heads : Object.keys(row)
+            return keys.map((key) => ({ key, value: this.format(row[key]) }))
+          }
+          return [{ key: 'value', value: this.format(row) }]
+        },
+        tableKey(component) {
+          return component && component.id ? component.id : 'table'
+        },
+        tableStateFor(component) {
+          const key = this.tableKey(component)
+          if (!this.tableState[key]) {
+            this.tableState[key] = {
+              query: '',
+              method: '',
+              status: '',
+              page: 1,
+              pageSize: this.defaultPageSize(component),
+            }
+          }
+          return this.tableState[key]
+        },
+        defaultPageSize(component) {
+          const text = String(((component && component.id) || '') + ' ' + ((component && component.title) || '')).toLowerCase()
+          return text.includes('log') || text.includes('slow') || text.includes('access') ? 25 : 10
+        },
+        hasTableFilters(component) {
+          const state = this.tableStateFor(component)
+          return !!(String(state.query || '').trim() || state.method || state.status)
+        },
+        showTableControls(component) {
+          const rows = this.rows(component && component.data)
+          const state = this.tableStateFor(component)
+          return rows.length > Number(state.pageSize || 10) || this.hasColumn(component.data, 'method') || this.hasHTTPStatus(component.data) || this.hasTableFilters(component)
+        },
+        showTableFooter(component) {
+          return this.tablePages(component) > 1 || this.hasTableFilters(component)
+        },
+        hasColumn(value, key) {
+          const target = String(key || '').toLowerCase()
+          return this.headers(value).some((head) => String(head).toLowerCase() === target)
+        },
+        rowValue(row, key) {
+          if (!row || typeof row !== 'object' || Array.isArray(row)) return ''
+          const target = String(key || '').toLowerCase()
+          const actual = Object.keys(row).find((item) => String(item).toLowerCase() === target)
+          return actual ? row[actual] : ''
+        },
+        methodOptions(value) {
+          const seen = new Set()
+          this.rows(value).forEach((row) => {
+            const method = String(this.rowValue(row, 'method') || '').toUpperCase()
+            if (method) seen.add(method)
+          })
+          return Array.from(seen).sort()
+        },
+        hasHTTPStatus(value) {
+          return this.rows(value).some((row) => {
+            const status = Number(this.rowValue(row, 'status'))
+            return Number.isFinite(status) && status >= 100
+          })
+        },
+        statusGroup(value) {
+          const status = Number(value)
+          if (status >= 500) return '5xx'
+          if (status >= 400) return '4xx'
+          if (status >= 300) return '3xx'
+          if (status >= 200) return '2xx'
+          return ''
+        },
+        rowSearchText(row, value) {
+          if (!row || typeof row !== 'object' || Array.isArray(row)) return this.format(row)
+          const heads = this.headers(value)
+          const keys = heads.length ? heads : Object.keys(row)
+          return keys.map((key) => this.format(row[key])).join(' ').toLowerCase()
+        },
+        filteredRows(component) {
+          const state = this.tableStateFor(component)
+          const query = String(state.query || '').trim().toLowerCase()
+          const method = String(state.method || '').toUpperCase()
+          const status = String(state.status || '')
+          return this.rows(component && component.data).filter((row) => {
+            if (query && !this.rowSearchText(row, component.data).includes(query)) return false
+            if (method && String(this.rowValue(row, 'method') || '').toUpperCase() !== method) return false
+            if (status && this.statusGroup(this.rowValue(row, 'status')) !== status) return false
+            return true
+          })
+        },
+        tablePages(component) {
+          const state = this.tableStateFor(component)
+          const size = Math.max(1, Number(state.pageSize) || 10)
+          return Math.max(1, Math.ceil(this.filteredRows(component).length / size))
+        },
+        normalizeTablePage(component) {
+          const state = this.tableStateFor(component)
+          const pages = this.tablePages(component)
+          if (state.page < 1) state.page = 1
+          if (state.page > pages) state.page = pages
+          return state
+        },
+        pagedRows(component) {
+          const state = this.normalizeTablePage(component)
+          const rows = this.filteredRows(component)
+          const size = Math.max(1, Number(state.pageSize) || 10)
+          const start = (state.page - 1) * size
+          return rows.slice(start, start + size)
+        },
+        tableRangeText(component) {
+          const state = this.normalizeTablePage(component)
+          const filtered = this.filteredRows(component)
+          const total = this.rows(component && component.data).length
+          if (filtered.length === 0) return '0 of ' + total
+          const size = Math.max(1, Number(state.pageSize) || 10)
+          const start = (state.page - 1) * size + 1
+          const end = Math.min(filtered.length, start + size - 1)
+          const suffix = filtered.length === total ? '' : ' (' + total + ' total)'
+          return start + '-' + end + ' of ' + filtered.length + suffix
+        },
+        setTableQuery(component, value) {
+          const state = this.tableStateFor(component)
+          state.query = value
+          state.page = 1
+        },
+        setTableMethod(component, value) {
+          const state = this.tableStateFor(component)
+          state.method = value
+          state.page = 1
+        },
+        setTableStatus(component, value) {
+          const state = this.tableStateFor(component)
+          state.status = value
+          state.page = 1
+        },
+        setTablePageSize(component, value) {
+          const state = this.tableStateFor(component)
+          state.pageSize = Number(value) || this.defaultPageSize(component)
+          state.page = 1
+        },
+        prevTablePage(component) {
+          const state = this.normalizeTablePage(component)
+          if (state.page > 1) state.page--
+        },
+        nextTablePage(component) {
+          const state = this.normalizeTablePage(component)
+          if (state.page < this.tablePages(component)) state.page++
+        },
+        format(value) {
+          if (value === null || value === undefined || value === '') return '-'
+          return value && typeof value === 'object' ? JSON.stringify(value) : value
+        },
+        chartPoints(value) {
+          const rows = Array.isArray(value) ? value : (value && Array.isArray(value.points) ? value.points : [])
+          return rows.map((row, index) => {
+            if (Array.isArray(row)) return { label: String(row[0] ?? index), value: Number(row[1] ?? 0) }
+            if (row && typeof row === 'object') return { label: String(row.label ?? row.name ?? row.time ?? index), value: Number(row.value ?? row.count ?? row.total ?? 0) }
+            return { label: String(index), value: Number(row || 0) }
+          })
+        },
+        renderCharts() {
+          if (!window.Chart) return
+          const active = new Set()
+          document.querySelectorAll('canvas[data-chart-id]').forEach((canvas) => {
+            const id = canvas.dataset.chartId
+            const component = this.components.find((item) => item.id === id)
+            if (!component || !this.isChart(component.kind)) return
+            active.add(id)
+            const points = this.chartPoints(component.data)
+            const type = component.kind === 'bar' ? 'bar' : 'line'
+            const data = {
+              labels: points.map((point) => point.label),
+              datasets: [{
+                label: component.title,
+                data: points.map((point) => point.value),
+                borderColor: '#8d5cf6',
+                backgroundColor: type === 'bar' ? '#8d5cf6' : 'rgba(141, 92, 246, 0.14)',
+                borderWidth: 2,
+                borderRadius: type === 'bar' ? 3 : 0,
+                fill: type === 'line',
+                tension: 0.35,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+              }],
+            }
+            const options = {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              interaction: { intersect: false, mode: 'index' },
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  backgroundColor: '#272b30',
+                  displayColors: false,
+                  padding: 10,
+                },
+              },
+              scales: {
+                x: {
+                  grid: { display: false },
+                  ticks: { color: '#9ca3af', maxRotation: 0, autoSkip: true },
+                  border: { display: false },
+                },
+                y: {
+                  beginAtZero: true,
+                  grid: { color: '#eeeeee' },
+                  ticks: { color: '#9ca3af', precision: 0 },
+                  border: { display: false },
+                },
+              },
+            }
+            const existing = this.charts[id]
+            if (existing && existing.config.type === type) {
+              existing.data.labels = data.labels
+              existing.data.datasets[0].data = data.datasets[0].data
+              existing.data.datasets[0].label = data.datasets[0].label
+              existing.update('none')
+              return
+            }
+            if (existing) existing.destroy()
+            this.charts[id] = new Chart(canvas, { type, data, options })
+          })
+          Object.keys(this.charts).forEach((id) => {
+            if (active.has(id)) return
+            this.charts[id].destroy()
+            delete this.charts[id]
+          })
+        },
+      }))
+    })
+  </script>
+</body>
+</html>

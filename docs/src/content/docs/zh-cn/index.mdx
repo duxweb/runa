@@ -1,0 +1,193 @@
+---
+title: Runa
+description: 适用于业务开发的 Go Web 框架，轻量核心负责启动和生命周期，需要什么能力再按需接入
+template: splash
+prev: false
+next: false
+hero:
+  title: 适用于业务开发的 Go Web 框架
+  tagline: "轻量核心负责启动和生命周期，需要路由、缓存、队列、数据库时再按需接入，小服务到复杂业务都保持清晰"
+  actions:
+    - text: 快速开始
+      link: guide/quick-start-http/
+      variant: primary
+    - text: GitHub
+      link: https://github.com/duxweb/runa
+      variant: minimal
+home:
+  eyebrow: Runa
+  badge: Go 1.27+
+  install: go get github.com/duxweb/runa
+  codeTitle: main.go
+  pills:
+    - 轻量核心
+    - 按需接入
+    - 依赖可控
+    - 自由扩展
+  symbols:
+    - runa
+    - route
+    - cache
+    - context
+    - Module
+    - Install
+    - Get
+    - Default
+    - Run
+  code: |
+    func main() {
+        app := runa.New()
+        app.Install(
+            route.Provider(route.Addr(":8080")),
+            cache.Provider(),
+        )
+
+        route.Default().Get("/", func(c *route.Context) error {
+            return c.Text("Hello Runa")
+        })
+
+        if err := app.Run(context.Background()); err != nil {
+            panic(err)
+        }
+    }
+---
+
+<div class="runa-home not-content">
+
+<section class="runa-sec runa-sec--flush">
+  <div class="runa-sec__head">
+    <span class="runa-eyebrow">组合</span>
+    <h2>从轻量核心开始，按需接入能力</h2>
+    <p>核心负责应用启动、依赖注入、命令和生命周期，路由、缓存、队列、数据库、认证、存储等能力按需安装，业务代码通过 Module 组织</p>
+  </div>
+  <div class="runa-compose">
+    <span class="runa-kernel">runa · 内核</span>
+    <span class="runa-plug">+</span>
+    <div class="runa-chips">
+      <span class="runa-chip runa-chip--t">route</span>
+      <span class="runa-chip runa-chip--t">grpc · 规划中</span>
+      <span class="runa-chip runa-chip--t">ws</span>
+      <span class="runa-chip runa-chip--t">jsonrpc</span>
+      <span class="runa-chip">cache</span>
+      <span class="runa-chip">queue</span>
+      <span class="runa-chip">database</span>
+      <span class="runa-chip">session</span>
+      <span class="runa-chip">auth</span>
+      <span class="runa-chip">storage</span>
+      <span class="runa-chip">lock</span>
+      <span class="runa-chip">rate</span>
+      <span class="runa-chip">event</span>
+      <span class="runa-chip">task</span>
+      <span class="runa-chip">schedule</span>
+      <span class="runa-chip runa-chip--d">redis</span>
+      <span class="runa-chip runa-chip--d">s3</span>
+      <span class="runa-chip runa-chip--d">oro</span>
+      <span class="runa-chip runa-chip--d">nats</span>
+    </div>
+    <div class="runa-legend">
+      <i><span class="runa-dot runa-dot--t"></span>传输</i>
+      <i><span class="runa-dot runa-dot--c"></span>能力</i>
+      <i><span class="runa-dot runa-dot--d"></span>驱动</i>
+    </div>
+  </div>
+</section>
+
+<section class="runa-sec">
+  <div class="runa-sec__head">
+    <span class="runa-eyebrow">供应链</span>
+    <h2>用到什么，才引入什么</h2>
+    <p>模块边界跟着 import 走，没有接入的能力不会把第三方依赖带进 <code>go.sum</code>，小项目保持轻量，大项目也能稳步扩展</p>
+  </div>
+  <div class="runa-cmp">
+    <div class="runa-card runa-card--accent">
+      <h3>微内核框架</h3>
+      <p class="runa-card__sub">只保留应用骨架和命令入口</p>
+      <div class="runa-deps">
+        <span>runa · 应用内核</span>
+        <span>config · 配置加载</span>
+        <span>command · 命令入口</span>
+        <span>lifecycle · 启停编排</span>
+      </div>
+    </div>
+    <div class="runa-card">
+      <h3>按需引入</h3>
+      <p class="runa-card__sub">需要什么能力，就安装什么能力包</p>
+      <div class="runa-deps">
+        <span>runa · 内核</span>
+        <span>route · HTTP 入口</span>
+        <span class="add">cache / queue · 缓存与队列</span>
+        <span class="add">database / storage · 数据与存储</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="runa-sec">
+  <div class="runa-sec__head">
+    <span class="runa-eyebrow">架构</span>
+    <h2>层次清晰，依赖单向</h2>
+    <p>驱动、能力、传输都只向下依赖核心，内核不反向感知上层模块，项目越长越不容易乱</p>
+  </div>
+  <div class="runa-stack">
+    <div class="runa-layer"><strong>驱动</strong><span>redis · s3 · oro · nats · amqp · mqtt</span></div>
+    <div class="runa-layer"><strong>能力</strong><span>cache · queue · database · session · auth · storage · …</span></div>
+    <div class="runa-layer"><strong>传输</strong><span>route(HTTP) · ws · jsonrpc · grpc(规划中)</span></div>
+    <div class="runa-layer runa-layer--kernel"><strong>内核</strong><span>加载 · 依赖注入 · 生命周期 · 命令 · Host · 配置</span></div>
+  </div>
+</section>
+
+<section class="runa-sec">
+  <div class="runa-sec__head">
+    <span class="runa-eyebrow">生命周期</span>
+    <h2>所有能力，都走同一套生命周期</h2>
+    <p>能力和 Module 按顺序进入 Init、Register、Resolve、Boot 和 Shutdown，应用启动和关闭都有明确顺序</p>
+  </div>
+  <div class="runa-steps">
+    <span class="runa-step">Init</span><em>→</em>
+    <span class="runa-step">Register</span><em>→</em>
+    <span class="runa-step">Resolve</span><em>→</em>
+    <span class="runa-step">Boot</span><em>→</em>
+    <span class="runa-step">Shutdown</span>
+  </div>
+</section>
+
+<section class="runa-sec">
+  <div class="runa-sec__head">
+    <span class="runa-eyebrow">不止于 HTTP</span>
+    <h2>面向 Web，也能运行后台服务</h2>
+    <p>HTTP 是常用入口，但内核不绑定 HTTP，你可以接入路由服务，也可以只运行命令、队列 worker 或其他 Host</p>
+  </div>
+  <div class="runa-grid4">
+    <div class="runa-tcard"><b>HTTP</b><span>通过 route 提供强类型路由、域和中间件</span></div>
+    <div class="runa-tcard"><b>gRPC</b><span>规划中的传输块，作为 Host 接入内核</span></div>
+    <div class="runa-tcard"><b>WebSocket</b><span>提供 Hub 与广播能力，可通过 redis 横向扩展</span></div>
+    <div class="runa-tcard"><b>JSON-RPC</b><span>可运行在 HTTP 或 WebSocket 上，并挂载到 route</span></div>
+  </div>
+</section>
+
+<div class="runa-cta">
+  <h2>从最小应用开始</h2>
+  <p>先跑一个最小应用，再按业务需要接入路由、缓存、队列、数据库和运维能力</p>
+  <div class="runa-cta__row">
+    <a class="runa-btn runa-btn--primary" href="guide/quick-start-http/">快速开始 <span aria-hidden="true">→</span></a>
+    <a class="runa-btn runa-btn--ghost" href="core/">阅读架构</a>
+  </div>
+</div>
+
+<footer class="dux-footer not-content">
+  <div class="dux-footer__brand">
+    <span class="dux-footer__logo">Runa</span>
+    <span class="dux-footer__tagline">从一条路由开始，按需生长</span>
+  </div>
+  <div class="dux-footer__meta">
+    <nav class="dux-footer__nav" aria-label="Footer">
+      <a href="guide/">指南</a>
+      <a href="core/">架构</a>
+      <a href="capabilities/">能力</a>
+      <a href="https://github.com/duxweb/runa">GitHub</a>
+    </nav>
+    <p class="dux-footer__copy">© 2026 Runa · MIT License</p>
+  </div>
+</footer>
+
+</div>

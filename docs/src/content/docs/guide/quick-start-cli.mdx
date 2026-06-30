@@ -1,0 +1,168 @@
+---
+title: "Quick Start: CLI"
+description: "Create a command-line or worker application without HTTP"
+---
+
+Runa does not require every application to start HTTP. You can use only the kernel, config, commands, and Module lifecycle.
+
+## Create a project
+
+```bash
+mkdir runa-cli-demo
+cd runa-cli-demo
+go mod init example.com/runa-cli-demo
+go get github.com/duxweb/runa
+```
+
+## Write a command
+
+Create `main.go`:
+
+```go
+package main
+
+import (
+    "context"
+    "os"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/command"
+)
+
+type HelloCommand struct{}
+
+func (HelloCommand) Name() string { return "hello" }
+func (HelloCommand) Summary() string { return "Print a greeting" }
+
+func (HelloCommand) Run(ctx context.Context, cmd *command.Context) error {
+    name := cmd.Get[string]("name", "runa")
+    return cmd.Println("hello", name)
+}
+
+func (HelloCommand) Flags(flags *command.FlagSet) {
+    flags.String("name", "runa", "Name to greet")
+}
+
+func main() {
+    app := runa.New()
+    app.Command(HelloCommand{})
+
+    if err := app.Execute(context.Background(), os.Args[1:]); err != nil {
+        panic(err)
+    }
+}
+```
+
+Run it:
+
+```bash
+go run . hello
+```
+
+Output:
+
+```text
+hello runa
+```
+
+Run with a flag:
+
+```bash
+go run . hello --name Dux
+```
+
+Output:
+
+```text
+hello Dux
+```
+
+## What this code does
+
+- `HelloCommand` implements a Runa command.
+- `Name()` is the command name typed in the terminal.
+- `Summary()` appears in help output.
+- `Flags(...)` defines command flags.
+- `Run(...)` contains the actual command logic.
+- `app.Execute(..., os.Args[1:])` passes terminal arguments to Runa's command system.
+
+## Register commands inside a business module
+
+In real projects, commands usually belong to a business module, such as user sync, order compensation, or data repair.
+
+```go
+type AppModule struct {
+    provider.ModuleBase
+}
+
+func (AppModule) Name() string { return "app" }
+
+func (AppModule) Register(ctx context.Context, app provider.Context) error {
+    return app.RegisterCommand(HelloCommand{})
+}
+```
+
+Register the module:
+
+```go
+app := runa.New()
+app.Module(AppModule{})
+
+if err := app.Execute(context.Background(), os.Args[1:]); err != nil {
+    panic(err)
+}
+```
+
+Module code also needs these imports:
+
+```go
+import (
+    "context"
+
+    "github.com/duxweb/runa/provider"
+)
+```
+
+## What happens when no command is passed
+
+`app.Run(ctx)` and `app.Execute(ctx, nil)` run the default `serve` command. If no Host is installed, this is usually only useful for startup checks. Pure CLI applications should normally use:
+
+```go
+app.Execute(context.Background(), os.Args[1:])
+```
+
+Then the application runs the command the user actually typed.
+
+## Add background processes only when needed
+
+Queue workers, schedules, and WebSocket hubs are long-running background processes. They usually enter through their capability packages.
+
+When learning, start with the command flow:
+
+```text
+main.go -> app.Command(...) -> app.Execute(...)
+```
+
+Read [Queue](../capabilities/queue/) and [Task](../capabilities/task/) when you need queue workers later.
+
+## When CLI mode fits
+
+- Data migration tools.
+- One-off data repair commands.
+- Queue worker processes.
+- Scheduled job processes.
+- Background services that need config, DI, and commands but not HTTP.
+
+## Common problems
+
+### What is the difference between go run . hello and go run .
+
+`go run . hello` runs the `hello` command. `go run .` passes no command and falls back to the default command. HTTP applications usually default to `serve`; pure CLI applications should pass commands explicitly.
+
+### Is Flags required
+
+No. Commands without arguments do not need to implement `Flags`.
+
+### How can a command access the application
+
+Use `cmd.App()` to get the current application object. Most business code should prefer reading required objects from DI or capability `Default()` helpers.

@@ -1,0 +1,182 @@
+---
+title: "Config Reference"
+description: "Config keys grouped by capability"
+---
+
+Runa reads config from `config/*.toml` by default. The file name becomes the config scope. For example, `config/cache.toml` is loaded into the `cache` scope, and `config/cache.production.toml` is loaded only in the `production` environment.
+
+## Override order
+
+Config is merged in this order:
+
+1. Defaults.
+2. Base config files.
+3. Current environment config files.
+4. Environment variables.
+5. Code `Set` calls or Provider options.
+
+## App
+
+```toml
+# config/app.toml
+timezone = "Asia/Shanghai"
+```
+
+Keys: `timezone`.
+
+## Cache
+
+```toml
+[cache.pools.default]
+driver = "memory"
+prefix = "app:"
+ttl = "10m"
+```
+
+Keys: `driver`, `prefix`, `ttl`, `meta`.
+
+## Queue
+
+```toml
+[queue.queues.default]
+driver = "memory"
+workers = ["default"]
+retry = 3
+retry_delay = "5s"
+timeout = "30s"
+retention = "24h"
+
+[queue.workers.default]
+concurrency = 4
+poll_interval = "100ms"
+lease = "30s"
+stop_timeout = "30s"
+```
+
+## Session
+
+```toml
+[session.sessions.web]
+driver = "memory"
+cookie_name = "sid"
+cookie_domain = ""
+cookie_path = "/"
+ttl = "24h"
+idle_timeout = "30m"
+shared = false
+```
+
+## Storage
+
+```toml
+[storage.disks.public]
+driver = "local"
+prefix = "public"
+public = true
+url_prefix = "/files"
+domain = "https://cdn.example.com"
+```
+
+## Lock
+
+```toml
+[lock.lockers.default]
+driver = "memory"
+prefix = "lock:"
+ttl = "30s"
+wait = "5s"
+retry_interval = "100ms"
+auto_renew = true
+```
+
+## Rate
+
+```toml
+[rate.limiters.api]
+driver = "memory"
+algorithm = "token_bucket"
+limit = 60
+window = "1m"
+burst = 10
+key = ["ip", "route"]
+```
+
+## Message
+
+```toml
+[message.brokers.default]
+driver = "memory"
+```
+
+## Audit
+
+```toml
+[audit]
+methods = ["POST", "PUT", "PATCH", "DELETE"]
+mode = "async"
+strict = false
+capture_input = true
+mask_fields = ["password", "token", "secret"]
+mask_value = "***"
+max_input_size = 16384
+buffer = 100
+write_timeout = "3s"
+```
+
+## Observe
+
+```toml
+[observe]
+service = "api"
+env = "production"
+version = "1.0.0"
+timeout = "2s"
+mount = "/-"
+debug = false
+```
+
+## Cluster
+
+```toml
+[cluster]
+driver = "memory"
+id = "api-1"
+service = "api"
+env = "production"
+version = "1.0.0"
+addr = "http://127.0.0.1:8080"
+heartbeat_interval = "5s"
+ttl = "15s"
+```
+
+## Console
+
+```toml
+[console]
+title = "Runa Console"
+mount = "/_console"
+auth = ["web"]
+interval = "5s"
+slow_threshold = "300ms"
+collect_http = true
+sample_interval = "1s"
+```
+
+## JSON-RPC
+
+```toml
+[jsonrpc]
+path = "/rpc"
+ws_path = "/rpc/ws"
+```
+
+## Devtools
+
+```toml
+[devtools]
+embed_root = "views"
+embed_patterns = ["**/*.html"]
+embed_package = "embed"
+embed_name = "ViewFS"
+embed_out = "internal/embed/view.go"
+```

@@ -1,0 +1,75 @@
+---
+title: "Error Handling"
+description: "Structured errors and HTTP error rendering"
+---
+
+Runa recommends structured errors for expressing error codes, messages, parameters, and the original cause. That gives frontend code, logs, audit records, and monitoring a stable shape to read.
+
+## HTTP errors
+
+For simple cases, return an HTTP error directly:
+
+```go
+return ctx.Error(404, "user not found")
+```
+
+This is suitable for direct cases such as resource not found, permission denied, or invalid input.
+
+## Structured errors
+
+Install:
+
+```bash
+go get github.com/duxweb/runa/errs
+```
+
+```go
+return errs.New("user not found",
+    errs.Code("user.not_found"),
+    errs.Params(runa.Map{"id": id}),
+)
+```
+
+Use stable business error codes such as `user.not_found`, `order.closed`, or `permission.denied`.
+
+## Wrap underlying errors
+
+```go
+if err != nil {
+    return errs.Wrap(err)
+}
+```
+
+Wrapping keeps the original cause for logs and debugging while allowing public responses to stay consistent.
+
+## Extract errors
+
+```go
+if item := errs.As(err); item != nil {
+    code := item.Code
+    _ = code
+}
+```
+
+This is useful in centralized error rendering, logging, or tests.
+
+## Custom error rendering
+
+The route registry supports an error handling pipeline. Most business projects can start with the default error handling. When a project needs one unified error JSON format, configure it centrally on the route registry instead of repeating response formatting in every handler.
+
+## Recommendations
+
+- Use stable error codes for business errors.
+- Preserve the original cause for system errors.
+- Do not expose database errors, file paths, or third-party service details directly in public responses.
+- Return errors from handlers instead of formatting the same error envelope in every handler.
+
+## Common mistakes
+
+### Returning database errors directly to users
+
+Database errors belong in logs. Public responses should usually be wrapped as business errors or unified system errors.
+
+### Using free-form translated text as error codes
+
+Error messages can be translated. Error codes should be stable English identifiers so frontend code and monitoring systems can match them reliably.

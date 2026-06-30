@@ -1,0 +1,136 @@
+---
+title: "Session 中间件"
+description: "在 HTTP 请求中加载、保存和写回命名会话"
+---
+
+`session/middleware` 会在 handler 执行前加载指定会话，并在请求结束时保存。它依赖 `session.Provider` 注册的 `*session.Registry`，所以必须先通过 `runa.Install` 安装 session 能力。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/session
+```
+
+## 基本接入
+
+```go
+import (
+    "github.com/duxweb/runa/session"
+    sessionmw "github.com/duxweb/runa/session/middleware"
+)
+
+app.Install(session.Provider(
+    session.RegisterSession("web"),
+))
+
+route.Default().Use(sessionmw.Use("web"))
+```
+
+不传名称时默认使用 `session.Web`，也就是 `web`
+
+```go
+route.Default().Use(sessionmw.Use())
+```
+
+## 完整示例
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/session"
+    sessionmw "github.com/duxweb/runa/session/middleware"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+    app.Install(session.Provider(
+        session.RegisterSession("web",
+            session.CookieName("__Host-runa_session"),
+            session.TTL(2*time.Hour),
+        ),
+    ))
+
+    route.Default().Use(sessionmw.Use("web"))
+    route.Default().Get("/", func(ctx *route.Context) error {
+        sess := ctx.Locals("runa.session.web").(*session.Session)
+        sess.Set("name", "Runa")
+        return ctx.Text("saved")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## 读取当前会话
+
+当前会话会放在 `ctx.Locals("runa.session.<name>")`：
+
+```go
+route.Default().Get("/profile", func(ctx *route.Context) error {
+    sess, _ := ctx.Locals("runa.session.web").(*session.Session)
+    if sess == nil {
+        return ctx.Error(401, "session missing")
+    }
+    return ctx.JSON(sess.All())
+})
+```
+
+## 配置文件
+
+`session.Provider` 会读取 `session.sessions.<name>`：
+
+```toml
+# config/session.toml
+[sessions.web]
+driver = "memory"
+cookie_name = "__Host-runa_session"
+cookie_path = "/"
+ttl = "2h"
+idle_timeout = "30m"
+shared = false
+```
+
+代码里只保留注册：
+
+```go
+app.Install(session.Provider(
+    session.RegisterSession("web"),
+))
+```
+
+## 使用缓存驱动
+
+```go
+app.Install(cache.Provider(
+    cache.RegisterPool("session"),
+))
+app.Install(session.Provider(
+    session.RegisterDriver("cache", session.CacheDriver("cache", cache.Default().MustGet("session"))),
+    session.RegisterSession("web", session.Use("cache")),
+))
+```
+
+缓存驱动适合多实例部署。内存驱动只适合单进程或开发环境。
+
+## 中间件行为
+
+- 请求进入时读取 Cookie
+- 根据注册的 session 名称加载数据
+- 把会话对象写入 `ctx.Locals("runa.session.<name>")`
+- handler 修改 session 后，请求结束时自动保存
+- 保存时写回 `Set-Cookie`
+
+## 常见问题
+
+- 没有安装 `session.Provider` 时会返回 `session is not configured`
+- 没有注册对应名称时会 panic，说明应用配置错误，应在启动阶段修正
+- 生产环境建议配置 `app.secret`、`runa.secret`、`RUNA_SECRET` 或 `APP_SECRET`，让 Cookie 签名和加密密钥稳定
+- auth 的 `SessionAuth` 可以复用 session 中间件加载出来的会话

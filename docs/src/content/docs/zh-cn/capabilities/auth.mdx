@@ -1,0 +1,176 @@
+---
+title: "鉴权 Auth"
+description: "认证器、登录态和权限检查"
+---
+
+`auth` 管理多个认证器，并把认证结果写入请求上下文。它可以组合 Session、JWT、API Key 和 RBAC 权限检查。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/auth
+```
+
+HTTP 中间件在子包中：
+
+```bash
+go get github.com/duxweb/runa/auth github.com/duxweb/runa/session
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/auth"
+    authmw "github.com/duxweb/runa/auth/middleware"
+    "github.com/duxweb/runa/provider"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/session"
+    sessionmw "github.com/duxweb/runa/session/middleware"
+)
+
+type appModule struct {
+    provider.ModuleBase
+}
+
+func (appModule) Name() string { return "app" }
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    auths, err := provider.Invoke[*auth.Registry](app)
+    if err != nil {
+        return err
+    }
+    auths.Auth("web", auth.SessionAuth("web"))
+    return nil
+}
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        session.Provider(session.RegisterSession("web")),
+        auth.Provider(),
+    )
+    app.Module(appModule{})
+
+    route.Default().Use(sessionmw.Use("web"))
+route.Default().Get("/me", func(ctx *route.Context) error {
+    info, _ := ctx.Locals("runa.auth").(*auth.Info)
+    return ctx.JSON(info)
+}).Use(authmw.Use("web"))
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`auth.Provider()` 只注册 `*auth.Registry`，具体认证器由代码注册。认证中间件负责执行认证，并把 `*auth.Info` 写入当前请求的 `ctx.Locals("runa.auth")`。
+
+更常见的业务写法是把认证器注册放进 Module，把路由放在同一个业务入口里：
+
+```go
+func (UserModule) Register(ctx context.Context, app provider.Context) error {
+    auths := provider.MustInvoke[*auth.Registry](app)
+    auths.Auth("web", auth.SessionAuth("web"))
+
+    route.Default().Use(sessionmw.Use("web"))
+    route.Default().Get("/me", meHandler).Use(authmw.Use("web"))
+    return nil
+}
+```
+
+## 独立 New 使用
+
+```go
+registry := auth.New()
+registry.Auth("api", auth.APIKeyAuth(func(token string) (runa.Map, bool, error) {
+    if token == "secret" {
+        return runa.Map{"id": "1"}, true, nil
+    }
+    return nil, false, nil
+}, auth.Header("Authorization")))
+```
+
+## 配置
+
+`auth` 当前没有文件配置结构。认证器通常涉及密钥、用户查询和业务权限，建议在业务 Provider 中读取配置后用代码注册。
+
+```toml
+[auth]
+jwt_secret = "change-me"
+```
+
+```go
+secret := []byte(runa.Config("auth").Get[string]("jwt_secret", "change-me"))
+auths.Auth("jwt", auth.JWTAuth(secret, auth.Header("Authorization")))
+```
+
+## 认证器
+
+内置认证器：
+
+```go
+auth.SessionAuth("web")
+auth.JWTAuth([]byte("secret"), auth.Header("Authorization"), auth.Cookie("token"))
+auth.APIKeyAuth(verifyToken, auth.Header("X-API-Key"), auth.Query("api_key"))
+auth.AuthMux(auth.SessionAuth("web"), auth.JWTAuth(secret))
+```
+
+Token 来源：
+
+- `auth.Header(name)` 从 Header 读取
+- `auth.Cookie(name)` 从 Cookie 读取
+- `auth.Query(name)` 从 Query 读取
+
+## 权限检查
+
+```go
+route.Default().Get("/admin", adminHandler).
+    Name("admin.dashboard").
+    Use(authmw.Permission(rbac.Checker(store)))
+```
+
+`authmw.Permission(...)` 会读取路由名作为权限 ID，也可以通过路由元数据自定义。
+
+## RBAC
+
+RBAC 在独立工具包 `github.com/duxweb/runa/rbac` 中：
+
+```go
+store := rbac.NewMemoryStore()
+store.AssignRole("1", "admin")
+store.Grant("admin", "admin.*")
+
+checker := rbac.Checker(store)
+route.Default().Use(authmw.Permission(checker))
+```
+
+## 常见错误
+
+### 只安装 auth.Provider，没有注册认证器
+
+`auth.Provider()` 只提供注册表。你还需要 `auths.Auth("web", auth.SessionAuth("web"))` 或注册 JWT、API Key 认证器。
+
+### 忘记加认证中间件
+
+注册认证器后，还要在路由上使用 `authmw.Use("web")`，否则路由不会自动要求登录。
+
+### SessionAuth 没有安装 session
+
+`auth.SessionAuth("web")` 依赖 `session.Provider(...)` 和 `sessionmw.Use("web")`。
+
+## API 速查
+
+- `auth.New()` 创建独立认证注册表
+- `auth.Provider()` 接入框架生命周期
+- `auth.Default()` 从默认 DI 取 `*auth.Registry`
+- `registry.Auth(name, authenticator)` 注册认证器
+- `authmw.Use(names...)` 必须认证
+- `authmw.Optional(names...)` 可选认证
+- `authmw.Permission(checkers...)` 权限检查

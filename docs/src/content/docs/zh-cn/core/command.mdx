@@ -1,0 +1,148 @@
+---
+title: "命令"
+description: "注册和运行应用命令"
+---
+
+命令是 Runa 内核能力。一个 Runa 应用可以不启动 HTTP，只运行命令；也可以同时拥有 HTTP 服务和业务命令。
+
+常见命令包括数据迁移、用户同步、缓存清理、队列 worker 启动、OpenAPI 导出。
+
+## 先定义一个命令
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa/command"
+)
+
+type HelloCommand struct{}
+
+func (HelloCommand) Name() string { return "hello" }
+func (HelloCommand) Summary() string { return "输出一句问候" }
+
+func (HelloCommand) Run(ctx context.Context, cmd *command.Context) error {
+    name := cmd.Get[string]("name", "runa")
+    return cmd.Println("hello", name)
+}
+
+func (HelloCommand) Flags(flags *command.FlagSet) {
+    flags.String("name", "runa", "要问候的名字")
+}
+```
+
+命令需要实现三个方法：
+
+| 方法 | 作用 |
+| --- | --- |
+| `Name()` | 命令名，比如 `hello` |
+| `Summary()` | 命令说明 |
+| `Run(...)` | 命令执行逻辑 |
+
+`Flags(...)` 是可选的，只有命令需要参数时才写。
+
+## 把命令注册进应用
+
+应用直接注册：
+
+```go
+app.Command(HelloCommand{})
+```
+
+业务模块里注册：
+
+```go
+func (UserModule) Register(ctx context.Context, app provider.Context) error {
+    return app.RegisterCommand(HelloCommand{})
+}
+```
+
+普通业务命令更推荐放进 Module，这样命令和业务代码在同一个业务目录里。
+
+## 直接执行命令
+
+测试或内部调用时，可以指定参数：
+
+```go
+if err := app.Execute(context.Background(), []string{"hello"}); err != nil {
+    panic(err)
+}
+```
+
+真实 CLI 入口一般把终端参数传进去：
+
+```go
+if err := app.Execute(context.Background(), os.Args[1:]); err != nil {
+    panic(err)
+}
+```
+
+运行：
+
+```bash
+go run . hello --name Dux
+```
+
+## 读取参数和输出内容
+
+```go
+func (HelloCommand) Run(ctx context.Context, cmd *command.Context) error {
+    name := cmd.Get[string]("name", "runa")
+    return cmd.Println("hello", name)
+}
+```
+
+命令上下文提供：
+
+- `Args()` 读取普通参数
+- `Get[T](name, fallback...)` 读取 flag 并转换类型
+- `Print` / `Println` 输出文本
+- `Table` 输出表格或 JSON
+- `App()` 取得当前应用对象
+
+## 命令名建议这样写
+
+建议命令使用 `包名:动作`：
+
+```text
+config:show
+route:list
+queue:work
+openapi:export
+```
+
+业务命令也可以按业务域命名：
+
+```text
+user:sync
+order:close-expired
+report:daily
+```
+
+## 常见问题
+
+### app.Run 和 app.Execute 有什么区别
+
+`app.Run(ctx)` 会读取 `os.Args[1:]`，适合作为真实应用入口。
+
+`app.Execute(ctx, args)` 由你手动传参数，适合测试、示例或特殊入口。
+
+### 命令需要 HTTP 吗
+
+不需要。命令属于内核能力，不安装 `route` 也可以运行。
+
+### 命令里怎么使用数据库或缓存
+
+先安装对应能力包，再在命令执行时读取：
+
+```go
+func (ImportCommand) Run(ctx context.Context, cmd *command.Context) error {
+    store := cache.Default().MustOf[string]("default")
+    _ = store
+    return nil
+}
+```
+
+不要在包级变量里提前读取能力对象。

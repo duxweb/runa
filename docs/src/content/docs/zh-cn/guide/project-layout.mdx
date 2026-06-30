@@ -1,0 +1,165 @@
+---
+title: "工程结构"
+description: "推荐的 Runa 应用目录组织"
+---
+
+Runa 不强制目录结构。小项目可以只有一个 `main.go`，项目变大后，建议把入口、业务模块、配置、数据目录分开。
+
+## 最小项目可以很简单
+
+刚开始可以这样：
+
+```text
+my-app/
+  main.go
+  go.mod
+```
+
+当路由、命令、任务和业务代码变多后，再拆目录。
+
+## 推荐的业务项目结构
+
+```text
+my-app/
+  cmd/app/main.go
+  app/
+    user/
+      module.go
+      routes.go
+      commands.go
+    order/
+      module.go
+      routes.go
+      jobs.go
+  config/
+    app.toml
+    cache.toml
+    queue.toml
+  data/
+  public/
+  go.mod
+```
+
+每个目录的职责：
+
+| 目录 | 放什么 |
+| --- | --- |
+| `cmd/app` | 程序入口，只负责创建应用和装载能力 |
+| `app` | 你的业务模块，比如用户、订单、支付 |
+| `config` | TOML 配置文件 |
+| `data` | 运行时可写文件，比如本地缓存、上传临时文件 |
+| `public` | 公开静态资源 |
+
+## 入口目录只负责启动应用
+
+`cmd/app/main.go` 只做装配，不写具体业务逻辑：
+
+```go
+package main
+
+import (
+    "context"
+
+    "example.com/my-app/app/order"
+    "example.com/my-app/app/user"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/cache"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New(
+        runa.ConfigPath("config"),
+        runa.DataPath("data"),
+        runa.PublicPath("public"),
+    )
+
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        cache.Provider(),
+    )
+
+    app.Module(
+        user.Module{},
+        order.Module{},
+    )
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+这样做的好处是：入口文件只看得到应用用了哪些能力和业务模块，不会被具体 handler、SQL、任务逻辑塞满。
+
+## 业务逻辑通过 Module 接入
+
+比如 `app/user/module.go`：
+
+```go
+package user
+
+import (
+    "context"
+
+    "github.com/duxweb/runa/provider"
+    "github.com/duxweb/runa/route"
+)
+
+type Module struct {
+    provider.ModuleBase
+}
+
+func (Module) Name() string { return "user" }
+
+func (Module) Register(ctx context.Context, app provider.Context) error {
+    route.Default().Get("/users", listUsers)
+    return app.RegisterCommand(SyncUsersCommand{})
+}
+```
+
+Module 是业务入口。它适合注册当前业务域的路由、命令、队列任务、事件监听等内容。
+
+## 配置按能力和模块拆分
+
+配置文件使用 TOML。文件名就是配置作用域：
+
+```text
+config/cache.toml   -> cache 配置
+config/queue.toml   -> queue 配置
+config/user.toml    -> user 模块配置
+```
+
+环境配置可以使用这种命名：
+
+```text
+config/app.production.toml
+config/cache.production.toml
+```
+
+当前环境由 `runa.Env("production")` 或环境变量决定。
+
+## 什么时候需要拆目录
+
+可以按这个节奏来：
+
+- 只有几个接口时，先放 `main.go`
+- 出现多个业务域时，拆 `app/user`、`app/order`
+- 出现命令、任务、事件监听时，放进对应业务模块
+- 配置变多后，按能力和业务模块拆成多个 TOML 文件
+
+不要为了“看起来标准”过早拆很多目录。目录结构是为了降低复杂度，不是为了增加仪式感。
+## 常见错误
+
+### 一开始就拆太多目录
+
+小项目可以先从 `main.go` 开始。目录是为了解决复杂度，不是为了形式。
+
+### main.go 写太多业务逻辑
+
+入口文件只做装配。业务路由、命令、任务和事件监听放进 Module。
+
+### 配置文件混成一个大文件
+
+配置变多后，按能力和业务模块拆分，比如 `cache.toml`、`queue.toml`、`user.toml`。

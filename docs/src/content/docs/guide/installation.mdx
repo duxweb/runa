@@ -1,0 +1,155 @@
+---
+title: "Installation"
+description: "Install the Runa kernel and on-demand capability packages"
+---
+
+Runa uses a multi-module repository. A minimal application installs only the kernel. Install HTTP, cache, database, and other capabilities only when you need them.
+
+If you are new to Go, remember one rule first: `go get` writes dependencies to `go.mod`, and Go only compiles packages that your code actually imports.
+
+## Prepare a Go project
+
+Check that Go is installed:
+
+```bash
+go version
+```
+
+Create a project directory and initialize a Go module:
+
+```bash
+mkdir runa-demo
+cd runa-demo
+go mod init example.com/runa-demo
+```
+
+`go mod init` creates `go.mod`. The module name `example.com/runa-demo` can be replaced with your own project path.
+
+## Install the kernel first
+
+```bash
+go get github.com/duxweb/runa
+```
+
+The core includes application loading, DI, config, commands, lifecycle, and other base capabilities. It does not include HTTP routing, cache, queue, database, or storage.
+
+With only the kernel installed, you can write CLI tools, worker skeletons, or the application entrypoint before adding HTTP.
+
+## Install route when you need HTTP
+
+```bash
+go get github.com/duxweb/runa/route
+```
+
+A minimal HTTP app usually installs:
+
+```bash
+go get github.com/duxweb/runa github.com/duxweb/runa/route
+```
+
+## Check the installation
+
+Create `main.go`:
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        return ctx.Text("Hello Runa")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+Run it:
+
+```bash
+go run .
+```
+
+Open another terminal:
+
+```bash
+curl http://localhost:8080/
+```
+
+If you see `Hello Runa`, the kernel and `route` are installed correctly.
+
+## Install only the capabilities you use
+
+Install capabilities on demand:
+
+```bash
+go get github.com/duxweb/runa/cache
+go get github.com/duxweb/runa/queue
+go get github.com/duxweb/runa/database
+go get github.com/duxweb/runa/storage
+```
+
+Install driver modules only when you need external drivers:
+
+```bash
+go get github.com/duxweb/runa/cache/redis
+go get github.com/duxweb/runa/queue/redis
+go get github.com/duxweb/runa/storage/s3
+go get github.com/duxweb/runa/database/oro
+```
+
+Modules you do not import do not enter your compile path and do not bring their third-party dependencies with them.
+
+For example, if you do not import `github.com/duxweb/runa/storage/s3`, your project does not compile in the AWS SDK.
+
+## Business projects do not need go.work
+
+The Runa repository uses `go.work` to manage multiple submodules. That is for framework development.
+
+Normal business applications only need `go.mod`. Use `go get` for the modules you import. Do not copy Runa's internal `go.work`.
+
+If you are developing Runa itself, run this from the repository root:
+
+```bash
+go work sync
+go test ./...
+```
+
+## Keep versions aligned
+
+In one application, keep the Runa kernel, capability packages, and driver packages on compatible versions. For example, if the core is `v0.3.0`, use a compatible `v0.3.0` for `cache/redis` as well.
+
+## Common problems
+
+### no required module provides package
+
+This means the module is not installed in the current project, or the import path is wrong. Check the path, then run `go get`.
+
+### route provider is not installed
+
+This means code called `route.Default()` before installing `route.Provider(...)`. Install route first:
+
+```go
+app.Install(route.Provider(route.Addr(":8080")))
+```
+
+Then register routes.
+
+### Port is already in use
+
+If `:8080` is already used by another process, choose another port:
+
+```go
+route.Provider(route.Addr(":8081"))
+```

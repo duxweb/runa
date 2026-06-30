@@ -1,0 +1,125 @@
+---
+title: "HTTP Middleware Overview"
+description: "Add logs, recovery, rate limits, authentication, security headers, and other cross-cutting HTTP behavior"
+---
+
+Middleware is where you put cross-cutting HTTP behavior: panic recovery, request IDs, real IP parsing, access logs, CORS, CSRF, body size limits, timeouts, static files, sessions, auth, rate limits, and audit records
+
+Runa middleware is `route.Middleware`, which is `func(route.Handler) route.Handler`. It belongs to the HTTP route transport. It is not part of the micro-kernel and it is not a Provider. As an application developer, focus on three things: install the package you need, mount it at the right level, and install any required capability Provider first
+
+## Install
+
+Install route when you only need the middleware mechanism:
+
+```bash
+go get github.com/duxweb/runa/route
+```
+
+Install official built-in middleware when needed:
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+Language negotiation middleware is a separate module:
+
+```bash
+go get github.com/duxweb/runa/middleware/lang
+```
+
+Install the production preset when you want the standard security chain:
+
+```bash
+go get github.com/duxweb/runa/security
+```
+
+Business middleware is installed per capability:
+
+```bash
+go get github.com/duxweb/runa/session github.com/duxweb/runa/auth github.com/duxweb/runa/rate github.com/duxweb/runa/audit
+```
+
+## Minimal example
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/security"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+
+    route.Default().Use(security.New(security.Production()))
+    route.Default().Get("/", func(ctx *route.Context) error {
+        return ctx.Text("ok")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## Where to mount middleware
+
+Global middleware:
+
+```go
+route.Default().Use(mw)
+```
+
+Group middleware:
+
+```go
+api := route.Default().Group("/api")
+api.Use(mw)
+```
+
+Single-route middleware:
+
+```go
+route.Default().Get("/profile", profile).Use(mw)
+```
+
+## Execution order
+
+Middleware enters in registration order and exits in reverse order:
+
+```go
+route.Default().Use(A(), B(), C())
+```
+
+```text
+A before -> B before -> C before -> handler -> C after -> B after -> A after
+```
+
+A practical order is recover, request id, real ip, logger, body limit, timeout, helmet or CORS, then business middleware such as session, auth, rate, and audit
+
+## Page index
+
+| Page | What it solves |
+| --- | --- |
+| [Recover](./recover/) | Convert panic to route errors |
+| [Request ID](./requestid/) | Attach a traceable request ID |
+| [Real IP](./realip/) | Read client IP from trusted proxies |
+| [Logger](./logger/) | Write HTTP access logs |
+| [CORS](./cors/) | Handle browser cross-origin requests |
+| [CSRF](./csrf/) | Protect browser forms and cookie-authenticated endpoints |
+| [Body Limit](./bodylimit/) | Limit request body size |
+| [Timeout](./timeout/) | Bound normal HTTP request duration |
+| [Helmet](./helmet/) | Write common security headers |
+| [Healthcheck](./healthcheck/) | Return a simple health response |
+| [Static](./static/) | Serve static files |
+| [Security](./security/) | Use the production middleware preset |
+| [Session](./session/) | Load and save sessions |
+| [Auth](./auth/) | Enforce authentication and permissions |
+| [Rate Limit](./rate/) | Protect routes with named limiters |
+| [Audit](./audit/) | Record business operation audits |
+| [Lang](./lang/) | Negotiate request language from query, cookie, and Accept-Language |

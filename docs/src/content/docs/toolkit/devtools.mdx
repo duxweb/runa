@@ -1,0 +1,93 @@
+---
+title: "Devtools"
+description: "Development helper commands"
+---
+
+`devtools` provides development-time commands: generate a project scaffold, run builds, and generate template embed files. It registers commands through a Provider and is not recommended for production entrypoints.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/devtools
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+    "os"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/devtools"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(devtools.Provider(
+        devtools.Embed("views", "internal/embed/view.go", "**/*.html"),
+    ))
+
+    if err := app.Execute(context.Background(), os.Args[1:]); err != nil {
+        panic(err)
+    }
+}
+```
+
+After installing it in a normal application, you can run commands directly:
+
+```bash
+go run . devtools:new ./demo example.com/demo
+go run . devtools:build ./...
+go run . devtools:embed --root views --out internal/embed/view.go
+```
+
+## Config
+
+`devtools` reads `[devtools]` config.
+
+```toml
+[devtools]
+embed_root = "views"
+embed_patterns = ["**/*.html"]
+embed_package = "embed"
+embed_name = "ViewFS"
+embed_out = "internal/embed/view.go"
+```
+
+## Standalone Scaffold
+
+```go
+err := devtools.Scaffold("./demo", "example.com/demo")
+_ = err
+```
+
+`Scaffold` generates a minimal Runa HTTP project.
+
+## Commands
+
+- `devtools:new [dir] [module]` creates a project scaffold.
+- `devtools:build [args...]` runs `go build`.
+- `devtools:embed` generates a `go:embed` file.
+
+## Common mistakes
+
+### Installing devtools in the production entrypoint
+
+Devtools is for development commands. Keep it out of production binaries unless you intentionally need those commands.
+
+### devtools:embed cannot find templates
+
+Check the template directory, current working directory, and configured input path.
+
+### devtools:build has empty arguments
+
+Build commands need explicit source/output parameters. Run command help when unsure.
+
+## API quick reference
+
+- `devtools.Provider(options...)` registers development commands.
+- `devtools.Embed(root, out, patterns...)` configures embed defaults.
+- `devtools.Scaffold(dir, module)` creates a scaffold directly.

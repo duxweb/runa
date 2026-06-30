@@ -1,0 +1,59 @@
+---
+title: "Testing"
+description: "Full module test matrix"
+---
+
+Runa is a multi-module repository. Running `go test ./...` in the root directory only covers the root module and does not automatically enter nested modules.
+
+## Test the root module first
+
+```bash
+go test ./...
+go build ./...
+go vet ./...
+```
+
+## Then run the full module matrix
+
+```bash
+for mod in $(find . -name go.mod -not -path './.git/*' -not -path './docs/node_modules/*'); do
+  dir=$(dirname "$mod")
+  echo "==> $dir"
+  (cd "$dir" && go test ./...) || exit 1
+done
+```
+
+## Use go.work for local integration
+
+Use `go.work` during local development to connect all modules:
+
+```bash
+go work sync
+go test ./...
+```
+
+Before release, use `GOWORK=off` to check single-module consumer behavior:
+
+```bash
+GOWORK=off go list -deps .
+```
+
+## Check whether the core accidentally imports optional modules
+
+The core module should not contain optional block dependencies:
+
+```bash
+GOWORK=off go list -deps . | grep 'github.com/duxweb/runa/route' && echo FAIL
+```
+
+If a minimal project that only imports the core includes Redis, S3, WebSocket, ORM, or similar dependencies, the module boundary is broken.
+
+## Run govulncheck by module
+
+If `govulncheck` is installed, run it across the module matrix:
+
+```bash
+for mod in $(find . -name go.mod -not -path './.git/*'); do
+  (cd "$(dirname "$mod")" && govulncheck ./...) || exit 1
+done
+```

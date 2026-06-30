@@ -1,0 +1,126 @@
+---
+title: "JSON-RPC"
+description: "Runs on HTTP or WebSocket"
+---
+
+`jsonrpc` provides a JSON-RPC 2.0 server. It mounts into `route`, supports HTTP POST calls, and can optionally enable a WebSocket channel.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/jsonrpc github.com/duxweb/runa/route
+```
+
+## Create a Server
+
+```go
+server := jsonrpc.New()
+
+jsonrpc.Method[AddInput, AddOutput](server, "math.add", func(ctx *jsonrpc.Context, input *AddInput) (*AddOutput, error) {
+    return &AddOutput{Sum: input.A + input.B}, nil
+})
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/jsonrpc"
+    "github.com/duxweb/runa/route"
+)
+
+type AddInput struct {
+    A int `json:"a"`
+    B int `json:"b"`
+}
+
+type AddOutput struct {
+    Sum int `json:"sum"`
+}
+
+func main() {
+    server := jsonrpc.New()
+    jsonrpc.Method[AddInput, AddOutput](server, "math.add", func(ctx *jsonrpc.Context, input *AddInput) (*AddOutput, error) {
+        return &AddOutput{Sum: input.A + input.B}, nil
+    })
+
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        jsonrpc.Provider(server, jsonrpc.Path("/rpc")),
+    )
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+Call it:
+
+```bash
+curl -X POST http://localhost:8080/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"math.add","params":{"a":2,"b":3},"id":1}'
+```
+
+Response:
+
+```json
+{"jsonrpc":"2.0","result":{"sum":5},"id":1}
+```
+
+## WebSocket
+
+```go
+app.Install(jsonrpc.Provider(server,
+    jsonrpc.Path("/rpc"),
+    jsonrpc.WSPath("/rpc/ws", jsonrpc.Origin("http://localhost:3000")),
+))
+```
+
+You can also mount it manually:
+
+```go
+jsonrpc.Mount(route.Default(), server, jsonrpc.WebSocket("/rpc/ws"))
+```
+
+## Config
+
+`jsonrpc` reads `[jsonrpc]` config.
+
+```toml
+[jsonrpc]
+path = "/rpc"
+ws_path = "/rpc/ws"
+```
+
+WebSocket timeout, message size, and Origin settings are passed through code options.
+
+## Common mistakes
+
+### Installing jsonrpc without route
+
+JSON-RPC HTTP mounting depends on route. Install `route.Provider(...)` for HTTP JSON-RPC endpoints.
+
+### Unstable method names
+
+Method names become client-facing API names. Keep them stable and version them intentionally when behavior changes.
+
+### No WebSocket Origin restriction
+
+If JSON-RPC is exposed over WebSocket, apply the same Origin and authentication rules as normal WebSocket endpoints.
+
+## API quick reference
+
+- `jsonrpc.New()` creates a Server.
+- `jsonrpc.Method[I,O](server, name, handler)` registers a typed method.
+- `jsonrpc.Provider(server, options...)` connects to the framework.
+- `jsonrpc.Path(path)` sets the HTTP path.
+- `jsonrpc.WSPath(path, options...)` sets the WebSocket path.
+- `jsonrpc.Mount(target, server, options...)` mounts manually.

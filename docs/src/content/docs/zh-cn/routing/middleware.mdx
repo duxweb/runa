@@ -1,0 +1,99 @@
+---
+title: "路由中间件机制"
+description: "HTTP 中间件的类型、使用位置和执行顺序"
+---
+
+中间件用来处理横切逻辑，比如日志、错误恢复、限流、认证、安全 Header、请求 ID、CSRF 防护。
+
+这篇只说明 route 的中间件机制。官方内置中间件、security 预设和业务中间件见 [中间件总览](../extending/middleware/)。
+
+## 中间件是什么
+
+Runa 的中间件类型是：
+
+```go
+type Middleware func(route.Handler) route.Handler
+```
+
+可以理解成：中间件接收下一个 handler，返回一个新的 handler。
+
+## 编写中间件
+
+```go
+func Trace() route.Middleware {
+    return func(next route.Handler) route.Handler {
+        return func(ctx *route.Context) error {
+            ctx.Response().Header().Set("X-Trace", "demo")
+            return next(ctx)
+        }
+    }
+}
+```
+
+这段中间件会给响应加上 `X-Trace` Header，然后继续执行后面的 handler。
+
+## 在哪里使用中间件
+
+全局使用：
+
+```go
+route.Default().Use(Trace())
+```
+
+分组使用：
+
+```go
+api := route.Default().Group("/api")
+api.Use(Trace())
+```
+
+单个路由使用：
+
+```go
+route.Default().Get("/profile", profile).Use(Trace())
+```
+
+## 执行顺序
+
+```go
+route.Default().Use(A(), B(), C())
+```
+
+执行过程：
+
+```text
+A before -> B before -> C before -> handler -> C after -> B after -> A after
+```
+
+先注册的中间件在最外层，最后结束。
+
+## 一个带前后逻辑的例子
+
+```go
+func Logger() route.Middleware {
+    return func(next route.Handler) route.Handler {
+        return func(ctx *route.Context) error {
+            start := time.Now()
+            err := next(ctx)
+            log.Println(ctx.Request().Method, ctx.Request().URL.Path, time.Since(start))
+            return err
+        }
+    }
+}
+```
+
+## 内置中间件
+
+- [内置中间件](../extending/middleware/builtin/)：recover、CORS、CSRF、bodylimit、timeout、requestid、realip、logger、healthcheck、static、helmet
+- [安全预设](../extending/middleware/security/)：生产环境常用中间件组合
+- [业务中间件](../extending/middleware/business/)：session、auth、rate、audit
+
+## 常见错误
+
+### 忘记 return next(ctx)
+
+如果中间件没有调用 `next(ctx)`，后面的中间件和最终 handler 都不会执行。这可以用于拦截请求，但要确认是故意的。
+
+### 中间件里吞掉错误
+
+通常应该把 `next(ctx)` 返回的错误继续返回，让统一错误处理接管。

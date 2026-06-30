@@ -1,0 +1,78 @@
+---
+title: "工具库"
+description: "无需 Provider 即可独立使用的辅助包"
+---
+
+工具库是可直接 import 的辅助包，不一定有 Provider，也不一定进入 Runa 生命周期。它们解决通用问题：错误、ID、输入清理、安全中间件、权限检查和开发工具。
+
+新手可以把工具库理解成“普通 Go 包”：需要哪个函数就 import 哪个包，不需要 `app.Install`。
+
+只有少数工具会和框架生命周期发生关系。例如 `devtools.Provider()` 用来注册开发命令，`security.New(...)` 返回 HTTP 中间件，仍然是挂到 route 上，而不是把安全能力注册成一个全局服务。
+
+## 有哪些工具库
+
+| 工具 | 安装路径 | 用途 |
+| --- | --- | --- |
+| Errors | `github.com/duxweb/runa/errs` | 结构化错误、错误码、参数和堆栈 |
+| ID | `github.com/duxweb/runa/id` | 随机 ID 和格式化 |
+| Snowflake | `github.com/duxweb/runa/id/snowflake` | 雪花 ID 生成器 |
+| Sanitize | `github.com/duxweb/runa/sanitize` | 文本、URL、HTML 清理 |
+| Security | `github.com/duxweb/runa/security` | HTTP 安全中间件组合 |
+| RBAC | `github.com/duxweb/runa/rbac` | 角色权限检查器 |
+| Devtools | `github.com/duxweb/runa/devtools` | 脚手架、构建、模板嵌入命令 |
+
+## 工具库和能力包有什么不同
+
+能力包通常有 `New()`、`Provider()`、`Default()`，并接入 DI 和生命周期。工具库更轻，通常直接调用函数：
+
+```go
+id := id.MustRandom(16)
+clean := sanitize.Text("<b>Hello</b>")
+err := errs.New("user not found", errs.Code("USER_NOT_FOUND"))
+```
+
+`security` 和 `devtools` 是例外：`security` 是中间件库，`devtools` 有 Provider 用来注册命令。
+
+## 安装和使用模式
+
+工具库一般只需要 `go get` 对应模块：
+
+```bash
+go get github.com/duxweb/runa/sanitize
+```
+
+然后在业务代码里直接 import：
+
+```go
+import "github.com/duxweb/runa/sanitize"
+
+name := sanitize.Text(input)
+```
+
+如果文档里没有写 `Provider()`，就说明它不是框架能力，不需要放进 `app.Install(...)`。
+
+## 工具库需要配置文件吗
+
+大多数工具库不需要配置文件。比如 `id`、`sanitize`、`errs` 都是直接调用函数。
+
+少数工具和框架能力有关：`security` 是 HTTP 中间件组合，`devtools` 可以通过 Provider 注册命令。
+
+## 什么时候直接使用工具库
+
+- 业务代码里需要通用函数，直接 import 工具库
+- 需要 HTTP 安全链路，使用 `security.New(...)`
+- 需要扩展命令，安装 `devtools.Provider()`
+- 需要权限检查，使用 `rbac.Checker(store)` 并交给 `auth/middleware`
+
+## 新手建议
+
+先从这几个工具看起：
+
+- [Errors](./errors/)：业务错误和 HTTP 错误都建议统一成结构化错误
+- [Sanitize](./sanitize/)：处理用户输入、富文本和 URL 时常用
+- [Security](./security/)：生产 HTTP 服务常用的安全中间件组合
+- [RBAC](./rbac/)：需要角色权限时配合 `auth` 使用
+
+如果要做完整 i18n、多语言翻译和请求级翻译器，看能力里的 [语言 Lang](../capabilities/lang/)，它有 `Provider()`、配置和请求级翻译器。
+
+其他工具等实际遇到需求再看，不需要提前全部学完。

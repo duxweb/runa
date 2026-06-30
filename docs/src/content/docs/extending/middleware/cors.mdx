@@ -1,0 +1,78 @@
+---
+title: "CORS Middleware"
+description: "Handle browser cross-origin requests and OPTIONS preflight requests"
+---
+
+`middleware/cors` writes browser CORS response headers and handles OPTIONS preflight requests. It only runs when the request has an `Origin` header, so normal server-to-server requests are not affected.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## Basic usage
+
+```go
+import "github.com/duxweb/runa/middleware/cors"
+
+route.Default().Use(cors.New(cors.Config{
+    AllowOrigins: []string{"https://admin.example.com"},
+}))
+```
+
+## Allow common API requests
+
+```go
+route.Default().Use(cors.New(cors.Config{
+    AllowOrigins: []string{"https://admin.example.com"},
+    AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+    AllowHeaders: []string{"Authorization", "Content-Type", "X-Requested-With"},
+    MaxAge:       600,
+}))
+```
+
+## Allow Cookie or Authorization credentials
+
+```go
+route.Default().Use(cors.New(cors.Config{
+    AllowOrigins: []string{"https://admin.example.com"},
+    Credentials:  true,
+}))
+```
+
+Do not use `AllowOrigins: []string{"*"}` with `Credentials`. The current implementation does not reflect arbitrary origins or write `Access-Control-Allow-Credentials` for wildcard origins. This avoids accidentally enabling cross-site credentials.
+
+## Expose response headers
+
+```go
+route.Default().Use(cors.New(cors.Config{
+    AllowOrigins:  []string{"https://admin.example.com"},
+    ExposeHeaders: []string{"X-Total", "X-Request-ID"},
+}))
+```
+
+Browsers can only read a few safe response headers by default. Put pagination totals, request IDs, and similar fields in `ExposeHeaders` when frontend code needs them.
+
+## Config fields
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | Skip when true |
+| `AllowOrigins` | `[]string` | `*` | Allowed Origins |
+| `AllowMethods` | `[]string` | `GET,POST,PUT,PATCH,DELETE,OPTIONS` | Allowed methods |
+| `AllowHeaders` | `[]string` | `Authorization,Content-Type,X-Requested-With` | Allowed request headers |
+| `ExposeHeaders` | `[]string` | `nil` | Response headers visible to browsers |
+| `Credentials` | `bool` | `false` | Allow credentials |
+| `MaxAge` | `int` | `0` | Preflight cache seconds |
+
+## Preflight requests
+
+When the request method is `OPTIONS` and it contains `Access-Control-Request-Method`, middleware returns `204 No Content` directly and does not continue to the handler.
+
+## Common problems
+
+- CORS is a browser security policy. Server-to-server requests usually do not need CORS.
+- Cross-origin requests with cookies must use explicit origins, not `*`.
+- CORS is often global, but you can mount it only on `/api` if only API routes need cross-origin access.
+- `security.New(...)` does not include CORS because CORS policy depends on the frontend origin and credential strategy.

@@ -1,0 +1,115 @@
+---
+title: "OpenAPI"
+description: "Generate and export OpenAPI documentation"
+---
+
+The `openapi` package generates OpenAPI documents from route metadata. It can mount JSON and UI endpoints, and it can export files through a command.
+
+OpenAPI is useful for frontend developers, testers, third-party callers, and client SDK generation.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/openapi
+```
+
+OpenAPI reads HTTP route metadata, so HTTP applications usually also install `route`:
+
+```bash
+go get github.com/duxweb/runa/route
+```
+
+## Connect to an application
+
+```go
+app.Install(
+    route.Provider(route.Addr(":8080")),
+    openapi.Provider(openapi.Register("api",
+        openapi.Title("My API"),
+        openapi.Version("1.0.0"),
+        openapi.JSON("/openapi.json"),
+        openapi.UI("/docs"),
+    )),
+)
+```
+
+Visit:
+
+```text
+/openapi.json
+/docs
+```
+
+## Add route metadata
+
+```go
+route.Get[GetUserInput, GetUserOutput](route.Default(), "/users/{id}", handler).
+    Name("user.show").
+    Summary("User detail").
+    Tags("User")
+```
+
+OpenAPI reads route name, summary, tags, input/output schema, and other metadata.
+
+## Why typed routes are recommended
+
+Regular handlers can only provide method and path. Typed routes provide input, output, and validation information, which makes generated OpenAPI more complete.
+
+```go
+type GetUserInput struct {
+    ID string `param:"id"`
+}
+
+type GetUserOutput struct {
+    ID   string `json:"id"`
+    Name string `json:"name"`
+}
+```
+
+These structs become the source for OpenAPI schemas.
+
+## Export by command
+
+`openapi.Provider` registers a command:
+
+```bash
+go run . openapi:export --doc api --out openapi.json
+```
+
+Without `--out`, it prints to stdout.
+
+## Standalone New usage
+
+```go
+registry := openapi.New()
+registry.Mount(route.Default(), "api", openapi.JSON("/openapi.json"))
+```
+
+Business applications usually prefer `openapi.Provider(...)`. Standalone `New` is useful for tests or embedded scenarios.
+
+## Multiple documents
+
+You can register multiple document domains:
+
+```go
+openapi.Provider(
+    openapi.Register("public", openapi.JSON("/openapi/public.json")),
+    openapi.Register("admin", openapi.JSON("/openapi/admin.json")),
+)
+```
+
+Then assign the document domain from route or Resource metadata.
+
+## Common mistakes
+
+### The document has no endpoints
+
+Make sure routes are registered before application Freeze and are not marked with `SkipDoc()`.
+
+### Schema is incomplete
+
+Prefer typed routes and add field tags to input and output structs.
+
+### Installing openapi without route
+
+OpenAPI depends on route metadata. HTTP applications need `route.Provider(...)` as well.

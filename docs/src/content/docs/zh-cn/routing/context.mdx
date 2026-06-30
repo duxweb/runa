@@ -1,0 +1,120 @@
+---
+title: "路由上下文"
+description: "读取请求、响应内容和访问应用能力"
+---
+
+`route.Context` 是 HTTP handler 的请求上下文。它包装了 `http.Request`、响应写入器、路由参数、配置和请求级 Scope。
+
+每一次 HTTP 请求都会创建一个新的 `route.Context`。不要把它保存到全局变量里，也不要在请求结束后继续使用。
+
+## 基础用法
+
+```go
+route.Default().Get("/users/{id}", func(ctx *route.Context) error {
+    id := ctx.ParamString("id")
+    return ctx.JSON(runa.Map{"id": id})
+})
+```
+
+这段代码从路径 `/users/{id}` 里读取 `id`，再返回 JSON。
+
+## 读取请求数据
+
+```go
+route.Default().Get("/search/{category}", func(ctx *route.Context) error {
+    category := ctx.ParamString("category")
+    keyword := ctx.QueryString("keyword")
+    userAgent := ctx.Request().UserAgent()
+
+    return ctx.JSON(runa.Map{
+        "category": category,
+        "keyword": keyword,
+        "ua": userAgent,
+    })
+})
+```
+
+常用读取方式：
+
+| 方法 | 说明 |
+| --- | --- |
+| `ParamString(name)` | 读取路径参数 |
+| `QueryString(name)` | 读取查询参数 |
+| `Request()` | 取得原始 `*http.Request` |
+| `Response()` | 取得原始 `http.ResponseWriter` |
+| `Context()` | 取得请求的 `context.Context` |
+| `Body()` | 读取请求 body，并恢复给后续逻辑继续读取 |
+
+## 写出响应
+
+```go
+return ctx.Text("ok")
+return ctx.HTML("<h1>ok</h1>")
+return ctx.JSON(runa.Map{"ok": true})
+return ctx.Blob("application/octet-stream", body)
+```
+
+设置状态码：
+
+```go
+return ctx.Status(201).JSON(runa.Map{"created": true})
+```
+
+## 读取配置
+
+```go
+route.Default().Get("/config", func(ctx *route.Context) error {
+    name := ctx.Config("app").Get[string]("name")
+    return ctx.Text(name)
+})
+```
+
+`ctx.Config("app")` 读取的是 `config/app.toml` 对应的配置作用域。
+
+## 从 Context 使用能力
+
+能力对象通常通过对应包的 `Default()` 获取，例如 `cache.Default()`、`database.Default()`、`queue.Default()`。
+
+```go
+route.Default().Get("/cache", func(ctx *route.Context) error {
+    store := cache.Default().MustOf[string]("default")
+    value, ok, err := store.Get(ctx.Context(), "hello")
+    if err != nil {
+        return err
+    }
+    if !ok {
+        return ctx.Status(404).Text("cache not found")
+    }
+    return ctx.Text(value)
+})
+```
+
+`ctx.Context()` 是当前请求的标准库 context，适合传给数据库、缓存、队列等能力。
+
+## 请求级数据
+
+请求级对象适合存放 trace id、当前用户、权限上下文等临时数据。中间件可以先写入，后续 handler 再读取。
+
+如果是跨请求共享的对象，不要放在 `route.Context` 里，应该放进 DI、缓存、数据库或业务服务。
+
+## 错误返回
+
+```go
+return ctx.Error(404, "user not found")
+```
+
+更复杂的错误建议使用 `errs` 工具包，统一错误码和参数。
+
+```go
+return errs.New("user not found", errs.Code("user.not_found"))
+```
+
+## 常见错误
+
+### 把 route.Context 传到后台协程里
+
+请求结束后，`route.Context` 不应该继续使用。如果确实要异步处理，请把必要的数据拷贝出来，再交给队列或后台任务。
+
+### 忘记用 ctx.Context()
+
+调用数据库、缓存、HTTP 客户端时，优先传 `ctx.Context()`，这样请求取消时，下游操作也能尽快停止。

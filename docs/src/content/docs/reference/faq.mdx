@@ -1,0 +1,57 @@
+---
+title: "FAQ"
+description: "Frequently asked questions"
+---
+
+## Does installing only the core include HTTP
+
+No. The core module only handles application loading, DI, config, commands, Host, and lifecycle. HTTP routing requires explicitly installing `github.com/duxweb/runa/route` and calling `runa.Install(route.Provider(...))`.
+
+## Does Run start HTTP, queues, and other services
+
+`Run` defaults to the `serve` command. `serve` only starts Host units that have been registered in the application.
+
+`route.Provider(route.Addr(...))` automatically registers the HTTP Host, so HTTP starts. `queue.Provider(...)` registers queue capabilities and the `queue:work` command, but it does not automatically start workers. Start a worker with `go run . queue:work default`, or register `queue.NewUnit(...)` as a Host from a Module.
+
+## Why should Default() be used after startup
+
+`Default()` reads objects from the default DI container. Providers register objects and finish configuration during application `Freeze` or `Run`, so business code should not assume `Default()` is ready before startup.
+
+Configure objects before startup through Provider options:
+
+```go
+app.Install(cache.Provider(cache.RegisterPool("profile")))
+```
+
+## Can I use a child package standalone
+
+Yes. Capability packages prefer to provide `New()`:
+
+```go
+registry := cache.New()
+pool := registry.MustOf[string]("default")
+```
+
+Standalone usage does not enter the Runa lifecycle and does not automatically read config or shut down gracefully.
+
+## What is the relationship between Provider and New
+
+`New()` creates the capability's own core object. `Provider()` registers that object in DI during the lifecycle and applies config, commands, Host units, route services, and other framework integrations.
+
+## Where should config files live
+
+By default, config files live in `config/`. You can change this with `runa.ConfigPath("config")`. `config/cache.toml` enters the `cache` scope, while `config/cache.production.toml` is loaded only in the production environment.
+
+## Why not use methods like ctx.Cache()
+
+Runa route is a transport block. It does not hardcode concrete capabilities into `route.Context`. This lets route avoid importing cache, database, storage, and other capability packages, so applications only pay dependency cost for the capabilities they install.
+
+In HTTP handlers, use the capability package `Default()` helper or `route.Service[T](ctx)` to read injected services.
+
+## Does go test ./... test all child modules
+
+No. Running `go test ./...` in the root module does not recursively enter nested modules. Runa uses `go.work` for local integration, and CI should test each module through a module matrix.
+
+## Is gRPC available now
+
+No. This repository does not currently include a gRPC module. gRPC docs describe the planned transport block, not an implemented API.

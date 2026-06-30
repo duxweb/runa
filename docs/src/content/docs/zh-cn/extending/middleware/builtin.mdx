@@ -1,0 +1,64 @@
+---
+title: "内置中间件索引"
+description: "Runa 官方 middleware 模块里的基础 HTTP 中间件"
+---
+
+内置中间件都来自 `github.com/duxweb/runa/middleware` 模块。它们不是 Provider，不需要 `runa.Install`，用到哪个就 import 哪个子包。
+
+如果你刚开始做 HTTP 服务，可以先用 Security 预设。等需要更细控制时，再逐个使用这些中间件。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## 列表
+
+| 中间件 | 包 | 文档 |
+| --- | --- | --- |
+| Recover | `middleware/recover` | [Recover](./recover/) |
+| Request ID | `middleware/requestid` | [Request ID](./requestid/) |
+| Real IP | `middleware/realip` | [Real IP](./realip/) |
+| Logger | `middleware/logger` | [Logger](./logger/) |
+| CORS | `middleware/cors` | [CORS](./cors/) |
+| CSRF | `middleware/csrf` | [CSRF](./csrf/) |
+| Body Limit | `middleware/bodylimit` | [Body Limit](./bodylimit/) |
+| Timeout | `middleware/timeout` | [Timeout](./timeout/) |
+| Helmet | `middleware/helmet` | [Helmet](./helmet/) |
+| Healthcheck | `middleware/healthcheck` | [Healthcheck](./healthcheck/) |
+| Static | `middleware/static` | [Static](./static/) |
+
+## 什么时候不用内置中间件
+
+如果已有公司统一的 `net/http` 中间件，也可以继续使用。Runa route 的中间件是自己的类型，普通 `net/http` 中间件需要做一层适配。
+
+## 推荐起步组合
+
+```go
+route.Default().Use(
+    recover.New(),
+    requestid.New(),
+    realip.New(realip.Config{TrustedProxies: []string{"10.0.0.0/8"}}),
+    logger.New(logger.Config{SkipPaths: []string{"/health"}}),
+    bodylimit.New(bodylimit.Config{Limit: 16 << 20}),
+    timeout.New(timeout.Config{Timeout: 30 * time.Second}),
+    helmet.New(),
+)
+```
+
+如果你不需要逐项控制，直接使用 [Security 生产预设](./security/) 会更省事。
+
+## 常见错误
+
+### 以为中间件需要 Install
+
+内置 middleware 不是 Provider，不需要 `app.Install`。直接 import 子包后挂到 route 即可。
+
+### 全局挂太多业务中间件
+
+recover、requestid、logger 适合全局。auth、rate、audit 这类业务中间件通常按分组挂载更清楚。
+
+### 忽略中间件顺序
+
+先注册的中间件在外层。request id、real ip 应尽量靠前，auth 应在 session 后面。

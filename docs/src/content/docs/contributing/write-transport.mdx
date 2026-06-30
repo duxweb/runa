@@ -1,0 +1,78 @@
+---
+title: "Write a Transport Block"
+description: "Host / Resolver / RouteServiceBinder"
+---
+
+A transport block connects a request protocol, such as HTTP, WebSocket, JSON-RPC, or future gRPC. It is not part of the kernel. It connects to the application through Provider and Host.
+
+## What a transport block is responsible for
+
+A transport block usually needs:
+
+- Its own Server or Registry.
+- `Provider()` to register DI and Host.
+- Optional commands.
+- Optional `Resolve` stage for delayed mounts.
+- `Shutdown` or Host Stop to release resources.
+
+## Start with the minimum shape
+
+```go
+type Server struct {}
+
+func New() *Server { return &Server{} }
+
+func Provider(server *Server) provider.Provider {
+    return providerImpl{server: server}
+}
+
+type providerImpl struct {
+    provider.Base
+    server *Server
+}
+
+func (providerImpl) Name() string { return "custom" }
+
+func (p providerImpl) Init(_ context.Context, ctx provider.Context) error {
+    provider.ProvideValueOnce(ctx, p.server)
+    return nil
+}
+
+func (p providerImpl) Register(ctx provider.Context) error {
+    return ctx.RegisterHost(NewHost(p.server))
+}
+```
+
+## Long-running services must use Host
+
+Host implements:
+
+```go
+type Unit interface {
+    Name() string
+    Start(context.Context) error
+    Stop(context.Context) error
+    Status() host.Status
+}
+```
+
+Long-running transport services should use Host instead of starting goroutines directly inside Provider.
+
+## Integrate with route only when HTTP is needed
+
+If the transport block runs on HTTP, such as JSON-RPC or WebSocket, it can read `*route.Registry` during Register and mount itself:
+
+```go
+routes := provider.MustInvoke[*route.Registry](ctx)
+Mount(routes.RouteGroup(), server)
+```
+
+This kind of transport should explicitly depend on `route`, while the kernel still does not depend on it.
+
+## Acceptance checklist
+
+- It does not import `runtime`.
+- It can be used standalone through `New()`.
+- Provider can register a Host or mount into route.
+- Shutdown or Stop releases resources.
+- Documentation explains install path, Provider example, and config.

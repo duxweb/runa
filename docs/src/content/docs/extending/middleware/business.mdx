@@ -1,0 +1,62 @@
+---
+title: "Business Middleware Index"
+description: "HTTP middleware for session, auth, rate limit, and audit capabilities"
+---
+
+Business middleware is not just an HTTP wrapper. It usually depends on the corresponding capability already being installed with `runa.Install`, then reads its registry from route services.
+
+That means this kind of middleware has two steps: install the capability Provider first, then mount the middleware on route.
+
+## List
+
+| Middleware | Required capability | Docs |
+| --- | --- | --- |
+| Session | `session.Provider(...)` | [Session](./session/) |
+| Auth | `auth.Provider()`, plus `session.Provider(...)` when using session auth | [Auth](./auth/) |
+| Rate Limit | `rate.Provider(...)` | [Rate Limit](./rate/) |
+| Audit | Direct `audit.Config`, or `audit.Provider(...)` for config-managed usage | [Audit](./audit/) |
+
+## Difference from basic middleware
+
+Basic middleware usually handles the HTTP request itself, such as CORS, logging, or timeouts. Business middleware reads capability state such as session, auth, rate, or audit.
+
+## Recommended order
+
+```go
+admin := route.Default().Group("/admin")
+admin.Use(sessionmw.Use("web"))
+admin.Use(authmw.Use("web"))
+admin.Use(ratemw.Use("admin"))
+admin.Use(auditmw.Default())
+```
+
+Order matters:
+
+- session loads the cookie session first.
+- auth resolves the current user from session or token.
+- rate can limit by user or IP.
+- audit records the actor, status code, error, and duration at the end.
+
+## Install
+
+Install only the capabilities you use:
+
+```bash
+go get github.com/duxweb/runa/session github.com/duxweb/runa/auth github.com/duxweb/runa/rate github.com/duxweb/runa/audit
+```
+
+If you only use API key authentication, you do not need to install session.
+
+## Common mistakes
+
+### Mounting middleware without installing its capability Provider
+
+Business middleware usually needs the corresponding capability installed. For example, `authmw.Use("web")` needs `auth.Provider()`, and session login also needs `session.Provider(...)`.
+
+### Reversing the order
+
+For session login, `sessionmw.Use("web")` should run before `authmw.Use("web")`.
+
+### Forcing auth on the whole site
+
+You can mount auth on an `/admin` or `/api` group instead of globally. Public routes can use `SkipAuth()` or route metadata to opt out.

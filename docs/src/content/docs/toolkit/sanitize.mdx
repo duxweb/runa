@@ -1,0 +1,74 @@
+---
+title: "Sanitize"
+description: "Text, URL, and HTML sanitization"
+---
+
+`sanitize` cleans untrusted input. It can sanitize plain text, URLs, and HTML. HTML behavior is selected through named policies.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/sanitize
+```
+
+## Text sanitization
+
+```go
+value := sanitize.Text("<b>Hello</b>\x00")
+```
+
+`Text` removes HTML tags and control characters. It is suitable for plain text fields such as nicknames and titles.
+
+## URL sanitization
+
+```go
+safe := sanitize.URL("https://example.com/a")
+blocked := sanitize.URL("javascript:alert(1)")
+_ = safe
+_ = blocked
+```
+
+Unsafe protocols return an empty string.
+
+## HTML policies
+
+```go
+plain := sanitize.HTML(input, sanitize.PlainText())
+strict := sanitize.HTML(input, sanitize.Strict())
+rich := sanitize.HTML(input, sanitize.RichText())
+markdown := sanitize.HTML(input, sanitize.Markdown())
+```
+
+- `Strict()` is the default safe policy and removes dangerous tags and attributes.
+- `RichText()` keeps common rich text tags.
+- `Markdown()` keeps common structures produced by Markdown output, such as code blocks.
+- `PlainText()` converts to plain text.
+
+## Custom policies
+
+```go
+sanitize.Register("custom", sanitize.Strict())
+value := sanitize.HTML(input, sanitize.Use("custom"))
+```
+
+## Common mistakes
+
+### Sanitizing only on the frontend
+
+Frontend sanitization improves UX but is not a security boundary. Sanitize or validate on the server too.
+
+### Using Text for rich text
+
+`Text` removes markup. Use HTML policy helpers when users are allowed to submit rich text.
+
+### Treating sanitization as authorization
+
+Sanitization cleans input. It does not replace permission checks or business validation.
+
+## API quick reference
+
+- `sanitize.Text(input)` sanitizes plain text.
+- `sanitize.URL(input)` sanitizes a URL.
+- `sanitize.HTML(input, policies...)` sanitizes HTML.
+- `sanitize.Register(name, policy)` registers a named policy.
+- `sanitize.Use(name)` uses a named policy.

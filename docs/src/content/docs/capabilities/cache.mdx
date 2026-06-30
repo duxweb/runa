@@ -1,0 +1,148 @@
+---
+title: "Cache"
+description: "Typed cache pools with replaceable drivers"
+---
+
+`cache` provides typed cache pools. It uses an in-memory driver by default, which is suitable for development and single-node caching. Install the Redis driver when you need shared cache.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/cache
+```
+
+Install the Redis driver only when needed:
+
+```bash
+go get github.com/duxweb/runa/cache/redis
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/cache"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        cache.Provider(
+            cache.RegisterPool("profile", cache.Prefix("profile:"), cache.TTL(10*time.Minute)),
+        ),
+    )
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    pool := cache.Default().MustOf[string]("profile")
+    _ = pool.Set(context.Background(), "1", "Runa", time.Minute)
+}
+```
+
+`cache.Provider()` registers `*cache.Registry` into DI during `Init`, reads config during `Register`, and registers it as a route service.
+
+## Standalone New usage
+
+```go
+registry := cache.New()
+registry.Cache("profile", cache.Prefix("profile:"))
+
+pool := registry.MustOf[string]("profile")
+_ = pool.Set(context.Background(), "1", "Runa", time.Minute)
+```
+
+Standalone usage does not automatically read `config/cache.toml`. Call `registry.Cache(...)` and `registry.RegisterDriver(...)` yourself.
+
+## Config
+
+`cache` reads `cache.pools.<name>` and only applies config to pools that have already been registered. `New()` registers `default`, `route`, `config`, `view`, `permission`, and `session` by default.
+
+```toml
+[cache.pools.default]
+driver = "memory"
+prefix = "app:"
+ttl = "10m"
+
+[cache.pools.profile]
+driver = "memory"
+prefix = "profile:"
+ttl = "30m"
+
+[cache.pools.profile.meta]
+role = "hot"
+```
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `driver` | string | driver name, default `memory` |
+| `prefix` | string | key prefix |
+| `ttl` | duration | default expiration |
+| `meta` | table | custom metadata |
+
+## Redis driver
+
+```go
+import (
+    goredis "github.com/redis/go-redis/v9"
+    cacheredis "github.com/duxweb/runa/cache/redis"
+)
+
+client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
+
+app.Install(cache.Provider(
+    cache.RegisterDriver("redis", cacheredis.Driver(client, cache.Prefix("runa:"))),
+    cache.RegisterPool("default", cache.Use("redis")),
+))
+```
+
+`RegisterDriver("redis", ...)` only registers the Redis driver in the cache registry. `RegisterPool("default", cache.Use("redis"))` makes the `default` pool use that driver. Without `Use(...)`, the built-in `memory` driver is used.
+
+The Redis driver enters the dependency graph only when you import `github.com/duxweb/runa/cache/redis`.
+
+## Common API
+
+```go
+pool := cache.Default().MustOf[User]("default")
+
+value, ok, err := pool.Get(ctx, "user:1")
+err = pool.Set(ctx, "user:1", User{Name: "Runa"}, time.Minute)
+value, err = pool.Remember(ctx, "user:1", time.Minute, func(context.Context) (User, error) {
+    return loadUser(), nil
+})
+err = pool.Delete(ctx, "user:1")
+```
+
+`MustOf[T]` returns `cache.Cache[T]`. Serialization uses JSON by default. Use `cache.Codec(cache.GobCodec())` or `cache.Codec(cache.StringCodec())` to replace it.
+
+## Common mistakes
+
+### Registering a driver without making a pool use it
+
+`cache.RegisterDriver("redis", ...)` only registers the driver. Add `cache.Use("redis")` on the target pool.
+
+### Reading Default before the application is ready
+
+Use `cache.Default()` after `app.Freeze(ctx)` or inside code that runs after startup. Configure pools before startup through Provider options or config files.
+
+### Mixing cache value types
+
+`MustOf[T]` is typed. If one part of the application writes `User` and another reads `string` from the same key, decoding will fail.
+
+## API quick reference
+
+- `cache.New()` creates a standalone registry.
+- `cache.Provider(...)` connects to the framework lifecycle.
+- `cache.Default()` reads `*cache.Registry` from default DI.
+- `cache.RegisterDriver(name, driver)` registers a driver.
+- `cache.RegisterPool(name, options...)` registers a cache pool.
+- `registry.MustOf[T](name)` gets a typed cache pool.
+- `cache.MemoryDriver(...)` creates a memory driver.
+- `cache.LayeredDriver(l1, l2, ...)` creates a layered cache driver.

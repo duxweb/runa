@@ -1,0 +1,88 @@
+---
+title: "Helmet 中间件"
+description: "写入常见 HTTP 安全响应 Header"
+---
+
+`middleware/helmet` 用来设置一组常见安全 Header，降低 MIME 嗅探、点击劫持、弱 Referrer 泄漏等风险。它不替代认证、权限、CSRF 或输入校验，只是 HTTP 响应层的基础防护。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## 基本用法
+
+```go
+import "github.com/duxweb/runa/middleware/helmet"
+
+route.Default().Use(helmet.New())
+```
+
+## 默认 Header
+
+| Header | 默认值 | 作用 |
+| --- | --- | --- |
+| `X-Content-Type-Options` | `nosniff` | 禁止浏览器 MIME 嗅探 |
+| `X-Frame-Options` | `SAMEORIGIN` | 降低点击劫持风险 |
+| `Referrer-Policy` | `no-referrer-when-downgrade` | 控制 Referer 泄漏 |
+| `X-XSS-Protection` | `0` | 关闭旧浏览器 XSS Auditor |
+| `Cross-Origin-Opener-Policy` | `same-origin` | 隔离顶级浏览上下文 |
+
+## 自定义 Header
+
+```go
+route.Default().Use(helmet.New(helmet.Config{
+    ReferrerPolicy: "strict-origin-when-cross-origin",
+    Custom: map[string]string{
+        "Permissions-Policy": "geolocation=(), camera=()",
+    },
+}))
+```
+
+## 允许被指定页面嵌入
+
+如果你要把页面嵌入同域 iframe，默认 `SAMEORIGIN` 可以保留。如果要被其他域嵌入，需要按业务明确调整：
+
+```go
+route.Default().Use(helmet.New(helmet.Config{
+    FrameOptions: "",
+    Custom: map[string]string{
+        "Content-Security-Policy": "frame-ancestors https://portal.example.com",
+    },
+}))
+```
+
+把某个字段设置为空字符串时，中间件不会写这个 Header。
+
+## 配置项
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | 返回 `true` 时跳过 |
+| `ContentTypeNosniff` | `string` | `nosniff` | `X-Content-Type-Options` |
+| `FrameOptions` | `string` | `SAMEORIGIN` | `X-Frame-Options` |
+| `ReferrerPolicy` | `string` | `no-referrer-when-downgrade` | `Referrer-Policy` |
+| `XSSProtection` | `string` | `0` | `X-XSS-Protection` |
+| `CrossOriginOpenerPolicy` | `string` | `same-origin` | `Cross-Origin-Opener-Policy` |
+| `Custom` | `map[string]string` | `nil` | 额外 Header |
+
+## 和 security 的关系
+
+`security.New(...)` 默认包含 helmet。如果你需要自定义 helmet 配置，可以禁用 security 里的 helmet 后单独挂载：
+
+```go
+route.Default().Use(security.New(
+    security.Production(),
+    security.Disable("helmet"),
+))
+route.Default().Use(helmet.New(helmet.Config{
+    ReferrerPolicy: "strict-origin-when-cross-origin",
+}))
+```
+
+## 常见问题
+
+- Helmet 不会自动设置 CORS，CORS 要用 [CORS 中间件](./cors/)
+- Helmet 不会自动设置 CSP，复杂 CSP 建议通过 `Custom` 自己写
+- 静态资源、HTML 页面和 API 都可以使用 Helmet，但 iframe、下载、跨域隔离场景要单独确认 Header 策略

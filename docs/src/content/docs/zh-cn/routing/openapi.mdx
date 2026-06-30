@@ -1,0 +1,115 @@
+---
+title: "OpenAPI"
+description: "生成与导出 OpenAPI 文档"
+---
+
+`openapi` 包从 route 元数据生成 OpenAPI 文档。它可以把 JSON 和文档 UI 挂到 HTTP 路由，也可以通过命令导出文件。
+
+OpenAPI 适合给前端、测试、第三方调用方看接口，也可以用于生成客户端 SDK。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/openapi
+```
+
+OpenAPI 读取 HTTP 路由元数据，所以通常也会安装 `route`：
+
+```bash
+go get github.com/duxweb/runa/route
+```
+
+## 接入应用
+
+```go
+app.Install(
+    route.Provider(route.Addr(":8080")),
+    openapi.Provider(openapi.Register("api",
+        openapi.Title("My API"),
+        openapi.Version("1.0.0"),
+        openapi.JSON("/openapi.json"),
+        openapi.UI("/docs"),
+    )),
+)
+```
+
+访问：
+
+```text
+/openapi.json
+/docs
+```
+
+## 给路由补充文档信息
+
+```go
+route.Get[GetUserInput, GetUserOutput](route.Default(), "/users/{id}", handler).
+    Name("user.show").
+    Summary("用户详情").
+    Tags("User")
+```
+
+OpenAPI 会读取路由名称、摘要、标签、输入输出 schema 等信息。
+
+## 为什么推荐强类型路由
+
+普通 handler 只能提供路径和方法。强类型路由能提供输入、输出和验证信息，生成出来的 OpenAPI 更完整。
+
+```go
+type GetUserInput struct {
+    ID string `param:"id"`
+}
+
+type GetUserOutput struct {
+    ID   string `json:"id"`
+    Name string `json:"name"`
+}
+```
+
+这些结构体会成为 OpenAPI schema 的来源。
+
+## 命令导出
+
+`openapi.Provider` 会注册命令：
+
+```bash
+go run . openapi:export --doc api --out openapi.json
+```
+
+不传 `--out` 时输出到命令行。
+
+## 独立 New 使用
+
+```go
+registry := openapi.New()
+registry.Mount(route.Default(), "api", openapi.JSON("/openapi.json"))
+```
+
+业务应用更推荐用 `openapi.Provider(...)`，独立 `New` 更适合测试或嵌入式场景。
+
+## 多文档
+
+可以注册多个文档域：
+
+```go
+openapi.Provider(
+    openapi.Register("public", openapi.JSON("/openapi/public.json")),
+    openapi.Register("admin", openapi.JSON("/openapi/admin.json")),
+)
+```
+
+然后在路由或 Resource 上指定文档域。
+
+## 常见错误
+
+### 文档里没有接口
+
+确认接口是在 `openapi.Provider(...)` 之前或应用 Freeze 前注册的，并且没有调用 `SkipDoc()`。
+
+### schema 不完整
+
+优先使用强类型路由，并给输入输出结构体写好字段 tag。
+
+### 只装 openapi 没装 route
+
+OpenAPI 依赖 route 元数据。HTTP 应用里需要同时安装 `route.Provider(...)`。

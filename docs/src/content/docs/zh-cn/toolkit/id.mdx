@@ -1,0 +1,81 @@
+---
+title: "ID"
+description: "随机 ID 与 Snowflake ID"
+---
+
+`id` 提供随机 ID、十六进制 ID 和数字 ID 格式化。雪花 ID 在独立模块 `id/snowflake` 中，只有安装后才引入对应依赖。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/id
+```
+
+雪花 ID：
+
+```bash
+go get github.com/duxweb/runa/id/snowflake
+```
+
+## 随机 ID
+
+```go
+value, err := id.Random(16)
+hexValue, err := id.RandomHex(16)
+_ = value
+_ = hexValue
+_ = err
+```
+
+`Random(16)` 返回 URL 安全字符串，`RandomHex(16)` 返回 32 位十六进制字符串。
+
+## MustRandom
+
+```go
+traceID := id.MustRandom(16)
+_ = traceID
+```
+
+`MustRandom` 适合初始化阶段使用，随机源失败时会 panic。
+
+## 数字格式化
+
+```go
+text := id.Format(123456789)
+_ = text
+```
+
+## Snowflake
+
+```go
+import snow "github.com/duxweb/runa/id/snowflake"
+
+generator := snow.MustSnowflake(1)
+value, err := generator.New(context.Background())
+_ = value
+_ = err
+```
+
+
+## 常见错误
+
+### 把随机 ID 当递增主键
+
+`id.Random` 适合 token、trace id、临时 ID，不适合需要排序的数据库主键。需要大致有序的 ID 可以考虑 Snowflake。
+
+### 所有机器使用同一个 Snowflake nodeID
+
+多实例部署时，每个实例的 nodeID 应不同，否则可能生成重复 ID。
+
+### 在请求热路径里反复创建生成器
+
+Snowflake generator 应该初始化一次后复用，不要每次请求都重新创建。
+
+## API 速查
+
+- `id.Random(size)` 生成随机字符串
+- `id.MustRandom(size)` 生成随机字符串或 panic
+- `id.RandomHex(size)` 生成十六进制字符串
+- `id.Format(value)` 格式化数字 ID
+- `snowflake.NewSnowflake(nodeID)` 创建雪花 ID 生成器
+- `snowflake.MustSnowflake(nodeID)` 创建生成器或 panic

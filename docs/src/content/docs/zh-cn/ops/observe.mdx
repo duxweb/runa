@@ -1,0 +1,125 @@
+---
+title: "观测 Observe"
+description: "健康检查、指标与 Prometheus 适配"
+---
+
+`observe` 提供健康检查、就绪检查、指标端点和可选 debug 端点。它需要和 `route` 一起使用，因为端点通过 HTTP 暴露。
+
+健康检查适合给负载均衡、容器平台和监控系统调用。不要把它当普通业务接口。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/observe
+```
+
+Prometheus 适配器按需安装：
+
+```bash
+go get github.com/duxweb/runa/observe/prometheus
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/observe"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        observe.Provider(observe.Config{Service: "api", Env: "dev", Mount: "/-"}),
+    )
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+默认端点：
+
+```bash
+curl http://localhost:8080/-/health
+curl http://localhost:8080/-/ready
+```
+
+## 健康检查
+
+```go
+app.Install(observe.Provider(observe.Config{Mount: "/-"},
+    observe.Health("database", observe.CheckerFunc(func(ctx context.Context) observe.Result {
+        return observe.Result{Status: observe.Pass, Message: "database ok"}
+    })),
+    observe.Ready("queue", observe.CheckerFunc(func(ctx context.Context) observe.Result {
+        return observe.Result{Status: observe.Pass, Message: "queue ready"}
+    })),
+))
+```
+
+内置 checker 能读取 Host、Database、Cache、Queue、Storage 等注册表，用于聚合应用状态。
+
+## Prometheus
+
+```go
+import obs "github.com/duxweb/runa/observe/prometheus"
+
+app.Install(observe.Provider(observe.Config{Mount: "/-"},
+    observe.Metrics(obs.Exporter()),
+    observe.Trace(obs.HTTPCollector()),
+))
+```
+
+接入后可以访问：
+
+```bash
+curl http://localhost:8080/-/metrics
+```
+
+## 配置
+
+`observe` 读取 `[observe]` 配置。
+
+```toml
+[observe]
+service = "api"
+env = "production"
+version = "1.0.0"
+timeout = "2s"
+mount = "/-"
+debug = false
+```
+
+`debug = true` 会额外挂载 `/debug/monitor`、pprof 和 expvar 相关端点，只建议在受控环境开启。
+
+## 常见错误
+
+### 没安装 route
+
+`observe` 的端点通过 HTTP 暴露，所以需要安装 `route.Provider(...)`。
+
+### 生产环境随便打开 debug
+
+`debug = true` 会暴露 pprof、expvar 等调试端点。生产环境只应在受控网络或临时排查时开启。
+
+### health 和 ready 混用
+
+`health` 表示进程是否活着，`ready` 表示是否已经准备好接流量。数据库、队列等依赖未就绪时，ready 应该失败。
+
+## API 速查
+
+- `observe.Provider(config, options...)` 接入观测端点
+- `observe.Default()` 从默认 DI 取健康检查注册表
+- `observe.Health(name, checker)` 注册健康检查
+- `observe.Ready(name, checker)` 注册就绪检查
+- `observe.Metrics(exporter)` 注册指标导出器
+- `observe.Trace(installer)` 注册链路追踪安装器
+- `observe.MountAt(prefix)` 设置挂载前缀

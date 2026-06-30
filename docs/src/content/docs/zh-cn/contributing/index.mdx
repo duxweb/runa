@@ -1,0 +1,35 @@
+---
+title: "贡献指南"
+description: "内部约定与治理"
+---
+
+本章是开发者视角，面向 Runa 内核、官方能力块、驱动块和第三方扩展作者。普通应用开发者不需要先读这一章。
+
+## 本地开发怎么启动
+
+Runa 使用多模块 Monorepo。建议在仓库根目录使用 `go.work` 开发：
+
+```bash
+git clone https://github.com/duxweb/runa.git
+cd runa
+go work sync
+go test ./...
+```
+
+嵌套模块需要单独测试，见 [测试](./testing/)。
+
+## 贡献代码要遵守什么
+
+- 内核只处理加载、DI、命令、Host、配置和生命周期
+- 传输、能力、驱动都通过 Provider 接入
+- 能独立 `New()` 的对象，才应该注册进 DI
+- 默认不 import 的模块，不应该进入用户依赖图
+- 子包不要反向依赖 `runtime`
+
+## 提交前要检查什么
+
+- 每个 PR 聚焦一个主题
+- 改 API 必须同步示例和文档
+- 新能力必须包含独立 `New()` 示例和 Provider 示例
+- 新驱动必须说明依赖边界和关闭逻辑
+- 新传输必须说明 Host 与生命周期接入方式

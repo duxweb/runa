@@ -1,0 +1,69 @@
+---
+title: "Operations"
+description: "Production-oriented operations capabilities"
+---
+
+Operations capabilities do not directly carry business data. They provide audit, health checks, instance heartbeats, metrics, and a runtime console around production operations. They also connect through Provider and the lifecycle, so they enter the dependency graph only when installed.
+
+If you are writing your first route, you can skip this section for now. Come back when the application is ready to deploy, needs troubleshooting, or must keep audit records.
+
+## Common production capabilities
+
+| Capability | Install path | Purpose |
+| --- | --- | --- |
+| Audit | `github.com/duxweb/runa/audit` | Request auditing, audit writers, queue writing |
+| Observe | `github.com/duxweb/runa/observe` | `/health`, `/ready`, metrics, debug endpoints |
+| Cluster | `github.com/duxweb/runa/cluster` | Instance registry, heartbeats, cluster instance list |
+| Console | `github.com/duxweb/runa/console` | Runtime console, panels, monitor data |
+
+## Recommended first operations capabilities
+
+During development, start with `observe` if you need `/health` and `/ready`. In production, a common first setup is:
+
+```go
+app.Install(
+    log.Provider(),
+    observe.Provider(observe.Config{Service: "api", Mount: "/-"}),
+)
+```
+
+If you need audit or cluster heartbeats, install them next:
+
+```go
+app.Install(
+    queue.Provider(),
+    audit.Provider(audit.Config{Writer: audit.DefaultLogWriter()}),
+    cluster.Provider(cluster.DriverWith(cluster.MemoryDriver())),
+)
+```
+
+`console` is useful for protected internal environments. Do not expose it directly to the public internet without authentication and network isolation.
+
+## Should small projects use operations capabilities
+
+Add them by stage:
+
+- Local development: skip them, or install only `observe`.
+- Test environment: install `observe` and `log`.
+- Production: add `audit` for compliance, `cluster` for multi-instance deployments, and `console` only when a runtime panel is needed.
+
+## How they differ from business capabilities
+
+Business capabilities are usually called directly by business code, such as `cache.Default()` or `queue.Default()`. Operations capabilities are more often consumed by middleware, Host units, or the console:
+
+- Audit writes records through HTTP middleware.
+- Observe exposes health checks and metrics through HTTP routes.
+- Cluster starts heartbeats through the lifecycle.
+- Console reads runtime information from other capabilities through panels.
+
+## Common adoption order
+
+A practical production order is:
+
+1. Install `log` first, so errors and access logs have a place to go.
+2. Add `observe` for load balancers, container platforms, or monitoring systems.
+3. Add `audit` when compliance or business-operation tracing is required.
+4. Add `cluster` for multi-instance deployments.
+5. Add `console` only when you need an internal runtime panel.
+
+Do not install every operations package at the beginning. Start with a running application, then add what the deployment environment actually needs.

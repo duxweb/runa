@@ -1,0 +1,64 @@
+---
+title: "Healthcheck Middleware"
+description: "Return a simple health response before business handlers"
+---
+
+`middleware/healthcheck` provides a simple health endpoint for load balancers, container platforms, or process supervisors. When the path matches, it returns a text response and does not continue to later routes.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## Basic usage
+
+```go
+import "github.com/duxweb/runa/middleware/healthcheck"
+
+route.Default().Use(healthcheck.New())
+```
+
+By default, `/health` returns `200 ok`.
+
+## Custom path
+
+```go
+route.Default().Use(healthcheck.New(healthcheck.Config{
+    Path:    "/healthz",
+    Status:  200,
+    Message: "ok",
+}))
+```
+
+## Config fields
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | Skip when true |
+| `Path` | `string` | `/health` | Health path |
+| `Status` | `int` | `200` | Response status |
+| `Message` | `string` | `ok` | Response body |
+
+## Difference from observe
+
+`healthcheck` is small and returns fixed text. It fits simple liveness checks.
+
+`observe` is operations-focused and usually provides fuller health, readiness, metrics, and debug endpoints. If observe already exposes `/health` and `/ready`, you usually do not need healthcheck middleware too.
+
+## Skip access logs
+
+Health checks are usually frequent, so skip them in logger:
+
+```go
+route.Default().Use(logger.New(logger.Config{
+    SkipPaths: []string{"/health"},
+}))
+route.Default().Use(healthcheck.New())
+```
+
+## Common problems
+
+- healthcheck does not check database, cache, or other external dependencies; it only returns a fixed response.
+- For readiness checks, write a custom handler or use observe.
+- If your app routes live under `/api`, avoid putting healthcheck under `/api/health`; infrastructure is usually easier to configure with root-level `/health`.

@@ -1,0 +1,139 @@
+---
+title: "Capabilities Overview"
+description: "Composable capability blocks"
+---
+
+Capability blocks are Runa's business building blocks. Each capability first provides a standalone `New()` core object, then connects to the framework lifecycle through `Provider()`. After application startup, `Default()` reads the default instance from DI.
+
+## Connect capability blocks to an application
+
+Install the core and the capabilities you need:
+
+```bash
+go get github.com/duxweb/runa github.com/duxweb/runa/cache github.com/duxweb/runa/queue
+```
+
+Connect them to the application:
+
+```go
+app := runa.New()
+app.Install(
+    cache.Provider(),
+    queue.Provider(),
+)
+
+if err := app.Run(context.Background()); err != nil {
+    panic(err)
+}
+```
+
+Before startup, use `Provider` to register drivers, instances, commands, and config binding. After startup, use `Default()` to read the default core object from DI.
+
+```go
+store := cache.Default().MustOf[string]("default")
+queues := queue.Default()
+```
+
+## Standalone usage without the framework
+
+Capability packages are not tightly bound to the framework. If you only want to use a capability directly, call `New()`:
+
+```go
+registry := cache.New()
+pool := registry.MustOf[string]("default")
+_ = pool
+```
+
+This mode does not enter the Runa lifecycle and does not automatically read config files, register commands, or handle graceful shutdown.
+
+## Available capability blocks
+
+| Capability | Import path | Default object | Default driver | Purpose |
+| --- | --- | --- | --- | --- |
+| Database | `github.com/duxweb/runa/database` | `*database.Registry` | no default connection | Manage multiple database runtimes |
+| Cache | `github.com/duxweb/runa/cache` | `*cache.Registry` | memory | Typed cache pools |
+| Queue | `github.com/duxweb/runa/queue` | `*queue.Registry` | memory | Background queues and workers |
+| Session | `github.com/duxweb/runa/session` | `*session.Registry` | memory | HTTP session storage |
+| Auth | `github.com/duxweb/runa/auth` | `*auth.Registry` | no default authenticator | Login state, tokens, permission checks |
+| Storage | `github.com/duxweb/runa/storage` | `*storage.Registry` | local | Local and object-storage disks |
+| Log | `github.com/duxweb/runa/log` | `*log.Registry` | console | Named log channels |
+| Lock | `github.com/duxweb/runa/lock` | `*lock.Registry` | memory | Mutex and distributed lock abstraction |
+| Rate | `github.com/duxweb/runa/rate` | `*rate.Registry` | memory | Rate-limit rules and HTTP middleware |
+| Event | `github.com/duxweb/runa/event` | `*event.Registry` | in-memory dispatch | Domain events |
+| Task | `github.com/duxweb/runa/task` | `*task.Registry` | direct execution | Business task dispatch |
+| Schedule | `github.com/duxweb/runa/schedule` | `*schedule.Registry` | cron | Scheduled jobs |
+| Message | `github.com/duxweb/runa/message` | `*message.Registry` | memory | Pub/sub messages |
+| View | `github.com/duxweb/runa/view` | `*view.Registry` | html/template | Template rendering |
+| Lang | `github.com/duxweb/runa/lang` | `*lang.Registry` | go-i18n bundle | i18n message translation and locale matching |
+| Asset | `github.com/duxweb/runa/asset` | `*asset.Registry` | file source | Static asset URLs and serving |
+
+## Install external drivers on demand
+
+Default drivers are usually pure Go memory or local implementations, suitable for development and single-node deployments. Install driver modules only when you need Redis, S3, NATS, AMQP, Oro, SQLite, or other external dependencies.
+
+```bash
+go get github.com/duxweb/runa/cache/redis github.com/duxweb/runa/storage/s3
+```
+
+Driver modules enter the application dependency graph only after import. If you do not use them, they do not enter your `go.sum`.
+
+## Config files
+
+Providers read their own scopes from `config/*.toml`. The common pattern is one scope per capability:
+
+```toml
+[cache.pools.default]
+driver = "memory"
+ttl = "10m"
+
+[queue.queues.default]
+driver = "memory"
+workers = ["default"]
+```
+
+Code options have higher priority than file config and fit runtime requirements that must be fixed. File config is better for environment differences.
+
+## Access capabilities in HTTP requests
+
+`route.Context` does not directly bind concrete capabilities. In HTTP handlers, prefer capability package `Default()` or `route.Service[T](ctx)` to read services injected into the route context.
+
+```go
+route.Default().Get("/cache", func(ctx *route.Context) error {
+    registry := route.Service[*cache.Registry](ctx)
+    pool := registry.MustOf[string]("default")
+    value, _, err := pool.Get(ctx.Context(), "hello")
+    if err != nil {
+        return err
+    }
+    return ctx.Text(value)
+})
+```
+
+## Beginner guide: choosing capabilities
+
+Start with the smallest set that makes the application run:
+
+- HTTP API: install `route` first.
+- Need repeated reads or temporary data: add `cache`.
+- Need background processing: add `queue` and `task`.
+- Need scheduled execution: add `schedule`.
+- Need login state: add `session` and `auth`.
+- Need files: add `storage` and `asset`.
+- Need server-rendered pages: add `view` and `rhtml`.
+- Need multi-language messages: add `lang`, then add `middleware/lang` for HTTP negotiation.
+
+You do not need to learn or install every capability before building the first service.
+
+## Common mistakes
+
+### Confusing capability packages and driver packages
+
+A capability package defines the business API. A driver package connects an external system. For example, business code uses `cache`, while `cache/redis` only provides a Redis driver.
+
+### Running go get without importing the package
+
+`go get` adds a module to `go.mod`, but Go only compiles packages that your code imports. If the package is not imported, it does not enter the compile path.
+
+### Installing a capability without registering an instance
+
+Some capabilities need named instances such as cache pools, queues, workers, databases, or sessions. Install the Provider, then register the names your business code uses.

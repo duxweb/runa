@@ -1,0 +1,135 @@
+---
+title: "CRUD 接口"
+description: "基于 Resource 与 Store 快速构建数据接口"
+---
+
+`crud` 包基于 `resource.Resource` 和 `crud.Store` 快速生成标准数据接口。它不是 Provider，不需要 `runa.Install`，通常直接在路由注册阶段使用。
+
+CRUD 适合后台管理、数据管理接口、重复的列表详情保存删除接口。如果接口逻辑很特殊，可以只用 Resource 手写。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/crud
+```
+
+如果使用 Oro 作为存储适配器：
+
+```bash
+go get github.com/duxweb/runa/crud/orostore
+```
+
+## 基本流程
+
+CRUD 的使用流程是：
+
+```text
+route.Group -> resource.New -> crud.New -> 配置分页、排序、验证、输出转换
+```
+
+最小结构：
+
+```go
+users := resource.New(route.Default().Group("/admin"), "/users").
+    Name("user").
+    Summary("用户").
+    Tags("User")
+
+crud.New[User, UserQuery](users, userStore)
+```
+
+`userStore` 需要实现 `crud.Store[User, UserQuery]`。
+
+## Store 接口
+
+```go
+type Store[Model any, Query any] interface {
+    Query(ctx *crud.Context[Model]) (Query, error)
+    List(ctx *crud.Context[Model], query Query) ([]*Model, core.ListMeta, error)
+    Show(ctx *crud.Context[Model], query Query) (*Model, error)
+    Create(ctx *crud.Context[Model]) (*Model, error)
+    Edit(ctx *crud.Context[Model], query Query) (*Model, error)
+    Store(ctx *crud.Context[Model], query Query, fields []string) (*Model, error)
+    Delete(ctx *crud.Context[Model], query Query) error
+    Tx(ctx *crud.Context[Model], fn func(ctx *crud.Context[Model]) error) error
+}
+```
+
+新手可以先理解为：Store 负责真正访问数据库或内存数据，CRUD 负责把 HTTP 动作和 Store 方法连接起来。
+
+## 控制开放哪些动作
+
+```go
+crud.New[User, UserQuery](users, userStore).
+    Actions(crud.ListAction, crud.ShowAction, crud.CreateAction, crud.EditAction, crud.DeleteAction)
+```
+
+默认会注册 list、show、create、edit、delete。需要 `store`、batch、import、export、soft delete 时再额外开启。
+
+## 分页、排序、筛选
+
+```go
+crud.New[User, UserQuery](users, userStore).
+    Page(20, 100).
+    Sort("id", "desc").
+    SortFields(crud.SortField{Name: "name"}).
+    Filters(
+        filter.Eq[int]("status"),
+        filter.Like("name"),
+    )
+```
+
+含义：默认每页 20 条，最大 100 条，默认按 `id desc` 排序，允许按 `name` 排序，允许按 `status` 和 `name` 筛选。
+
+## 输出转换
+
+数据库模型不一定适合直接返回给前端。可以使用 `Transform` 转成输出结构。
+
+```go
+type UserOutput struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+}
+
+crud.New[User, UserQuery](users, userStore).
+    Transform[UserOutput](func(c *crud.Context[User], model *User) UserOutput {
+        return UserOutput{ID: model.ID, Name: model.Name}
+    })
+```
+
+## 验证输入
+
+```go
+crud.New[User, UserQuery](users, userStore).
+    Validate(func(c *crud.Context[User], v *validate.Validator) {
+        v.Field("Name").Required("请输入名称")
+    }, crud.CreateAction, crud.EditAction)
+```
+
+第二个参数可以限制验证只作用在哪些动作上。
+
+## 导入导出
+
+CRUD 支持 CSV/XLSX 导入导出。相关功能依赖 `crud` 模块自己的外部依赖，只有 import `crud` 时才进入项目。
+
+导入导出属于进阶功能，建议先把 list、show、create、edit、delete 跑通后再接。
+
+## Oro Store
+
+如果项目使用 Oro ORM，可以直接使用 `crud/orostore`：
+
+```go
+crud.New[User, *oro.ModelQuery[User]](users, orostore.Store[User](db))
+```
+
+`crud/orostore` 适配 `github.com/duxweb/oro`，适合已经使用 Oro ORM 的项目。完整接入方式见 [CRUD Oro Store](../drivers/crud-orostore/)。
+
+## 常见错误
+
+### CRUD 不是 Provider
+
+`crud` 不需要 `app.Install(crud.Provider())`。它是在路由注册阶段直接调用的构建器。
+
+### Store 方法职责不清
+
+CRUD 只负责 HTTP 到 Store 的编排。真正的数据查询、保存、事务、软删除逻辑仍然应该在 Store 里实现。

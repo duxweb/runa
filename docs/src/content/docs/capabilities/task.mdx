@@ -1,0 +1,107 @@
+---
+title: "Task"
+description: "Business task registration and direct/queue dispatch"
+---
+
+`task` registers named business tasks. By default, tasks execute directly in the current process. After installing `queue`, tasks can be dispatched to queue workers.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/task
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/provider"
+    "github.com/duxweb/runa/task"
+)
+
+type SendMail struct {
+    To string `json:"to"`
+}
+
+type appModule struct {
+    provider.ModuleBase
+}
+
+func (appModule) Name() string { return "app" }
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    tasks, err := provider.Invoke[*task.Registry](app)
+    if err != nil {
+        return err
+    }
+    tasks.Register("mail.send", func(ctx context.Context, item *task.TaskOf[SendMail]) error {
+        fmt.Println("send", item.Payload.To)
+        return nil
+    })
+    return nil
+}
+
+func main() {
+    app := runa.New()
+    app.Install(task.Provider())
+    app.Module(appModule{})
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    _, _ = task.Default().Dispatch(context.Background(), "mail.send", SendMail{To: "hello@runa.dev"})
+}
+```
+
+## Standalone New usage
+
+```go
+registry := task.New()
+registry.Register("mail.send", handler)
+_, err := registry.Dispatch(context.Background(), "mail.send", SendMail{To: "hello@runa.dev"})
+_ = err
+```
+
+## Config
+
+`task` currently has no TOML config. Retry, timeout, queue, and related behavior are declared through registration or dispatch options.
+
+## Dispatch options
+
+```go
+_, err := tasks.Dispatch(ctx, "mail.send", payload,
+    task.Queue("default"),
+    task.Delay(time.Minute),
+    task.Unique("mail:1"),
+)
+```
+
+- `Direct()` forces direct execution.
+- `Queue(name)` selects a queue.
+- `Delay(duration)` delays execution.
+- `Unique(key)` deduplicates dispatch.
+
+## Commands
+
+After installing `task.Provider()`, these commands are registered:
+
+```bash
+go run . task:list
+go run . task:run mail.send '{"to":"hello@runa.dev"}'
+```
+
+## API quick reference
+
+- `task.New()` creates a standalone registry.
+- `task.Provider()` connects to the framework lifecycle.
+- `task.Default()` reads `*task.Registry` from default DI.
+- `registry.Register(name, handler, options...)` registers a task.
+- `registry.Dispatch(ctx, name, payload, options...)` dispatches a task.
+- `task.MarshalPayload(payload)` serializes a task payload.

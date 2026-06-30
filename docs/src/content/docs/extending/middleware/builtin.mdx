@@ -1,0 +1,64 @@
+---
+title: "Built-in Middleware Index"
+description: "The basic HTTP middleware in Runa's official middleware module"
+---
+
+Built-in middleware lives in `github.com/duxweb/runa/middleware`. These packages are not Providers and do not use `runa.Install`. Import the subpackage you need and mount it on route.
+
+If you are building your first HTTP service, start with the Security preset. Use individual middleware when you need fine-grained control.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## List
+
+| Middleware | Package | Docs |
+| --- | --- | --- |
+| Recover | `middleware/recover` | [Recover](./recover/) |
+| Request ID | `middleware/requestid` | [Request ID](./requestid/) |
+| Real IP | `middleware/realip` | [Real IP](./realip/) |
+| Logger | `middleware/logger` | [Logger](./logger/) |
+| CORS | `middleware/cors` | [CORS](./cors/) |
+| CSRF | `middleware/csrf` | [CSRF](./csrf/) |
+| Body Limit | `middleware/bodylimit` | [Body Limit](./bodylimit/) |
+| Timeout | `middleware/timeout` | [Timeout](./timeout/) |
+| Helmet | `middleware/helmet` | [Helmet](./helmet/) |
+| Healthcheck | `middleware/healthcheck` | [Healthcheck](./healthcheck/) |
+| Static | `middleware/static` | [Static](./static/) |
+
+## When not to use built-in middleware
+
+If your company already has standard `net/http` middleware, you can keep using it. Runa route has its own middleware type, so normal `net/http` middleware needs a small adapter.
+
+## Recommended starter chain
+
+```go
+route.Default().Use(
+    recover.New(),
+    requestid.New(),
+    realip.New(realip.Config{TrustedProxies: []string{"10.0.0.0/8"}}),
+    logger.New(logger.Config{SkipPaths: []string{"/health"}}),
+    bodylimit.New(bodylimit.Config{Limit: 16 << 20}),
+    timeout.New(timeout.Config{Timeout: 30 * time.Second}),
+    helmet.New(),
+)
+```
+
+If you do not need per-item control, use [Security Preset](./security/) first.
+
+## Common mistakes
+
+### Thinking middleware needs Install
+
+Built-in middleware is not a Provider. Do not put it in `app.Install`. Import the subpackage and mount it on route.
+
+### Mounting too much business middleware globally
+
+`recover`, `requestid`, and `logger` are good global middleware. Business middleware such as auth, rate, and audit is usually clearer when mounted on a group.
+
+### Ignoring middleware order
+
+Middleware registered first wraps the later ones. Put request id and real ip early. Put auth after session when using session login.

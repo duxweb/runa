@@ -1,0 +1,142 @@
+---
+title: "Lock"
+description: "Mutex and distributed lock abstraction"
+---
+
+`lock` provides named lock instances. The default driver is memory, suitable for same-process mutual exclusion. Use the Redis driver when you need cross-process locking.
+
+Typical use cases include preventing the same scheduled job from running twice, preventing two workers from handling the same order at the same time, or ensuring one section of code runs only once at a time.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/lock
+```
+
+Install the Redis driver only when needed:
+
+```bash
+go get github.com/duxweb/runa/lock/redis
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/lock"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(lock.Provider(
+        lock.RegisterLocker("jobs", lock.TTL(30*time.Second), lock.Wait(5*time.Second)),
+    ))
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    locker := lock.Default().MustOf("jobs")
+    _ = locker.With(context.Background(), "daily-report", func(ctx context.Context) error {
+        return nil
+    })
+}
+```
+
+## Standalone New usage
+
+```go
+registry := lock.New()
+locker := registry.MustOf(lock.DefaultName)
+
+lease, ok, err := locker.Try(context.Background(), "job", lock.TTL(time.Minute))
+if err != nil {
+    panic(err)
+}
+if ok {
+    defer lease.Release(context.Background())
+}
+```
+
+## Choosing Try, Wait, and With
+
+| Method | Behavior | Good for |
+| --- | --- | --- |
+| `Try` | Attempts immediately and returns `ok=false` if locked | Tasks that can be skipped |
+| `Wait` | Waits until the lock is acquired or times out | Tasks that must run but can wait |
+| `With` | Acquires the lock, runs a function, and releases automatically | Most business code |
+
+If you are new to locks, start with `With` because it is harder to forget releasing the lease.
+
+## Config
+
+`lock` reads `lock.lockers.<name>` and only applies config to lockers that have already been registered.
+
+```toml
+[lock.lockers.default]
+driver = "memory"
+prefix = "lock:"
+ttl = "30s"
+wait = "5s"
+retry_interval = "100ms"
+auto_renew = true
+```
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `driver` | string | driver name, default `memory` |
+| `prefix` | string | lock key prefix |
+| `ttl` | duration | lease lifetime |
+| `wait` | duration | maximum wait time for acquiring a lock |
+| `retry_interval` | duration | retry interval while waiting |
+| `auto_renew` | bool | automatically renew during `With` |
+| `meta` | table | custom metadata |
+
+## Drivers
+
+The built-in `memory` driver is suitable for same-process mutual exclusion. For cross-process or multi-instance deployments, install `lock/redis`, register the Redis driver with `RegisterDriver`, then use `lock.Use("redis")` for the target locker.
+
+```go
+import (
+    goredis "github.com/redis/go-redis/v9"
+    lockredis "github.com/duxweb/runa/lock/redis"
+)
+
+client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
+
+app.Install(lock.Provider(
+    lock.RegisterDriver("redis", lockredis.Driver(client, lock.DriverMeta("role", "shared"))),
+    lock.RegisterLocker("default", lock.Use("redis"), lock.Prefix("runa:lock:")),
+))
+```
+
+## Common mistakes
+
+### Using memory locks for multi-instance mutual exclusion
+
+The memory driver only works inside the current process. Use Redis locks for multi-instance deployments.
+
+### Forgetting to release a lock
+
+After manual `Try` or `Wait`, call `defer lease.Release(ctx)`. Prefer `locker.With(...)` when possible.
+
+### Setting TTL too short
+
+If the task may run longer than the TTL, enable auto-renewal or use a more realistic TTL.
+
+## API quick reference
+
+- `lock.New()` creates a standalone registry.
+- `lock.Provider(...)` connects to the framework lifecycle.
+- `lock.Default()` reads `*lock.Registry` from default DI.
+- `lock.RegisterDriver(name, driver)` registers a driver.
+- `lock.RegisterLocker(name, options...)` registers a locker.
+- `locker.Try(ctx, key, options...)` tries to acquire a lock.
+- `locker.Wait(ctx, key, options...)` waits for a lock.
+- `locker.With(ctx, key, fn, options...)` runs a function after acquiring a lock and releases it automatically.

@@ -1,0 +1,69 @@
+---
+title: "常见问题"
+description: "常见问题解答"
+---
+
+## 只安装核心会带上 HTTP 吗
+
+不会。核心模块只负责应用加载、DI、配置、命令、Host 和生命周期。HTTP 路由需要显式安装 `github.com/duxweb/runa/route` 并 `runa.Install(route.Provider(...))`。
+
+## Run 会启动 HTTP、队列和其他服务吗
+
+`Run` 默认执行 `serve`。`serve` 只启动已经注册到应用里的 Host。
+
+`route.Provider(route.Addr(...))` 会自动注册 HTTP Host，所以 HTTP 会启动。`queue.Provider(...)` 只注册队列能力和 `queue:work` 命令，不会自动启动 worker。要启动 worker，可以运行 `go run . queue:work default`，或者在 Module 中调用 `RegisterHost(queue.NewUnit(...))`。
+
+## 为什么 Default() 要在启动后使用
+
+`Default()` 从默认 DI 容器读取对象。Provider 在应用 `Freeze` 或 `Run` 过程中才会把对象注册并完成配置，所以业务启动前不要假设 `Default()` 已经可用。
+
+需要启动前配置对象时，通过 Provider 选项：
+
+```go
+app.Install(cache.Provider(cache.RegisterPool("profile")))
+```
+
+## 能不能单独使用某个子包
+
+可以。能力包都优先提供 `New()`：
+
+```go
+registry := cache.New()
+pool := registry.MustOf[string]("default")
+```
+
+这种方式不进入 Runa 生命周期，也不会自动读取配置或优雅关闭。
+
+## Provider 和 New 是什么关系
+
+`New()` 创建能力自己的核心对象。`Provider()` 在生命周期里把这个核心对象注册进 DI，并应用配置、命令、Host、路由服务等框架集成。
+
+## 配置文件放在哪里
+
+默认放在 `config/` 目录。可以通过 `runa.ConfigPath("config")` 修改。`config/cache.toml` 会进入 `cache` 域，`config/cache.production.toml` 只在 production 环境加载。
+
+## 为什么不用 ctx.Cache() 这种方法
+
+Runa 的 route 是传输块，不把具体能力写死到 `route.Context`。这样 route 不需要 import cache、database、storage 等能力包，应用只为实际安装的能力付依赖成本。
+
+HTTP handler 中优先用能力包 `Default()`。`route.Service[T](ctx)` 是更底层的取服务方式，只有你明确知道服务已经注入 route context 时再用。
+
+## go test ./... 会测试所有子模块吗
+
+不会。Go 在根模块执行 `go test ./...` 不会递归进入嵌套模块。Runa 使用 `go.work` 做本地联调，CI 需要按模块矩阵逐个测试。
+
+## 我是 Go 新手，应该先学哪些概念
+
+先掌握这几个概念就够了：
+
+- `go mod init` 创建项目
+- `go get` 安装模块
+- `context.Context` 传递请求生命周期
+- `struct tag` 绑定请求字段，比如 `json:"name"`、`query:"page"`
+- `interface` 让不同驱动实现同一能力
+
+不需要一开始理解 Runa 内部 Provider 实现。普通业务开发优先学 `New`、`Install`、`Module`、`route`。
+
+## gRPC 现在能用吗
+
+当前仓库还没有 gRPC 模块。文档中的 gRPC 是传输块规划，不是已实现 API。

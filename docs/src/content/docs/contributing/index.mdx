@@ -1,0 +1,35 @@
+---
+title: "Contributing"
+description: "Internal conventions and governance"
+---
+
+This chapter is written from the developer perspective. It is for Runa kernel contributors, official capability block authors, driver block authors, and third-party extension authors. Regular application developers do not need to read it first.
+
+## How to start local development
+
+Runa uses a multi-module Monorepo. Use `go.work` from the repository root during development:
+
+```bash
+git clone https://github.com/duxweb/runa.git
+cd runa
+go work sync
+go test ./...
+```
+
+Nested modules need separate testing. See [Testing](./testing/).
+
+## Code contribution rules
+
+- The kernel only handles loading, DI, commands, Host, config, and lifecycle.
+- Transports, capabilities, and drivers connect through Provider.
+- Only objects that can be independently created with `New()` should be registered in DI.
+- Modules that are not imported by default should not enter a user's dependency graph.
+- Child packages should not depend backward on `runtime`.
+
+## What to check before submitting
+
+- Each PR should focus on one topic.
+- API changes must update examples and documentation.
+- New capabilities must include standalone `New()` examples and Provider examples.
+- New drivers must explain dependency boundaries and shutdown logic.
+- New transports must explain how they connect to Host and lifecycle.

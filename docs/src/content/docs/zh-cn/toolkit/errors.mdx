@@ -1,0 +1,83 @@
+---
+title: "错误 Errors"
+description: "结构化应用错误"
+---
+
+`errs` 提供结构化错误。它可以携带错误码、参数、原因和堆栈，适合和路由错误渲染结合使用。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa
+```
+
+`errs` 属于核心模块，直接 import：
+
+```go
+import "github.com/duxweb/runa/errs"
+```
+
+## 创建错误
+
+```go
+err := errs.New("user not found",
+    errs.Code("USER_NOT_FOUND"),
+    errs.Params(errs.Map{"id": "1"}),
+)
+```
+
+## 包装错误
+
+```go
+if err != nil {
+    return errs.Wrap(err)
+}
+```
+
+`Wrap` 会把普通 error 包装成 `*errs.Error`，保留原因并记录调用栈。
+
+## 读取错误
+
+```go
+if item := errs.As(err); item != nil {
+    code := item.Code
+    params := item.Params
+    _ = code
+    _ = params
+}
+```
+
+## 和 HTTP 错误配合
+
+```go
+route.Default().Get("/users/{id}", func(ctx *route.Context) error {
+    return ctx.Error(404, errs.New("user not found", errs.Code("USER_NOT_FOUND")))
+})
+```
+
+路由错误渲染会读取错误消息、错误码和参数。
+
+
+## 常见错误
+
+### 错误码和错误消息混在一起
+
+错误消息给人看，错误码给程序判断。建议错误码稳定，例如 `USER_NOT_FOUND` 或 `user.not_found`。
+
+### 把底层错误直接暴露给用户
+
+数据库、文件路径、第三方服务错误适合进日志。对外响应建议包装成业务错误。
+
+### 忘记保留 cause
+
+包装底层错误时用 `errs.Wrap(err)` 或 `errs.New(..., errs.Cause(err))`，方便排查根因。
+
+## API 速查
+
+- `errs.New(message, options...)` 创建结构化错误
+- `errs.Wrap(err)` 包装普通错误
+- `errs.As(err)` 转为 `*errs.Error`
+- `errs.Code(code)` 设置错误码
+- `errs.Params(map)` 设置参数
+- `errs.Attr(key, value)` 设置单个参数
+- `errs.Cause(err)` 设置原因

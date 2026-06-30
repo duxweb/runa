@@ -1,0 +1,89 @@
+---
+title: "Transport Overview"
+description: "Transport-neutral application model"
+---
+
+Runa's kernel is not bound to HTTP. HTTP route, WebSocket, JSON-RPC, and similar capabilities connect to the application as transport blocks and are managed through Provider, Host, and the lifecycle.
+
+This means the kernel only knows how to run an application. If you need HTTP, install `route`. If you need WebSocket, install `ws`. If you need JSON-RPC, install `jsonrpc`. Transports you do not use do not enter the project automatically.
+
+## Why the kernel is not bound to HTTP
+
+The kernel only cares about these abstractions:
+
+- Provider registers dependencies, commands, Host units, and lifecycle callbacks.
+- Host starts and stops long-running services.
+- DI connects transport blocks and capability blocks.
+- Lifecycle runs stages in order: Init, Register, Resolve, Boot, Shutdown.
+
+Because of this, an application can start only HTTP, only CLI commands, or only workers.
+
+## Available transport blocks
+
+| Transport | Status | Install path | Description |
+| --- | --- | --- | --- |
+| HTTP Route | Implemented | `github.com/duxweb/runa/route` | HTTP routing, groups, domains, typed handlers |
+| WebSocket | Implemented | `github.com/duxweb/runa/ws` | Hub, connections, channels, broadcast |
+| JSON-RPC | Implemented | `github.com/duxweb/runa/jsonrpc` | HTTP JSON-RPC and optional WebSocket |
+| gRPC | Planned | No Go package yet | Future transport block |
+
+## How a transport block usually connects
+
+A transport block usually exposes:
+
+```go
+app.Install(transport.Provider(...))
+```
+
+The Provider internally handles:
+
+- Registering core objects in DI.
+- Registering commands.
+- Registering a Host or mounting into an existing route.
+- Resolving delayed mounts during Resolve.
+- Releasing connections and resources during Shutdown.
+
+The minimal HTTP route setup is:
+
+```go
+app := runa.New()
+app.Install(route.Provider(route.Addr(":8080")))
+
+app.Freeze(context.Background())
+
+route.Default().Get("/", func(ctx *route.Context) error {
+    return ctx.Text("ok")
+})
+
+app.Run(context.Background())
+```
+
+`route.Provider(...)` registers the HTTP Host. `route.Default()` is available after the route Provider is installed. If you install only the kernel, you cannot register HTTP handlers.
+
+## How transport blocks use capabilities
+
+Transport blocks receive requests. Capability blocks provide business capabilities. In an HTTP handler, the most common approach is to use the capability package `Default()` after the application has been frozen or started.
+
+```go
+route.Default().Get("/cache", func(ctx *route.Context) error {
+    pool := cache.Default().MustOf[string]("default")
+    value, _, err := pool.Get(ctx.Context(), "hello")
+    if err != nil {
+        return err
+    }
+    return ctx.Text(value)
+})
+```
+
+`ctx.Context()` is the standard library context for the current request. Pass it to databases, caches, queues, and external HTTP clients so downstream work can stop when the request is canceled.
+
+`route.Service[T](ctx)` is a lower-level escape hatch for services injected into the route context. Most application code can start with capability `Default()`.
+
+## How to choose a transport
+
+- Use `route` for normal Web APIs.
+- Use `ws` for browser realtime communication.
+- Use `jsonrpc` when you need JSON-RPC 2.0.
+- Do not assume a `grpc` package exists today; gRPC is still planned.
+
+Most business projects start with `route`. Add `ws` or `jsonrpc` only when a realtime connection or RPC protocol is actually needed.

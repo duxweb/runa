@@ -1,0 +1,85 @@
+---
+title: "Static 中间件"
+description: "把本地目录或 http.FileSystem 挂到 HTTP 路由"
+---
+
+`middleware/static` 用来提供静态文件服务。它基于 `http.FileServer`，但找不到文件时不会立即返回 404，而是继续交给后续路由处理，适合和 API、SPA fallback 一起使用。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## 基本用法
+
+```go
+import (
+    "net/http"
+
+    "github.com/duxweb/runa/middleware/static"
+)
+
+route.Default().Use(static.New(static.Config{
+    Root: http.Dir("public"),
+    Path: "/assets",
+}))
+```
+
+请求 `/assets/app.css` 时，会读取 `public/app.css`
+
+## 允许目录首页
+
+```go
+route.Default().Use(static.New(static.Config{
+    Root:  http.Dir("public"),
+    Path:  "/",
+    Index: true,
+}))
+```
+
+`Index` 为 false 时，路径以 `/` 结尾的目录请求会跳过 static，继续走后续路由。
+
+## 嵌入文件系统
+
+```go
+//go:embed public/*
+var publicFS embed.FS
+
+route.Default().Use(static.New(static.Config{
+    Root: http.FS(publicFS),
+    Path: "/assets",
+}))
+```
+
+如果你的 embed 根目录包含 `public/` 前缀，请注意请求路径和文件系统路径的对应关系。
+
+## SPA fallback
+
+```go
+route.Default().Use(static.New(static.Config{
+    Root: http.Dir("dist"),
+    Path: "/",
+}))
+
+route.Default().Get("/*", func(ctx *route.Context) error {
+    return ctx.HTML("index fallback")
+})
+```
+
+static 找不到文件时会继续走后续路由，所以可以在后面追加前端路由 fallback。
+
+## 配置项
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | 返回 `true` 时跳过 |
+| `Root` | `http.FileSystem` | `http.Dir(".")` | 静态文件根 |
+| `Path` | `string` | `/` | URL 挂载前缀 |
+| `Index` | `bool` | `false` | 是否允许目录首页 |
+
+## 常见问题
+
+- static 不是能力 Provider，不需要 `runa.Install`
+- 静态目录不存在或文件不存在时，会继续走后续路由
+- 大型文件下载、断点续传、CDN 缓存策略通常建议交给 Nginx、对象存储或 CDN

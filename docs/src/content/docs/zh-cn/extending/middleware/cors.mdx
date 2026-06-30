@@ -1,0 +1,78 @@
+---
+title: "CORS 中间件"
+description: "处理浏览器跨域请求和 OPTIONS 预检请求"
+---
+
+`middleware/cors` 用来给浏览器 API 设置跨域响应 Header，并处理 OPTIONS 预检请求。它只在请求带有 `Origin` Header 时生效，普通服务端请求不会被影响。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## 基本用法
+
+```go
+import "github.com/duxweb/runa/middleware/cors"
+
+route.Default().Use(cors.New(cors.Config{
+    AllowOrigins: []string{"https://admin.example.com"},
+}))
+```
+
+## 允许常见 API 请求
+
+```go
+route.Default().Use(cors.New(cors.Config{
+    AllowOrigins: []string{"https://admin.example.com"},
+    AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+    AllowHeaders: []string{"Authorization", "Content-Type", "X-Requested-With"},
+    MaxAge:       600,
+}))
+```
+
+## 允许携带 Cookie 或 Authorization
+
+```go
+route.Default().Use(cors.New(cors.Config{
+    AllowOrigins: []string{"https://admin.example.com"},
+    Credentials:  true,
+}))
+```
+
+开启 `Credentials` 时不要使用 `AllowOrigins: []string{"*"}`。当前实现不会在通配 Origin 下反射任意来源，也不会写入 `Access-Control-Allow-Credentials`，这是为了避免误开跨站凭证。
+
+## 暴露响应 Header
+
+```go
+route.Default().Use(cors.New(cors.Config{
+    AllowOrigins:  []string{"https://admin.example.com"},
+    ExposeHeaders: []string{"X-Total", "X-Request-ID"},
+}))
+```
+
+浏览器默认只能读取少数安全响应 Header。如果前端要读取分页总数、请求 ID 等字段，需要放进 `ExposeHeaders`
+
+## 配置项
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | 返回 `true` 时跳过 |
+| `AllowOrigins` | `[]string` | `*` | 允许的 Origin |
+| `AllowMethods` | `[]string` | `GET,POST,PUT,PATCH,DELETE,OPTIONS` | 允许的方法 |
+| `AllowHeaders` | `[]string` | `Authorization,Content-Type,X-Requested-With` | 允许的请求 Header |
+| `ExposeHeaders` | `[]string` | `nil` | 允许浏览器读取的响应 Header |
+| `Credentials` | `bool` | `false` | 是否允许跨域凭证 |
+| `MaxAge` | `int` | `0` | 预检缓存秒数 |
+
+## 预检请求
+
+当请求是 `OPTIONS`，并且带有 `Access-Control-Request-Method` Header 时，中间件会直接返回 `204 No Content`，不会继续进入后续 handler。
+
+## 常见问题
+
+- CORS 是浏览器安全策略，后端服务之间调用通常不需要 CORS
+- 带 Cookie 的跨域请求必须指定明确 Origin，不能用 `*`
+- CORS 通常挂全局；如果只有 `/api` 跨域，也可以只挂到 `/api` 分组
+- `security.New(...)` 不包含 CORS，因为 CORS 策略通常和具体前端域名强相关，需要你显式配置

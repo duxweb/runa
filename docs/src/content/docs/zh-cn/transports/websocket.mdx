@@ -1,0 +1,148 @@
+---
+title: "WebSocket"
+description: "Hub 与广播"
+---
+
+`ws` 提供 WebSocket Hub、频道订阅、事件处理和广播。它挂载在 `route` 上，因此需要同时安装 `route`。
+
+WebSocket 适合聊天、通知、实时进度、控制台监控这类服务端主动推送场景。普通请求响应接口不要为了“实时感”强行使用 WebSocket。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/ws github.com/duxweb/runa/route
+```
+
+Redis 横向扩展按需安装：
+
+```bash
+go get github.com/duxweb/runa/ws/redis
+```
+
+## 创建 Hub
+
+```go
+hub := ws.New("default", ws.Config{
+    Origin: []string{"http://localhost:3000"},
+})
+
+hub.On("chat.message", func(ctx *ws.Context) error {
+    return ctx.Publish("room", "chat.message", ctx.Message().Data)
+})
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/ws"
+)
+
+func main() {
+    hub := ws.New("default", ws.Config{})
+    hub.On("echo", func(ctx *ws.Context) error {
+        return ctx.Reply(runa.Map{"data": ctx.Message().Data})
+    })
+
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")), ws.Provider(hub))
+
+    route.Default().Get("/ws", hub.Serve).SkipDoc()
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`ws.Mount(target, hub)` 会在传入目标的 `/` 路径挂载 Hub。如果希望最终地址是 `/ws`，可以这样写：
+
+```go
+ws.Mount(route.Default().Group("/ws"), hub)
+```
+
+## 配置
+
+`ws.Config` 通过代码传入，也可以由 `ws.Provider` 合并读取对应 Hub 配置。
+
+常用字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `Origin` | 允许的 Origin 列表 |
+| `MaxMessageSize` | 最大消息体 |
+| `ReadTimeout` | 读取超时 |
+| `WriteTimeout` | 写入超时 |
+| `PingInterval` | ping 间隔 |
+| `PongTimeout` | pong 超时 |
+| `SendBuffer` | 发送缓冲 |
+| `Auth` | 连接认证回调 |
+| `Broker` | 跨节点广播 |
+| `Presence` | 在线状态存储 |
+
+## 频道和事件怎么理解
+
+- channel 是消息房间，比如 `room:1`、`user:1`
+- event 是消息类型，比如 `chat.message`、`notify.created`
+- client 订阅 channel 后，可以收到该 channel 上发布的事件
+
+## Redis 横向扩展
+
+```go
+import wsredis "github.com/duxweb/runa/ws/redis"
+
+hub := ws.New("default", ws.Config{
+    Broker: wsredis.Broker(client, "ws"),
+    Presence: wsredis.Presence(client, "runa:ws:"),
+})
+```
+
+## 客户端消息格式
+
+```json
+{"id":"1","event":"subscribe","channel":"room"}
+{"id":"2","event":"echo","data":{"text":"hello"}}
+```
+
+内置事件包括 `subscribe`、`unsubscribe`、`ping`。
+
+## 命令
+
+安装 `ws.Provider(...)` 后会注册：
+
+```bash
+go run . ws:list
+go run . ws:channels default
+go run . ws:stats default
+go run . ws:kick default <client-id>
+```
+
+## 常见错误
+
+### 直接 ws.Mount 后路径不是预期
+
+`ws.Mount(target, hub)` 会挂到 target 的 `/`。如果最终路径要 `/ws`，传 `route.Default().Group("/ws")`。
+
+### 生产环境没有限制 Origin
+
+浏览器 WebSocket 应限制允许的 Origin，避免被其他站点滥用。
+
+### 多实例广播只用内存
+
+默认只能在当前进程内广播。多实例部署要接入 Redis Broker 和 Presence。
+
+## API 速查
+
+- `ws.New(name, config)` 创建 Hub
+- `ws.Provider(hubs...)` 接入框架生命周期
+- `ws.Mount(target, hub)` 在 `target` 的 `/` 路径挂载 Hub
+- `hub.On(event, handler)` 注册事件处理器
+- `hub.Publish(channel, event, data)` 向频道发布消息
+- `hub.Broadcast(event, data)` 向所有客户端广播消息
+- `ws/redis.Broker`、`ws/redis.Presence` 提供跨节点能力

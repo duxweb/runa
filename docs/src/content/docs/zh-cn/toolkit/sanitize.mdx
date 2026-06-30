@@ -1,0 +1,75 @@
+---
+title: "清理 Sanitize"
+description: "文本、URL 与 HTML 清理"
+---
+
+`sanitize` 用于清理不可信输入。它可以清理纯文本、URL 和 HTML，HTML 策略基于命名 Policy 选择。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/sanitize
+```
+
+## 文本清理
+
+```go
+value := sanitize.Text("<b>Hello</b>\x00")
+```
+
+`Text` 会去掉 HTML 标签和控制字符，适合用户昵称、标题等纯文本字段。
+
+## URL 清理
+
+```go
+safe := sanitize.URL("https://example.com/a")
+blocked := sanitize.URL("javascript:alert(1)")
+_ = safe
+_ = blocked
+```
+
+不安全协议会返回空字符串。
+
+## HTML 策略
+
+```go
+plain := sanitize.HTML(input, sanitize.PlainText())
+strict := sanitize.HTML(input, sanitize.Strict())
+rich := sanitize.HTML(input, sanitize.RichText())
+markdown := sanitize.HTML(input, sanitize.Markdown())
+```
+
+- `Strict()` 默认安全策略，移除危险标签和属性
+- `RichText()` 保留常见富文本标签
+- `Markdown()` 保留代码块等 Markdown 输出常见结构
+- `PlainText()` 转成纯文本
+
+## 自定义策略
+
+```go
+sanitize.Register("custom", sanitize.Strict())
+value := sanitize.HTML(input, sanitize.Use("custom"))
+```
+
+
+## 常见错误
+
+### 只在前端清理输入
+
+前端清理不能代替后端清理。所有不可信输入进入数据库或 HTML 前，都应在后端做校验和清理。
+
+### 富文本用 Text 清理
+
+`Text` 会去掉 HTML 标签。富文本内容应使用 `sanitize.HTML` 和合适策略。
+
+### 清理等于权限控制
+
+sanitize 只能降低 XSS 和脏数据风险，不能替代鉴权、权限检查和业务校验。
+
+## API 速查
+
+- `sanitize.Text(input)` 清理纯文本
+- `sanitize.URL(input)` 清理 URL
+- `sanitize.HTML(input, policies...)` 清理 HTML
+- `sanitize.Register(name, policy)` 注册命名策略
+- `sanitize.Use(name)` 使用命名策略

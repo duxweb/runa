@@ -1,0 +1,91 @@
+---
+title: "Real IP 中间件"
+description: "从可信代理 Header 中解析真实客户端 IP、协议和 Host"
+---
+
+`middleware/realip` 用来修正 `ctx.IP()`、协议和 Host。应用部署在 Nginx、CDN、负载均衡或 Kubernetes Ingress 后面时，请求的直接来源通常是代理服务器，不是最终用户。Real IP 中间件只在来源 IP 命中可信代理时，才读取转发 Header，避免客户端伪造 IP。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## 基本用法
+
+```go
+import "github.com/duxweb/runa/middleware/realip"
+
+route.Default().Use(realip.New(realip.Config{
+    TrustedProxies: []string{"127.0.0.1", "10.0.0.0/8"},
+}))
+```
+
+## 常见反向代理配置
+
+```go
+route.Default().Use(realip.New(realip.Config{
+    TrustedProxies: []string{
+        "127.0.0.1",
+        "::1",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+    },
+}))
+```
+
+如果你的应用直接暴露公网，不要信任所有来源，也不要盲目读取 `X-Forwarded-For`
+
+## Header 读取规则
+
+默认会读取这些真实 IP Header：
+
+```go
+[]string{"X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP"}
+```
+
+默认协议 Header：
+
+```go
+[]string{"X-Forwarded-Proto"}
+```
+
+默认 Host Header：
+
+```go
+[]string{"X-Forwarded-Host"}
+```
+
+`X-Forwarded-For` 可能包含多个 IP。中间件会从右往左找第一个不在可信代理列表里的 IP，把它作为真实客户端 IP。
+
+## 配置项
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | 返回 `true` 时跳过 |
+| `TrustedProxies` | `[]string` | `127.0.0.1`、`::1` | 可信代理 IP 或 CIDR |
+| `Headers` | `[]string` | `X-Forwarded-For` 等 | 真实 IP Header |
+| `SchemeHeaders` | `[]string` | `X-Forwarded-Proto` | 协议 Header |
+| `HostHeaders` | `[]string` | `X-Forwarded-Host` | Host Header |
+
+## 和限流、日志的关系
+
+Real IP 应该放在 logger、rate、audit 前面：
+
+```go
+route.Default().Use(
+    requestid.New(),
+    realip.New(realip.Config{TrustedProxies: []string{"10.0.0.0/8"}}),
+    logger.New(),
+    ratemw.Use("api"),
+)
+```
+
+这样日志里的 IP、限流键和审计记录才会使用真实客户端 IP。
+
+## 常见问题
+
+- 不要把 `0.0.0.0/0` 放进 `TrustedProxies`，这等于信任任意客户端伪造 Header
+- CDN、Ingress、Nginx 多层代理时，把你实际控制的代理网段放进可信列表
+- 已使用 `security.New(...)` 时默认已经包含 realip，但生产预设会把 `TrustedProxies` 置空，需要通过 `security.TrustedProxies(...)` 明确配置

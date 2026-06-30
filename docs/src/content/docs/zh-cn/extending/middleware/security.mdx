@@ -1,0 +1,139 @@
+---
+title: "Security 生产预设"
+description: "用一行代码组合 recover、request id、real ip、logger、bodylimit、timeout 和 helmet"
+---
+
+`security` 是 Runa 官方提供的生产入口预设。它把多个基础 HTTP 中间件组合成一条链，适合新项目先把基础保护接起来，再按业务追加 CORS、session、auth、rate、audit。
+
+默认组合：
+
+```text
+recover -> requestid -> realip -> logger -> bodylimit -> timeout -> helmet
+```
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/security
+```
+
+## 快速使用
+
+```go
+import "github.com/duxweb/runa/security"
+
+route.Default().Use(security.New(security.Production()))
+```
+
+## 完整示例
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/security"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+
+    route.Default().Use(security.New(
+        security.Production(),
+        security.BodyLimit("16MB"),
+        security.Timeout(30*time.Second),
+        security.TrustedProxies("10.0.0.0/8"),
+        security.SkipPaths("/health", "/metrics"),
+    ))
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        return ctx.Text("ok")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## Development 和 Production
+
+开发预设：
+
+```go
+route.Default().Use(security.New(security.Development()))
+```
+
+开发预设会保留 panic stack，timeout 放宽到 `120s`，并信任本机代理。
+
+生产预设：
+
+```go
+route.Default().Use(security.New(security.Production()))
+```
+
+生产预设关闭 panic stack，timeout 为 `30s`，并清空默认可信代理。生产环境如果在网关后面，需要显式写 `security.TrustedProxies(...)`
+
+## 常用选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `security.Development()` | 使用开发友好的默认值 |
+| `security.Production()` | 使用生产友好的默认值 |
+| `security.BodyLimit("16MB")` | 设置请求体大小限制 |
+| `security.Timeout(30*time.Second)` | 设置请求超时 |
+| `security.TrustedProxies("10.0.0.0/8")` | 设置可信代理 |
+| `security.SkipPaths("/health")` | 让 logger 跳过指定路径 |
+| `security.Next(fn)` | 跳过整条 security 链 |
+| `security.Disable("logger")` | 禁用某个内置项 |
+
+可禁用名称：`recover`、`requestid`、`realip`、`logger`、`bodylimit`、`timeout`、`helmet`
+
+## 跳过整条链
+
+```go
+route.Default().Use(security.New(security.Next(func(ctx *route.Context) bool {
+    return ctx.Request().URL.Path == "/health"
+})))
+```
+
+`Next` 会跳过整条 security 链。如果只是想跳过访问日志，优先用 `security.SkipPaths(...)`
+
+## 和 CORS 的关系
+
+security 不包含 CORS。CORS 通常需要知道前端域名、凭证策略和暴露 Header，所以应该显式配置：
+
+```go
+route.Default().Use(security.New(security.Production()))
+route.Default().Use(cors.New(cors.Config{
+    AllowOrigins: []string{"https://admin.example.com"},
+    Credentials:  true,
+}))
+```
+
+## 什么时候不用 security
+
+如果你需要完全控制每一项中间件的顺序和配置，可以不用 security，自己组合：
+
+```go
+route.Default().Use(
+    recover.New(recover.Config{Stack: false}),
+    requestid.New(),
+    realip.New(realip.Config{TrustedProxies: []string{"10.0.0.0/8"}}),
+    logger.New(logger.Config{SkipPaths: []string{"/health"}}),
+    bodylimit.New(bodylimit.Config{Limit: 16 << 20}),
+    timeout.New(timeout.Config{Timeout: 30 * time.Second}),
+    helmet.New(),
+)
+```
+
+## 常见问题
+
+- security 是中间件组合，不是 Provider，不需要 `runa.Install`
+- security 不包含 session、auth、rate、audit，这些是业务能力，需要按需挂载
+- 已经使用 security 时，不要重复挂 recover、requestid、realip、logger、bodylimit、timeout、helmet，除非你明确禁用了其中某项

@@ -1,0 +1,117 @@
+---
+title: "Log"
+description: "Named log channels and multi-output logging"
+---
+
+`log` is based on the standard library `slog`. It provides named log channels and multi-output logging. Common channels are registered by default, and missing channels fall back to the default logger.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/log
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+    "log/slog"
+
+    "github.com/duxweb/runa"
+    runalog "github.com/duxweb/runa/log"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(runalog.Provider(
+        runalog.Register("default", runalog.Console(runalog.Pretty(), runalog.Level(slog.LevelInfo))),
+        runalog.Register("queue", runalog.File("data/logs/queue.log", runalog.JSON())),
+    ))
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    runalog.Default().Get("queue").Info("queued")
+}
+```
+
+## Standalone New usage
+
+```go
+registry := runalog.New()
+registry.Set("default", runalog.Console(runalog.Text()))
+registry.Get("default").Info("hello")
+```
+
+## Config
+
+`log` currently does not read TOML config. Log outputs are usually tied to deployment environments, so register them in the application entry or a business Provider.
+
+```go
+app.Install(runalog.Provider(
+    runalog.Register("default", runalog.Console(runalog.JSON(), runalog.Source(true))),
+))
+```
+
+## Output types
+
+```go
+runalog.Console(runalog.Pretty())
+runalog.File("data/logs/app.log", runalog.JSON())
+runalog.Writer(os.Stdout, runalog.Text())
+runalog.Discard()
+runalog.Handler(slog.NewTextHandler(os.Stdout, nil))
+```
+
+`Text`, `JSON`, and `Pretty` outputs created by Runa convert log time to the application timezone. When you pass `runalog.Handler(...)`, time formatting is controlled by your own `slog.Handler`.
+
+One channel can register multiple outputs. Internally, a fanout handler is used.
+
+```go
+runalog.Register("http",
+    runalog.Console(runalog.Pretty()),
+    runalog.File("data/logs/http.log", runalog.JSON()),
+)
+```
+
+## Common channels
+
+Built-in channel names include `default`, `http`, `error`, `queue`, `schedule`, `task`, `orm`, and `redis`.
+
+```go
+logger := runalog.Default().Get(runalog.HTTP)
+logger.Info("request", "method", "GET")
+```
+
+## Write logs in business code
+
+```go
+logger := log.Default().Channel("default")
+logger.Info("user created", "id", userID)
+```
+
+Use stable channel names so logs can be filtered and routed consistently.
+
+## Common mistakes
+
+### Scattering channel names
+
+Do not invent channel names in random files. Keep a short list such as `default`, `http`, `error`, `queue`, `schedule`, `task`, `orm`, and `redis`.
+
+### Production logs only go to console or only to file
+
+Production often needs both stdout for the platform and durable or aggregated logs. Configure outputs intentionally for your deployment model.
+
+## API quick reference
+
+- `log.New()` creates a standalone registry.
+- `log.Provider(...)` connects to the framework lifecycle.
+- `log.Default()` reads `*log.Registry` from default DI.
+- `log.Register(name, outputs...)` registers Provider outputs.
+- `registry.Set(name, outputs...)` sets a channel manually.
+- `registry.Get(name)` gets `*slog.Logger`.
+- `log.Console`, `log.File`, `log.Writer`, `log.Handler` create outputs.

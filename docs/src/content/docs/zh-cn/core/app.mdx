@@ -1,0 +1,131 @@
+---
+title: "应用入口"
+description: "创建应用、安装能力和注册业务模块"
+---
+
+Runa 应用入口只需要关心三件事：创建应用、安装需要的能力、注册自己的业务模块。
+
+能力包会提供 `Provider()`，应用把它交给 `Install`。业务代码放进 Module，由应用统一启动和关闭。
+
+## 先创建应用
+
+```go
+app := runa.New()
+```
+
+这会创建一个应用对象，并默认安装配置能力和内置命令。
+
+常用路径选项：
+
+```go
+app := runa.New(
+    runa.BasePath("."),
+    runa.ConfigPath("config"),
+    runa.DataPath("data"),
+    runa.PublicPath("public"),
+    runa.Env("production"),
+)
+```
+
+这些路径会被配置、静态资源、上传文件、缓存文件等能力使用。
+
+## 用 Install 安装框架能力
+
+```go
+app.Install(
+    route.Provider(route.Addr(":8080")),
+    cache.Provider(),
+    queue.Provider(),
+)
+```
+
+这里的 `Provider()` 来自各个能力包。安装后，这些能力会进入应用的 DI、配置、命令和生命周期。
+
+普通应用开发时，你不需要自己实现 Provider，只需要安装能力包提供的 Provider。
+
+## 用 Module 注册业务域
+
+```go
+app.Module(
+    user.Module{},
+    order.Module{},
+)
+```
+
+业务模块负责注册当前应用自己的路由、命令、任务和事件监听。
+
+| 写什么 | 用哪个入口 |
+| --- | --- |
+| 框架能力 | `Install` |
+| 业务模块 | `Module` |
+| 单个命令 | `Command` |
+| 单个 Host | `Host` |
+
+## 启动应用
+
+```go
+if err := app.Run(context.Background()); err != nil {
+    panic(err)
+}
+```
+
+`Run` 会读取终端参数。没有传参数时，默认执行 `serve` 命令。`serve` 只启动已经注册到应用里的 Host。
+
+`route.Provider(route.Addr(...))` 会自动把 HTTP 服务注册成 Host，所以普通 HTTP 应用直接 `Run` 就能启动。
+
+`queue.Provider(...)` 会注册队列、worker 和 `queue:work` 命令，但不会自动把 worker 注册成 Host。默认推荐用独立进程启动 worker：
+
+```bash
+go run . queue:work default
+```
+
+如果你希望 `Run` 同时启动 HTTP 和队列 worker，可以在业务 Module 里显式注册 worker Host：
+
+```go
+func (Module) Register(ctx context.Context, app provider.Context) error {
+    queues, err := provider.Invoke[*queue.Registry](app)
+    if err != nil {
+        return err
+    }
+    return app.RegisterHost(queue.NewUnit(queues, "default"))
+}
+```
+
+小项目或开发环境可以把 HTTP 和 worker 放在同一个进程。生产环境如果要独立扩缩容，通常拆成 `serve` 和 `queue:work` 两个进程更清晰。
+
+如果你只想执行指定命令，可以用 `Execute`：
+
+```go
+if err := app.Execute(context.Background(), []string{"config:show"}); err != nil {
+    panic(err)
+}
+```
+
+## 使用全局默认应用
+
+小项目也可以使用根门面：
+
+```go
+runa.Install(route.Provider(route.Addr(":8080")))
+runa.Module(user.Module{})
+
+if err := runa.Run(context.Background()); err != nil {
+    panic(err)
+}
+```
+
+这种写法和 `app := runa.New()` 后调用方法是同一个模型，只是更短。
+
+## 常见错误
+
+### 把业务逻辑都写进 main.go
+
+`main.go` 应该只做装配。业务路由、命令、任务建议放进 Module。
+
+### 忘记安装能力
+
+如果你调用 `route.Default()`，必须先安装 `route.Provider(...)`。如果你调用 `cache.Default()`，必须先安装 `cache.Provider()`。
+
+### 太早读取 Default
+
+`Default()` 依赖应用生命周期。不要在包级全局变量里写 `var store = cache.Default()`，应该在 handler、命令或生命周期方法里读取。

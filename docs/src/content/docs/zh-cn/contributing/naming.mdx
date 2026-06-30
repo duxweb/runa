@@ -1,0 +1,85 @@
+---
+title: "命名规范"
+description: "统一命名与结构"
+---
+
+命名规范的目标是让每个子包一眼能看懂：核心对象是什么、如何独立使用、如何通过 Provider 接入、如何注册驱动和实例。
+
+## 驱动统一怎么命名
+
+统一使用裸接口名：
+
+```go
+type Driver interface { ... }
+```
+
+驱动工厂统一叫 `Driver(...)`：
+
+```go
+redis.Driver(client)
+s3.Driver(options...)
+```
+
+选择驱动的选项统一叫 `Use(name)`，避免和 `Driver` 接口冲突：
+
+```go
+cache.RegisterPool("default", cache.Use("redis"))
+storage.RegisterDisk("cloud", storage.Use("s3"))
+```
+
+## 子包文件怎么组织
+
+推荐结构：
+
+```text
+cache/
+  registry.go    # Registry + New
+  provider.go    # Provider + ProviderOption
+  options.go     # Option / DriverOption
+  types.go       # Driver / Info / 常量
+  default.go     # Default()
+  memory.go      # 默认驱动
+  redis/         # 外部依赖驱动，独立 go.mod
+```
+
+## Provider 写法保持一致
+
+Provider 应返回 `provider.Provider` 接口，通常嵌入 `provider.Base`：
+
+```go
+func Provider(options ...ProviderOption) provider.Provider {
+    item := &providerImpl{}
+    return item
+}
+```
+
+生命周期约定：
+
+- `Init` 注册 DI 默认对象
+- `Register` 应用配置、注册命令、注册实例和 route service
+- `Resolve` 处理延迟挂载
+- `Boot` 启动需要等待应用完成注册的逻辑
+- `Shutdown` 释放资源
+
+## Default 只负责从 DI 取默认实例
+
+```go
+func Default() *Registry {
+    return provider.MustInvokeDefault[*Registry]()
+}
+```
+
+`Default()` 只能在应用完成 `Freeze` 或 `Run` 后使用。启动前配置对象应走 Provider 选项。
+
+## 命令名避免冲突
+
+命令使用 `pkg:verb`：
+
+```text
+route:list
+queue:work
+database:ping
+devtools:embed
+```
+
+不要新增裸命令名，避免不同包之间冲突。

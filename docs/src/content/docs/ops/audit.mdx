@@ -1,0 +1,149 @@
+---
+title: "Audit"
+description: "Audit logs and request audit middleware"
+---
+
+`audit` provides audit config, audit writers, and HTTP audit middleware. It does not mount itself to routes automatically. You need to explicitly use `audit/middleware`.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/audit
+```
+
+Install queue or log only when you want to write audit records there:
+
+```bash
+go get github.com/duxweb/runa/queue github.com/duxweb/runa/log
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/audit"
+    auditmw "github.com/duxweb/runa/audit/middleware"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        audit.Provider(audit.Config{Writer: audit.DefaultLogWriter()}),
+    )
+
+    route.Default().Use(auditmw.Default())
+    route.Default().Post("/users", func(ctx *route.Context) error {
+        return ctx.JSON(runa.Map{"ok": true})
+    }).Name("user.create")
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`audit.Provider(...)` registers `*audit.Registry` in DI. `auditmw.Default()` reads the config from DI and creates the middleware.
+
+## Standalone New usage
+
+```go
+runtime := audit.New(audit.Config{Writer: audit.LogWriter(nil)})
+_ = audit.Record(context.Background(), runtime.Config().Writer, audit.Entry{Action: "manual"})
+```
+
+## Config
+
+`audit` reads `[audit]` config.
+
+Audit record `Time` uses the application timezone by default. Set it with `runa.Timezone("Asia/Shanghai")` or `timezone` in `config/app.toml`.
+
+```toml
+[audit]
+methods = ["POST", "PUT", "PATCH", "DELETE"]
+mode = "async"
+strict = false
+capture_input = true
+mask_fields = ["password", "token", "secret"]
+mask_value = "***"
+max_input_size = 16384
+buffer = 100
+write_timeout = "3s"
+```
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `methods` | []string | HTTP methods to audit |
+| `mode` | string | `sync` or `async` |
+| `strict` | bool | Whether write failures should block the request |
+| `capture_input` | bool | Whether to capture input |
+| `mask_fields` | []string | Fields to mask |
+| `max_input_size` | int | Maximum body bytes to capture |
+| `write_timeout` | duration | Write timeout |
+
+## Write to log
+
+```go
+writer := audit.DefaultLogWriter("audit")
+app.Install(audit.Provider(audit.Config{Writer: writer}))
+```
+
+## Write to queue
+
+```go
+app.Install(
+    queue.Provider(queue.RegisterQueue("audit", queue.Workers("default"))),
+    audit.Provider(audit.Config{Writer: audit.DefaultQueueWriter("audit")}),
+)
+
+type auditModule struct {
+    provider.ModuleBase
+}
+
+func (auditModule) Name() string { return "audit-handler" }
+
+func (auditModule) Register(ctx context.Context, app provider.Context) error {
+    queues, err := provider.Invoke[*queue.Registry](app)
+    if err != nil {
+        return err
+    }
+    audit.HandleQueue(queues, func(ctx context.Context, entry audit.Entry) error {
+        return audit.DefaultLogWriter().Write(ctx, entry)
+    })
+    return nil
+}
+
+app.Module(auditModule{})
+```
+
+Queue writing is suitable for high-throughput request auditing because the request path does not wait on an external log system directly.
+
+## Common mistakes
+
+### Installing audit.Provider but seeing no records
+
+`audit.Provider` prepares audit runtime and config. HTTP audit records require `audit/middleware` to be mounted on routes.
+
+### Storing sensitive fields in audit records
+
+Mask passwords, tokens, secrets, and personal data. Use `MaskFields` and avoid capturing large or sensitive bodies.
+
+### Synchronous audit on high-throughput endpoints
+
+Use async or queue-based writing for high-throughput endpoints unless compliance requires the request to fail when audit writing fails.
+
+## API quick reference
+
+- `audit.New(config)` creates an audit registry.
+- `audit.Provider(config)` connects to the framework lifecycle.
+- `audit.Default()` reads `*audit.Registry` from default DI.
+- `auditmw.New(config)` creates HTTP audit middleware.
+- `auditmw.Default()` uses the default audit config.
+- `audit.LogWriter` and `audit.QueueWriter` create writers.
+- `audit.Record(ctx, writer, entry)` writes an audit record manually.

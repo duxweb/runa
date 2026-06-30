@@ -1,0 +1,132 @@
+# Runa
+
+Runa is a microkernel Go web framework for business applications. Core handles app startup, dependency injection, config, commands, host units, modules, lifecycle, and application time. HTTP route, cache, queue, database, storage, auth, sessions, views, i18n, observability, and drivers are installed as independent capability modules.
+
+## Architecture
+
+- Core: `github.com/duxweb/runa`; no HTTP router, cache, queue, database, or storage by default.
+- Transports: `route`, `jsonrpc`, `ws`, and future `grpc` connect as host/capability modules.
+- Capabilities: packages such as `cache`, `queue`, `database`, `storage`, `view`, `lang`, `task`, `event`, and `schedule` install with `app.Install(...)`.
+- Drivers: external dependencies live in submodules such as `queue/redis`, `storage/s3`, and `database/oro`.
+- Business code is organized with `provider.ModuleBase` modules. A module directory keeps only `module.go` at the root; admin/api/service/models/handler/command/listener/queue/schedule/middleware code belongs in subdirectories, matching the Dux module style.
+
+## Naming rules
+
+- Driver interfaces are named `Driver` inside their package.
+- Driver selection options are named `Use(name)`.
+- Provider options use `RegisterDriver(name, driver)` and `RegisterXxx(name, options...)`.
+- Capability packages expose `New()`, `Provider(...)`, `Default()`, `Registry`, `types.go`, `options.go`, and `registry.go`.
+- External driver subpackages expose a `Driver(...)` factory.
+- Generated code should follow the naming conventions in `docs/src/content/docs/contributing/naming.mdx`.
+
+## Common commands
+
+- `runa dev --cmd serve`: rebuild and restart on Go/config changes.
+- `runa gen module <name>`: generate a Dux-style business module with root `module.go` and subdirectories.
+- `runa gen resource <name> --module <module>`: generate route resource handlers under `app/<module>/admin` by default.
+- `runa gen crud <name> --module <module>`: generate CRUD builder and store skeleton under `app/<module>/admin` by default.
+- `runa gen spec <file>`: generate modules and resources from a TOML spec.
+- `runa gen provider <name>`: generate provider skeleton.
+- `runa gen capability <name>`: generate a capability package.
+- `runa gen driver <cap> <name>`: generate a capability driver submodule.
+
+## Documentation map
+
+- capabilities/asset: Asset — Install; Connect to an application; Standalone New usage; Config; Manifest; Use in templates
+- capabilities/auth: Auth — Install; Connect to an application; Standalone New usage; Config; Authenticators; Permission checks
+- capabilities/cache: Cache — Install; Connect to an application; Standalone New usage; Config; Redis driver; Common API
+- capabilities/database: Database — Install; Connect to an application; Standalone New usage; Config; Oro driver; Redis driver
+- capabilities/event: Event — Install; Connect to an application; Standalone New usage; Config; Listener options; Commands
+- capabilities/index: Capabilities Overview — Connect capability blocks to an application; Standalone usage without the framework; Available capability blocks; Install external drivers on demand; Config files; Access capabilities in HTTP requests
+- capabilities/lang: Lang — Install; Connect to an application; Message catalog layout; Translate in Go; HTTP language negotiation; Use t in templates
+- capabilities/lock: Lock — Install; Connect to an application; Standalone New usage; Choosing Try, Wait, and With; Config; Drivers
+- capabilities/log: Log — Install; Connect to an application; Standalone New usage; Config; Output types; Common channels
+- capabilities/message: Message — Install; Connect to an application; Standalone New usage; Config; Driver integration; Topic matching
+- capabilities/queue: Queue — Install; Connect to an application; Standalone New usage; Config; Redis driver; AMQP driver
+- capabilities/rate: Rate Limit — Install; Connect to an application; Standalone New usage; Config; Drivers; Which algorithm to choose
+- capabilities/rhtml: RHTML Templates — Install; Connect through view.Provider; Standalone usage; Configuration; Recommended layout; Layouts and blocks
+- capabilities/schedule: Schedule — Install; Connect to an application; Standalone New usage; Config; Schedule options; Commands
+- capabilities/session: Session — Install; Connect to an application; Standalone New usage; Config; Drivers; Common API
+- capabilities/storage: Storage — Install; Connect to an application; Standalone New usage; Config; S3 driver; Common API
+- capabilities/task: Task — Install; Connect to an application; Standalone New usage; Config; Dispatch options; Commands
+- capabilities/view: View — Install; Connect to an application; Standalone New usage; Config; RHTML enhanced templates; Template sources
+- contributing/architecture: Architecture Principles — Why micro-kernel; Architecture layers; What this means for users
+- contributing/dependency-model: Dependency Model — Dependencies converge toward the kernel; How to decide module boundaries; Boundaries CI should enforce
+- contributing/index: Contributing — How to start local development; Code contribution rules; What to check before submitting
+- contributing/modules: Module Boundaries — Modules are split into four layers; Dependency directions that must not be broken; How to release nested modules; Shared cross-module code should not live in internal
+- contributing/naming: Naming Conventions — Driver naming; Package file organization; Keep Provider shape consistent; Default only reads the default instance from DI; Avoid command name collisions
+- contributing/testing: Testing — Test the root module first; Then run the full module matrix; Use go.work for local integration; Check whether the core accidentally imports optional modules; Run govulncheck by module
+- contributing/write-capability: Write a Capability Block — Keep the directory clear first; Make New usable standalone first; Then provide a Default facade; Finally connect through Provider; Read config during Register; Acceptance checklist
+- contributing/write-driver: Write a Driver — Where to put a driver module; Drivers only implement interfaces defined by capability packages; Register through the capability package; Join shutdown when holding connections; Acceptance checklist
+- contributing/write-provider: Write a Provider — Start with a minimal Provider; Use it in an application; What each lifecycle stage should do; Register business modules; Register commands during Register; Acceptance checklist
+- contributing/write-transport: Write a Transport Block — What a transport block is responsible for; Start with the minimum shape; Long-running services must use Host; Integrate with route only when HTTP is needed; Acceptance checklist
+- core/app: Application Entry — Create an application; Install framework capabilities with Install; Register business domains with Module; Start the application; Use the global default application; Common mistakes
+- core/command: Commands — Define a command; Register the command; Execute a command directly; Read arguments and write output; Command naming convention; Common questions
+- core/config: Configuration — Where config files live; Minimal config example; Load config by environment; Split config by capability and module; Read config in code; Inspect config with a command
+- core/di: Dependency Injection — Register dependencies inside Module; Read dependencies inside Module; Read dependencies after application startup; Provide and ProvideValue; When DI is safe to read; Read capabilities in HTTP requests
+- core/index: Core Overview — How Runa is layered; What a kernel-only app looks like; Install route only when you need HTTP; Install capability packages when needed; Organize business code with Module; Why dependencies must be one-way
+- core/lifecycle: Lifecycle — Application startup order; Init; Register; Boot; Shutdown; Host
+- core/module: Business Modules — Module vs Install; Define a business module; Register the module; What can a Module register; Module can also shut down; Module dependency order
+- core/timezone: Time and Timezone — Set the application timezone; Read current time; Common time helpers; Freeze time in tests; Do not measure duration with core.Now; Capabilities that follow app timezone
+- drivers/crud-orostore: CRUD Oro Store — Install; Prerequisite; Define a model; Create CRUD APIs; Output transform; Writable fields
+- drivers/database-oro: Database Oro — Install; Minimal setup; Config file; Multiple connections; Define an Oro model; Register models and sync schema
+- drivers/index: Drivers and Adapters — How drivers connect; Current key drivers; Where to read about other drivers; Common mistakes
+- extending/directory: Extension Directory — Official extensions; Choose by scenario; How to read this directory; Community extensions
+- extending/index: Extension Ecosystem — What extensions usually provide; How to connect an extension; Extension vs business Module; Where to find extensions
+- extending/middleware/audit: Audit Middleware — Install; Basic usage; Provider-managed config; Custom writer; Add audit fields; Skip requests
+- extending/middleware/auth: Auth Middleware — Install; Basic usage; Session login; JWT login; Optional auth; Permission check
+- extending/middleware/bodylimit: Body Limit Middleware — Install; Basic usage; Custom size; Allow larger upload routes; Config fields; Relationship with security
+- extending/middleware/builtin: Built-in Middleware Index — Install; List; When not to use built-in middleware; Recommended starter chain; Common mistakes
+- extending/middleware/business: Business Middleware Index — List; Difference from basic middleware; Recommended order; Install; Common mistakes
+- extending/middleware/cors: CORS Middleware — Install; Basic usage; Allow common API requests; Allow Cookie or Authorization credentials; Expose response headers; Config fields
+- extending/middleware/csrf: CSRF — Install; Basic usage; How it works; Output token in templates; Protected methods; Common options
+- extending/middleware/healthcheck: Healthcheck Middleware — Install; Basic usage; Custom path; Config fields; Difference from observe; Skip access logs
+- extending/middleware/helmet: Helmet Middleware — Install; Basic usage; Default headers; Custom headers; Allow embedding by a specified page; Config fields
+- extending/middleware/index: HTTP Middleware Overview — Install; Minimal example; Where to mount middleware; Execution order; Page index
+- extending/middleware/lang: Lang Negotiation Middleware — Install; Connect to an application; Default sources; Relationship with route.Context; Use with template t; Common mistakes
+- extending/middleware/logger: Logger Middleware — Install; Basic usage; Use with log.Provider; Skip health checks and static files; Slow requests; Custom fields
+- extending/middleware/rate: Rate Limit Middleware — Install; Basic usage; Group rate limits; Config file; Limit by user; Algorithms
+- extending/middleware/realip: Real IP Middleware — Install; Basic usage; Common reverse-proxy config; Header reading rules; Config fields; Relationship with rate limit and logs
+- extending/middleware/recover: Recover Middleware — Install; Basic usage; Complete example; Custom error response; Config fields; Common usage
+- extending/middleware/requestid: Request ID Middleware — Install; Basic usage; Read in a handler; Custom header and generator; Config fields; Input validation rules
+- extending/middleware/security: Security Preset — Install; Quick usage; Complete example; Development and Production; Common options; Skip the whole chain
+- extending/middleware/session: Session Middleware — Install; Basic usage; Complete example; Read the current session; Config file; Use cache driver
+- extending/middleware/static: Static Middleware — Install; Basic usage; Allow directory index; Embedded file system; SPA fallback; Config fields
+- extending/middleware/timeout: Timeout Middleware — Install; Basic usage; Custom timeout; Skip long-running routes; WebSocket and Upgrade; Config fields
+- guide/comparison: Framework Comparison — Scope; Architecture model; Positioning; Engineering and full-stack frameworks; HTTP router frameworks; What Runa clearly has today
+- guide/index: Meet Runa — What problem does Runa solve; What Runa actually provides; Which projects fit Runa; How Runa's microkernel is organized; How it differs from common Go web frameworks; What the name means
+- guide/installation: Installation — Prepare a Go project; Install the kernel first; Install route when you need HTTP; Check the installation; Install only the capabilities you use; Business projects do not need go.work
+- guide/project-layout: Project Layout — Minimal projects can stay simple; Recommended layout; The entry directory only starts the application; Business logic enters through Module; Split config by capability and module; When to split directories
+- guide/quick-start-cli: Quick Start: CLI — Create a project; Write a command; What this code does; Register commands inside a business module; What happens when no command is passed; Add background processes only when needed
+- guide/quick-start-http: Quick Start: HTTP — Create a project; Write main.go; Start and call it; Add a JSON endpoint; Use typed routes when you need type constraints; Install cache only when you need it
+- index: A Go web framework that grows on demand
+- ops/audit: Audit — Install; Connect to an application; Standalone New usage; Config; Write to log; Write to queue
+- ops/cluster: Cluster — Install; Connect to an application; Config; Redis driver; Instance information; Common mistakes
+- ops/console: Console — Install; Connect to an application; Config; Custom panels; Monitor storage; Common mistakes
+- ops/index: Operations — Common production capabilities; Recommended first operations capabilities; Should small projects use operations capabilities; How they differ from business capabilities; Common adoption order
+- ops/observe: Observe — Install; Connect to an application; Health checks; Prometheus; Config; Common mistakes
+- reference/cli: CLI Reference — Kernel commands; Routing and docs; Data and background jobs; WebSocket; Devtools; How to run
+- reference/config: Config Reference — Override order; App; Cache; Queue; Session; Storage
+- reference/faq: FAQ — Does installing only the core include HTTP; Does Run start HTTP, queues, and other services; Why should Default() be used after startup; Can I use a child package standalone; What is the relationship between Provider and New; Where should config files live
+- reference/index: Reference — What you can find here
+- reference/modules: Module Index — Core; Transports; Capabilities; Drivers and optional blocks; Toolkit
+- routing/context: Route Context — Basic usage; Read request data; Write responses; Read config; Read capabilities from Context; Request-level data
+- routing/crud: CRUD APIs — Install; Basic flow; Store interface; Choose enabled actions; Pagination, sorting, and filters; Output transform
+- routing/errors: Error Handling — HTTP errors; Structured errors; Wrap underlying errors; Extract errors; Custom error rendering; Recommendations
+- routing/index: HTTP Routing — Install; Connect to an application; Register routes; Groups; Domains; Typed routes
+- routing/middleware: Route Middleware Mechanism — What middleware is; Write middleware; Use middleware; Execution order; Example with before and after logic; Built-in middleware
+- routing/openapi: OpenAPI — Install; Connect to an application; Add route metadata; Why typed routes are recommended; Export by command; Standalone New usage
+- routing/request-response: Request & Response — Regular Handler; Typed input; Typed output; Input validation; Common responses; Status code
+- routing/rest: Resource Routes — Install; Create a Resource; Standard actions; Complete small example; Custom actions; Route metadata
+- routing/validation: Validation — Install; Standalone usage; Use with typed routes; Use with CRUD; Common rules; Field-level callback
+- toolkit/devtools: Devtools — Install; Connect to an application; Config; Standalone Scaffold; Commands; Common mistakes
+- toolkit/errors: Errors — Install; Create an error; Wrap an error; Read an error; Use with HTTP errors; Common mistakes
+- toolkit/id: ID — Install; Random IDs; MustRandom; Numeric formatting; Snowflake; Common mistakes
+- toolkit/index: Toolkit — Available toolkit packages; How toolkit packages differ from capability packages; Install and use pattern; Do toolkit packages need config files; When to use toolkit packages directly; Beginner path
+- toolkit/rbac: RBAC — Install; Memory Store; Permission checks; Connect to HTTP; Custom subject; Custom Store
+- toolkit/sanitize: Sanitize — Install; Text sanitization; URL sanitization; HTML policies; Custom policies; Common mistakes
+- toolkit/security: Security — Install; Quick usage; Options; Skip some requests; Disable individual middleware; Common mistakes
+- transports/grpc: gRPC — No module is available yet; How it will connect in the future; How gRPC handlers should use capabilities; No fake examples before implementation; Install; Common mistakes
+- transports/index: Transport Overview — Why the kernel is not bound to HTTP; Available transport blocks; How a transport block usually connects; How transport blocks use capabilities; How to choose a transport
+- transports/jsonrpc: JSON-RPC — Install; Create a Server; Connect to an application; WebSocket; Config; Common mistakes
+- transports/websocket: WebSocket — Install; Create a Hub; Connect to an application; Config; Redis horizontal scaling; Client message format

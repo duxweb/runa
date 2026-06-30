@@ -1,0 +1,141 @@
+---
+title: "Configuration"
+description: "Config files, environment overrides, and capability scopes"
+---
+
+Runa loads configuration through the kernel. Capability packages and business modules then read from their own scopes.
+
+Config files use TOML. You can start with only `config/app.toml`, then split by capability and module as the project grows.
+
+## Where config files live
+
+The default config directory is `config/`. You can change it when creating the application:
+
+```go
+app := runa.New(runa.ConfigPath("config"))
+```
+
+Config files use TOML. The filename is the config scope:
+
+```text
+config/cache.toml   -> cache scope
+config/queue.toml   -> queue scope
+config/app.toml     -> app scope
+```
+
+## Minimal config example
+
+```toml
+# config/app.toml
+name = "demo"
+debug = true
+timezone = "Asia/Shanghai"
+```
+
+Read it:
+
+```go
+name := runa.Config("app").Get[string]("name")
+debug := runa.Config("app").Get[bool]("debug")
+```
+
+`Config("app")` reads the `app` scope, which means `config/app.toml`.
+
+`timezone` is the application timezone used by the kernel. It affects framework timestamps such as audit records, queue times, and the default schedule timezone. You can also set it with `runa.Timezone("Asia/Shanghai")`; the code option has higher priority.
+
+## Load config by environment
+
+Environment file format:
+
+```text
+config/app.toml
+config/cache.production.toml
+config/app.production.toml
+```
+
+Set the environment:
+
+```go
+app := runa.New(runa.Env("production"))
+```
+
+Load order is base config, then current-environment config, then environment variables.
+
+Later sources override earlier sources.
+
+## Split config by capability and module
+
+The config filename is the scope. Capability config is split by capability name, and business config is split by module name:
+
+```text
+config/cache.toml   -> cache config
+config/queue.toml   -> queue config
+config/user.toml    -> user module config
+```
+
+This keeps business config and capability config from being mixed into one file.
+
+## Read config in code
+
+Application code can read through the facade:
+
+```go
+value := runa.Config("cache").Get[string]("pools.default.driver")
+```
+
+Without a name, it returns the root config store:
+
+```go
+store := runa.Config()
+```
+
+HTTP handlers can also read config from request context:
+
+```go
+route.Default().Get("/", func(ctx *route.Context) error {
+    appName := ctx.Config("app").Get[string]("name")
+    return ctx.Text(appName)
+})
+```
+
+## Inspect config with a command
+
+The config capability registers a command:
+
+```bash
+go run . config:show
+```
+
+Sensitive keys such as `secret`, `password`, and `token` are hidden.
+
+## Capability config example
+
+```toml
+# config/cache.toml
+[pools.default]
+driver = "memory"
+prefix = "app:"
+ttl = "10m"
+```
+
+For concrete config keys, see each capability page and [Config Reference](../reference/config/).
+
+## Common problems
+
+### Config reads empty
+
+Check that the file path, filename, and scope match. `runa.Config("cache")` reads `config/cache.toml`, not `config/app.toml`.
+
+### Environment config does not apply
+
+Make sure the application sets the environment:
+
+```go
+runa.New(runa.Env("production"))
+```
+
+Also check that the filename follows the expected format, such as `app.production.toml`.
+
+### Where should passwords live
+
+Local development can use local TOML files. Production secrets should usually come from environment variables or the deployment platform's secret manager. Do not commit real secrets to Git.

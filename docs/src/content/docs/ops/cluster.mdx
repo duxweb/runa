@@ -1,0 +1,116 @@
+---
+title: "Cluster"
+description: "Service instance heartbeat and cluster registry"
+---
+
+`cluster` registers the current process as a service instance and continuously sends heartbeats. The default driver is in-memory. In production, you can use the Redis driver to share instance state.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/cluster
+```
+
+Install the Redis driver only when needed:
+
+```bash
+go get github.com/duxweb/runa/cluster/redis
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/cluster"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(cluster.Provider(
+        cluster.DriverWith(cluster.MemoryDriver()),
+        cluster.Service("api"),
+        cluster.Env("dev"),
+        cluster.HeartbeatInterval(5*time.Second),
+    ))
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`cluster.Provider()` registers a lifecycle service. During Boot it registers the instance and starts heartbeats. During Shutdown it deregisters the instance.
+
+The memory driver is useful for development and understanding the flow. Multi-instance production deployments need a shared driver such as Redis, otherwise each process only sees itself.
+
+## Config
+
+`cluster` reads `[cluster]` config.
+
+```toml
+[cluster]
+driver = "memory"
+id = "api-1"
+service = "api"
+env = "production"
+version = "1.0.0"
+addr = "http://127.0.0.1:8080"
+heartbeat_interval = "5s"
+ttl = "15s"
+
+[cluster.meta]
+zone = "cn-east"
+```
+
+`driver` matches the driver name registered in code. When using Redis in production, pass the Redis driver instance in code.
+
+## Redis driver
+
+```go
+import clusterredis "github.com/duxweb/runa/cluster/redis"
+
+app.Install(cluster.Provider(
+    cluster.DriverWith(clusterredis.Driver(client, clusterredis.Prefix("runa:cluster:"))),
+    cluster.Service("api"),
+))
+```
+
+## Instance information
+
+```go
+registry := cluster.Default()
+current := registry.Instance()
+items, err := registry.Instances(context.Background())
+_ = current
+_ = items
+_ = err
+```
+
+## Common mistakes
+
+### Using the memory driver in production
+
+The memory driver stores instance information only in the current process. Use the Redis driver for multi-instance deployments.
+
+### Setting heartbeat TTL too short
+
+`ttl` should be longer than `heartbeat_interval`, otherwise an instance may be marked offline before the next heartbeat.
+
+### Treating cluster as a full service-discovery system
+
+`cluster` provides instance heartbeats and lists. It is not a complete service discovery, load balancing, or registry platform.
+
+## API quick reference
+
+- `cluster.Provider(options...)` connects to the lifecycle.
+- `cluster.Default()` reads `*cluster.Registry` from default DI.
+- `cluster.MemoryDriver()` creates an in-memory driver.
+- `cluster.DriverWith(driver)` sets the driver.
+- `registry.Instance()` returns the current instance snapshot.
+- `registry.Instances(ctx, service...)` lists instances.

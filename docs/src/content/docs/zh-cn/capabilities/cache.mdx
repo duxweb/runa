@@ -1,0 +1,148 @@
+---
+title: "缓存 Cache"
+description: "类型化缓存池与可替换驱动"
+---
+
+`cache` 提供类型化缓存池。默认使用内存驱动，适合开发和单机缓存；需要共享缓存时再接入 Redis 驱动。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/cache
+```
+
+Redis 驱动按需安装。业务代码如果直接创建 Redis client，也需要按你的代码 import 对应 Redis 客户端：
+
+```bash
+go get github.com/duxweb/runa/cache/redis
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/cache"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        cache.Provider(
+            cache.RegisterPool("profile", cache.Prefix("profile:"), cache.TTL(10*time.Minute)),
+        ),
+    )
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    pool := cache.Default().MustOf[string]("profile")
+    _ = pool.Set(context.Background(), "1", "Runa", time.Minute)
+}
+```
+
+`cache.Provider()` 会把 `*cache.Registry` 注册进 DI，并在应用启动时读取缓存配置。HTTP handler、命令和 Module 里都可以通过 `cache.Default()` 获取默认注册表。
+
+## 独立 New 使用
+
+```go
+registry := cache.New()
+registry.Cache("profile", cache.Prefix("profile:"))
+
+pool := registry.MustOf[string]("profile")
+_ = pool.Set(context.Background(), "1", "Runa", time.Minute)
+```
+
+独立使用时不会自动读取 `config/cache.toml`，需要自己调用 `registry.Cache(...)` 和 `registry.RegisterDriver(...)`。这种方式适合工具程序或单元测试。
+
+## 配置
+
+`cache` 读取 `cache.pools.<name>` 配置，只会作用到已经注册的池。默认 `New()` 已注册 `default`、`route`、`config`、`view`、`permission`、`session` 这些池。
+
+```toml
+[cache.pools.default]
+driver = "memory"
+prefix = "app:"
+ttl = "10m"
+
+[cache.pools.profile]
+driver = "memory"
+prefix = "profile:"
+ttl = "30m"
+
+[cache.pools.profile.meta]
+role = "hot"
+```
+
+| 键 | 类型 | 说明 |
+| --- | --- | --- |
+| `driver` | string | 使用的驱动名，默认 `memory` |
+| `prefix` | string | key 前缀 |
+| `ttl` | duration | 默认过期时间 |
+| `meta` | table | 自定义元数据 |
+
+## Redis 驱动
+
+```go
+import (
+    goredis "github.com/redis/go-redis/v9"
+    cacheredis "github.com/duxweb/runa/cache/redis"
+)
+
+client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
+
+app.Install(cache.Provider(
+    cache.RegisterDriver("redis", cacheredis.Driver(client, cache.Prefix("runa:"))),
+    cache.RegisterPool("default", cache.Use("redis")),
+))
+```
+
+`RegisterDriver("redis", ...)` 只是把 Redis 驱动注册进缓存注册表。`RegisterPool("default", cache.Use("redis"))` 才会让 `default` 池使用这个驱动；不写 `Use(...)` 时使用内置 `memory` 驱动。
+
+Redis 驱动只在你 import `github.com/duxweb/runa/cache/redis` 时进入依赖图。
+
+## 常用 API
+
+```go
+pool := cache.Default().MustOf[User]("default")
+
+value, ok, err := pool.Get(ctx, "user:1")
+err = pool.Set(ctx, "user:1", User{Name: "Runa"}, time.Minute)
+value, err = pool.Remember(ctx, "user:1", time.Minute, func(context.Context) (User, error) {
+    return loadUser(), nil
+})
+err = pool.Delete(ctx, "user:1")
+```
+
+`MustOf[T]` 返回的是 `cache.Cache[T]`，序列化默认使用 JSON。可以用 `cache.Codec(cache.GobCodec())` 或 `cache.Codec(cache.StringCodec())` 替换。
+
+## 常见错误
+
+### 只注册驱动，没有让池使用驱动
+
+`RegisterDriver("redis", ...)` 只是注册 Redis 驱动。还需要 `RegisterPool("default", cache.Use("redis"))`，默认池才会使用 Redis。
+
+### 在应用启动前读取 Default
+
+不要在包级变量里写 `var pool = cache.Default()`。应该在 handler、命令或 Module 生命周期里读取。
+
+### 缓存类型前后不一致
+
+`MustOf[string]("default")` 和 `MustOf[User]("default")` 是不同的类型视角。写入和读取同一个 key 时，类型要保持一致。
+
+## API 速查
+
+- `cache.New()` 创建独立注册表
+- `cache.Provider(...)` 接入框架生命周期
+- `cache.Default()` 从默认 DI 取 `*cache.Registry`
+- `cache.RegisterDriver(name, driver)` 注册驱动
+- `cache.RegisterPool(name, options...)` 注册缓存池
+- `registry.MustOf[T](name)` 获取类型化缓存池
+- `cache.MemoryDriver(...)` 创建内存驱动
+- `cache.LayeredDriver(l1, l2, ...)` 创建双层缓存驱动

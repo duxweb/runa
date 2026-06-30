@@ -1,0 +1,156 @@
+---
+title: "Audit 中间件"
+description: "记录 HTTP 业务操作审计日志、操作者、输入、状态和耗时"
+---
+
+`audit/middleware` 用来记录业务操作审计。它适合后台管理、资金操作、权限变更、数据变更等需要追踪“谁在什么时候做了什么”的场景。
+
+Audit 中间件可以直接使用 `audit.Config` 创建，也可以通过 `audit.Provider` 从配置文件和 DI 中读取默认配置。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/audit
+```
+
+如果要写入 Runa 日志通道，通常还会安装：
+
+```bash
+go get github.com/duxweb/runa/log
+```
+
+## 基本接入
+
+```go
+import (
+    "github.com/duxweb/runa/audit"
+    auditmw "github.com/duxweb/runa/audit/middleware"
+)
+
+route.Default().Use(auditmw.New(audit.Config{
+    Writer:       audit.DefaultLogWriter(),
+    CaptureInput: true,
+}))
+```
+
+默认只记录 `POST`、`PUT`、`PATCH`、`DELETE`
+
+## 使用 Provider 和配置文件
+
+```go
+app.Install(audit.Provider(audit.Config{
+    Writer: audit.DefaultLogWriter(),
+}))
+
+route.Default().Use(auditmw.Default())
+```
+
+配置文件：
+
+```toml
+# config/audit.toml
+methods = ["POST", "PUT", "PATCH", "DELETE"]
+mode = "async"
+strict = false
+capture_input = true
+mask_fields = ["password", "token", "secret"]
+mask_value = "***"
+max_input_size = 16384
+write_timeout = "3s"
+```
+
+## 自定义写入器
+
+```go
+writer := audit.FuncWriter(func(ctx context.Context, entry audit.Entry) error {
+    // 写数据库、队列、文件或第三方系统
+    return nil
+})
+
+route.Default().Use(auditmw.New(audit.Config{
+    Mode:         audit.Sync,
+    Writer:       writer,
+    CaptureInput: true,
+}))
+```
+
+## 追加审计字段
+
+```go
+route.Default().Use(auditmw.Default(
+    auditmw.Build(func(ctx *route.Context, entry *audit.Entry) error {
+        entry.Meta["app"] = "admin"
+        entry.Meta["tenant"] = route.Header[string](ctx, "X-Tenant")
+        return nil
+    }),
+))
+```
+
+路由上的 `Name` 和 `Meta` 会进入审计记录：
+
+```go
+route.Default().Post("/admin/users/{id}", updateUser).
+    Name("admin.user.update").
+    Meta("action", "update_user").
+    Meta("resource", "user")
+```
+
+## 跳过请求
+
+```go
+route.Default().Use(auditmw.Default(
+    auditmw.Next(func(ctx *route.Context) bool {
+        return ctx.Request().URL.Path == "/health"
+    }),
+))
+```
+
+## 记录登录用户
+
+如果前面的 auth 中间件写入了 `runa.auth`，audit 会自动读取：
+
+- `Guard` 来自 `auth.Info.Name`
+- `ActorID` 优先读取 `id`，其次 `user_id`
+- `ActorName` 优先读取 `name`，其次 `username`
+
+推荐顺序：
+
+```go
+admin := route.Default().Group("/admin")
+admin.Use(sessionmw.Use("web"))
+admin.Use(authmw.Use("web"))
+admin.Use(auditmw.Default())
+```
+
+## 严格模式
+
+```go
+route.Default().Use(auditmw.New(audit.Config{
+    Strict: true,
+    Mode:   audit.Sync,
+    Writer: writer,
+}))
+```
+
+严格模式下，如果审计写入失败，并且业务 handler 本身没有错误，中间件会返回写入错误。适合强合规场景；普通业务通常使用异步模式，避免审计系统抖动影响主链路。
+
+## 配置项
+
+| 字段 | 默认值 | 说明 |
+| --- | --- | --- |
+| `Methods` | `POST,PUT,PATCH,DELETE` | 要记录的 HTTP 方法 |
+| `Mode` | `async` | 写入模式，`async` 或 `sync` |
+| `Strict` | `false` | 写入失败是否影响请求 |
+| `Writer` | `NoopWriter` | 审计写入器 |
+| `CaptureInput` | `false` | 是否采集 query 和 body |
+| `MaskFields` | 默认敏感字段 | 脱敏字段名 |
+| `MaskValue` | `***` | 脱敏后的值 |
+| `MaxInputSize` | `16KB` | body 采集上限 |
+| `WriteTimeout` | `3s` | 写入超时 |
+
+## 常见问题
+
+- audit 不会自动挂路由，必须显式 `route.Use(...)`
+- 默认不采集输入，想记录参数要开启 `CaptureInput`
+- multipart 请求体不会被采集，避免读取大文件上传内容
+- 如果没有配置 Writer，默认会丢弃记录，不会报错

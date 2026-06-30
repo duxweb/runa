@@ -1,0 +1,148 @@
+---
+title: "Rate Limit"
+description: "Named rate-limit rules and HTTP middleware"
+---
+
+`rate` provides named limiters. The default driver is memory and supports token bucket, fixed window, and sliding window. HTTP usage is provided by `rate/middleware`.
+
+Typical use cases include limiting login attempts, SMS sends, API calls, and endpoints that are easy to abuse.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/rate
+```
+
+Install the Redis driver only when needed:
+
+```bash
+go get github.com/duxweb/runa/rate/redis
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/rate"
+    ratemw "github.com/duxweb/runa/rate/middleware"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        rate.Provider(rate.RegisterLimiter("api", rate.TokenBucket(60, time.Minute), rate.Key(rate.ByIP()))),
+    )
+
+    route.Default().Group("/api").Use(ratemw.Use("api")).Get("/ping", func(ctx *route.Context) error {
+        return ctx.Text("pong")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## Standalone New usage
+
+```go
+registry := rate.New()
+registry.Rate("api", rate.TokenBucket(60, time.Minute), rate.Key(rate.ByIP()))
+
+result, err := registry.MustOf("api").Allow(context.Background(), "ip:127.0.0.1")
+_ = result
+_ = err
+```
+
+## Config
+
+`rate` reads `rate.limiters.<name>` and only applies config to limiters that have already been registered.
+
+```toml
+[rate.limiters.api]
+driver = "memory"
+algorithm = "token_bucket"
+limit = 60
+window = "1m"
+burst = 10
+key = ["ip", "route"]
+```
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `driver` | string | driver name, default `memory` |
+| `algorithm` | string | `token_bucket`, `fixed_window`, or `sliding_window` |
+| `limit` | int | allowed count in the window |
+| `window` | duration | counting window |
+| `burst` | int | burst capacity |
+| `key` | []string | key sources, such as `ip`, `route`, `user`, `session` |
+| `meta` | table | custom metadata |
+
+## Drivers
+
+The built-in `memory` driver is suitable for single-process rate limiting. For multi-instance deployments, install `rate/redis`, register the Redis driver with `RegisterDriver`, then use `rate.Use("redis")` for the target limiter.
+
+```go
+import (
+    goredis "github.com/redis/go-redis/v9"
+    rateredis "github.com/duxweb/runa/rate/redis"
+)
+
+client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
+
+app.Install(rate.Provider(
+    rate.RegisterDriver("redis", rateredis.Driver(client, rate.Prefix("runa:rate:"))),
+    rate.RegisterLimiter("api", rate.Use("redis"), rate.FixedWindow(100, time.Minute), rate.Key(rate.ByIP())),
+))
+```
+
+## Which algorithm to choose
+
+| Algorithm | Behavior | Good for |
+| --- | --- | --- |
+| `TokenBucket` | Smooth limiting with some burst capacity | General API rate limits |
+| `FixedWindow` | Simple counting in fixed windows | Login or SMS attempts |
+| `SlidingWindow` | Smoother window boundaries and more precise counting | Endpoints that need more accurate limits |
+
+If you are new to rate limiting, start with `TokenBucket`.
+
+## Key sources
+
+```go
+rate.Key(rate.ByIP())
+rate.Key(rate.ByRoute(), rate.ByUser())
+rate.Key(rate.ByHeader("X-Tenant"))
+rate.Key(rate.ByQuery("token"))
+rate.Key(rate.ByFunc(func(ctx any) string { return "custom" }))
+```
+
+## Common mistakes
+
+### Registering a limiter without using middleware
+
+`rate.Provider(...)` only registers the rule. HTTP routes need `ratemw.Use("api")` for the rule to run.
+
+### Using the memory driver in multi-instance deployments
+
+The memory driver only limits the current process. Use the Redis driver when multiple application instances serve the same traffic.
+
+### Using a key that is too broad
+
+IP-only limits are simple but not always enough. Login, SMS, and API-key scenarios usually need more specific key sources.
+
+## API quick reference
+
+- `rate.New()` creates a standalone registry.
+- `rate.Provider(...)` connects to the framework lifecycle.
+- `rate.Default()` reads `*rate.Registry` from default DI.
+- `rate.RegisterDriver(name, driver)` registers a driver.
+- `rate.RegisterLimiter(name, options...)` registers a limiter.
+- `rate/middleware.Use(name)` creates HTTP rate-limit middleware.

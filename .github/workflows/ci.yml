@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  go:
+    name: Go modules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.0-rc.1'
+          check-latest: true
+      - name: Check formatting
+        run: |
+          files=$(gofmt -l $(find . -name '*.go' -not -path './docs/node_modules/*'))
+          if [ -n "$files" ]; then
+            echo "$files"
+            exit 1
+          fi
+      - name: Test workspace root
+        run: go test ./...
+      - name: Vet workspace root
+        run: go vet ./...
+      - name: Test all modules
+        run: |
+          set -euo pipefail
+          for mod in $(go list -m -f '{{.Dir}}'); do
+            echo "==> $mod"
+            (cd "$mod" && go test ./... && go vet ./...)
+          done
+
+  docs:
+    name: Docs build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.31.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
+      - name: Install dependencies
+        working-directory: docs
+        run: pnpm install --frozen-lockfile
+      - name: Build docs
+        working-directory: docs
+        run: pnpm build

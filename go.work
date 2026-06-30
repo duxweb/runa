@@ -1,0 +1,187 @@
+go 1.27rc1
+
+use (
+	.
+	./asset
+	./audit
+	./auth
+	./cache
+	./cache/redis
+	./cluster
+	./cluster/redis
+	./cmd/runa
+	./console
+	./crud
+	./crud/orostore
+	./database
+	./database/oro
+	./database/redis
+	./devtools
+	./event
+	./examples/admin
+	./examples/api
+	./examples/basic
+	./examples/console
+	./examples/fullstack
+	./id
+	./id/snowflake
+	./jsonrpc
+	./kernel/embedgen
+	./lang
+	./lang/view
+	./lock
+	./lock/redis
+	./log
+	./message
+	./message/amqp
+	./message/mqtt
+	./message/nats
+	./message/redis
+	./middleware
+	./middleware/lang
+	./observe
+	./observe/prometheus
+	./openapi
+	./queue
+	./queue/amqp
+	./queue/redis
+	./rate
+	./rate/redis
+	./rbac
+	./resource
+	./route
+	./sanitize
+	./schedule
+	./scope
+	./security
+	./session
+	./storage
+	./storage/s3
+	./task
+	./validate
+	./view
+	./ws
+	./ws/redis
+)
+
+replace github.com/duxweb/runa v0.1.0 => .
+
+replace github.com/duxweb/runa/asset v0.1.0 => ./asset
+
+replace github.com/duxweb/runa/audit v0.1.0 => ./audit
+
+replace github.com/duxweb/runa/auth v0.1.0 => ./auth
+
+replace github.com/duxweb/runa/cache v0.1.0 => ./cache
+
+replace github.com/duxweb/runa/cache/redis v0.1.0 => ./cache/redis
+
+replace github.com/duxweb/runa/cluster v0.1.0 => ./cluster
+
+replace github.com/duxweb/runa/cluster/redis v0.1.0 => ./cluster/redis
+
+replace github.com/duxweb/runa/cmd/runa v0.1.0 => ./cmd/runa
+
+replace github.com/duxweb/runa/console v0.1.0 => ./console
+
+replace github.com/duxweb/runa/crud v0.1.0 => ./crud
+
+replace github.com/duxweb/runa/crud/orostore v0.1.0 => ./crud/orostore
+
+replace github.com/duxweb/runa/database v0.1.0 => ./database
+
+replace github.com/duxweb/runa/database/oro v0.1.0 => ./database/oro
+
+replace github.com/duxweb/runa/database/redis v0.1.0 => ./database/redis
+
+replace github.com/duxweb/runa/devtools v0.1.0 => ./devtools
+
+replace github.com/duxweb/runa/event v0.1.0 => ./event
+
+replace github.com/duxweb/runa/examples/admin v0.1.0 => ./examples/admin
+
+replace github.com/duxweb/runa/examples/api v0.1.0 => ./examples/api
+
+replace github.com/duxweb/runa/examples/basic v0.1.0 => ./examples/basic
+
+replace github.com/duxweb/runa/examples/console v0.1.0 => ./examples/console
+
+replace github.com/duxweb/runa/examples/fullstack v0.1.0 => ./examples/fullstack
+
+replace github.com/duxweb/runa/id v0.1.0 => ./id
+
+replace github.com/duxweb/runa/id/snowflake v0.1.0 => ./id/snowflake
+
+replace github.com/duxweb/runa/jsonrpc v0.1.0 => ./jsonrpc
+
+replace github.com/duxweb/runa/kernel/embedgen v0.1.0 => ./kernel/embedgen
+
+replace github.com/duxweb/runa/lang v0.1.0 => ./lang
+
+replace github.com/duxweb/runa/lang/view v0.1.0 => ./lang/view
+
+replace github.com/duxweb/runa/lock v0.1.0 => ./lock
+
+replace github.com/duxweb/runa/lock/redis v0.1.0 => ./lock/redis
+
+replace github.com/duxweb/runa/log v0.1.0 => ./log
+
+replace github.com/duxweb/runa/message v0.1.0 => ./message
+
+replace github.com/duxweb/runa/message/amqp v0.1.0 => ./message/amqp
+
+replace github.com/duxweb/runa/message/mqtt v0.1.0 => ./message/mqtt
+
+replace github.com/duxweb/runa/message/nats v0.1.0 => ./message/nats
+
+replace github.com/duxweb/runa/message/redis v0.1.0 => ./message/redis
+
+replace github.com/duxweb/runa/middleware v0.1.0 => ./middleware
+
+replace github.com/duxweb/runa/middleware/lang v0.1.0 => ./middleware/lang
+
+replace github.com/duxweb/runa/observe v0.1.0 => ./observe
+
+replace github.com/duxweb/runa/observe/prometheus v0.1.0 => ./observe/prometheus
+
+replace github.com/duxweb/runa/openapi v0.1.0 => ./openapi
+
+replace github.com/duxweb/runa/queue v0.1.0 => ./queue
+
+replace github.com/duxweb/runa/queue/amqp v0.1.0 => ./queue/amqp
+
+replace github.com/duxweb/runa/queue/redis v0.1.0 => ./queue/redis
+
+replace github.com/duxweb/runa/rate v0.1.0 => ./rate
+
+replace github.com/duxweb/runa/rate/redis v0.1.0 => ./rate/redis
+
+replace github.com/duxweb/runa/rbac v0.1.0 => ./rbac
+
+replace github.com/duxweb/runa/resource v0.1.0 => ./resource
+
+replace github.com/duxweb/runa/route v0.1.0 => ./route
+
+replace github.com/duxweb/runa/sanitize v0.1.0 => ./sanitize
+
+replace github.com/duxweb/runa/schedule v0.1.0 => ./schedule
+
+replace github.com/duxweb/runa/scope v0.1.0 => ./scope
+
+replace github.com/duxweb/runa/security v0.1.0 => ./security
+
+replace github.com/duxweb/runa/session v0.1.0 => ./session
+
+replace github.com/duxweb/runa/storage v0.1.0 => ./storage
+
+replace github.com/duxweb/runa/storage/s3 v0.1.0 => ./storage/s3
+
+replace github.com/duxweb/runa/task v0.1.0 => ./task
+
+replace github.com/duxweb/runa/validate v0.1.0 => ./validate
+
+replace github.com/duxweb/runa/view v0.1.0 => ./view
+
+replace github.com/duxweb/runa/ws v0.1.0 => ./ws
+
+replace github.com/duxweb/runa/ws/redis v0.1.0 => ./ws/redis

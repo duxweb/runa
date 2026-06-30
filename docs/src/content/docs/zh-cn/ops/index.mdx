@@ -1,0 +1,71 @@
+---
+title: "运维"
+description: "面向生产应用的运维能力"
+---
+
+运维能力不直接承载业务数据，而是围绕生产运行提供审计、健康检查、实例心跳、指标和控制台。它们同样通过 Provider 接入生命周期，需要时安装，不需要时不进入依赖图。
+
+新手可以先把运维能力理解成“上线后帮你看应用是否健康、发生了什么、现在有几个实例”的工具。
+
+如果你只是写第一个接口，可以先跳过本章。等应用准备部署、需要排查问题或需要审计记录时，再按需接入。
+
+## 生产环境常用哪些能力
+
+| 能力 | 安装路径 | 用途 |
+| --- | --- | --- |
+| Audit | `github.com/duxweb/runa/audit` | 请求审计、审计写入器、队列写入 |
+| Observe | `github.com/duxweb/runa/observe` | `/health`、`/ready`、指标和 debug 端点 |
+| Cluster | `github.com/duxweb/runa/cluster` | 实例注册、心跳和集群实例列表 |
+| Console | `github.com/duxweb/runa/console` | 运行时控制台、面板和监控数据 |
+
+## 建议先接入哪些运维能力
+
+开发阶段可以先接入 `observe`，它会提供 `/health`、`/ready` 这类健康检查端点。生产阶段通常按这个顺序接入：
+
+```go
+app.Install(
+    log.Provider(),
+    observe.Provider(observe.Config{Service: "api", Mount: "/-"}),
+)
+```
+
+如果需要审计或集群心跳，再继续安装：
+
+```go
+app.Install(
+    queue.Provider(),
+    audit.Provider(audit.Config{Writer: audit.DefaultLogWriter()}),
+    cluster.Provider(cluster.DriverWith(cluster.MemoryDriver())),
+)
+```
+
+控制台 `console` 适合内网或受保护环境。不要在没有鉴权和网络隔离的情况下直接暴露到公网。
+
+## 小项目要不要接运维能力
+
+可以按阶段接：
+
+- 本地开发：先不接，或者只接 `observe`
+- 测试环境：接 `observe` 和 `log`
+- 生产环境：根据合规要求接 `audit`，多实例接 `cluster`，需要运行时面板再接 `console`
+
+## 它们和业务能力有什么不同
+
+业务能力通常被业务代码直接调用，比如 `cache.Default()`、`queue.Default()`。运维能力更多是被中间件、Host 或控制台消费：
+
+- 审计通过 HTTP 中间件写入记录
+- 观测通过 HTTP 路由暴露健康检查和指标
+- 集群通过生命周期启动心跳
+- 控制台通过面板读取其他能力的运行信息
+
+## 常见接入顺序
+
+一个比较稳妥的生产接入顺序：
+
+1. 先接 `log`，保证错误和访问日志能落地
+2. 再接 `observe`，给负载均衡、容器平台或监控系统健康检查
+3. 有合规要求时接 `audit`
+4. 多实例部署时接 `cluster`
+5. 需要运行时面板时接 `console`
+
+不要一开始把所有运维能力都装上。先让应用可运行，再根据部署环境补齐。

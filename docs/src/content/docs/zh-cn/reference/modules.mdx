@@ -1,0 +1,107 @@
+---
+title: "模块索引"
+description: "import 路径与 go get 矩阵"
+---
+
+Runa 使用多模块 Monorepo。核心、传输、能力、驱动都可以独立安装。只 import 核心不会自动带入 route、cache、queue、database 等能力。
+
+读这个表时先看“你要做什么”，再安装对应模块。不要为了省事把所有模块一次装完。
+
+## 常见组合
+
+最小 HTTP API：
+
+```bash
+go get github.com/duxweb/runa github.com/duxweb/runa/route
+```
+
+HTTP + 数据库：
+
+```bash
+go get github.com/duxweb/runa github.com/duxweb/runa/route github.com/duxweb/runa/database github.com/duxweb/runa/database/oro
+```
+
+后台管理常用组合：
+
+```bash
+go get github.com/duxweb/runa/route github.com/duxweb/runa/session github.com/duxweb/runa/auth github.com/duxweb/runa/openapi github.com/duxweb/runa/resource
+```
+
+## 核心
+
+| 模块 | 安装 |
+| --- | --- |
+| Core | `go get github.com/duxweb/runa` |
+
+## 传输
+
+| 模块 | 安装 |
+| --- | --- |
+| HTTP Route | `go get github.com/duxweb/runa/route` |
+| WebSocket | `go get github.com/duxweb/runa/ws` |
+| JSON-RPC | `go get github.com/duxweb/runa/jsonrpc` |
+
+## 能力
+
+| 能力 | 安装 |
+| --- | --- |
+| Asset | `go get github.com/duxweb/runa/asset` |
+| Audit | `go get github.com/duxweb/runa/audit` |
+| Auth | `go get github.com/duxweb/runa/auth` |
+| Cache | `go get github.com/duxweb/runa/cache` |
+| Cluster | `go get github.com/duxweb/runa/cluster` |
+| Database | `go get github.com/duxweb/runa/database` |
+| Event | `go get github.com/duxweb/runa/event` |
+| Lock | `go get github.com/duxweb/runa/lock` |
+| Log | `go get github.com/duxweb/runa/log` |
+| Message | `go get github.com/duxweb/runa/message` |
+| Observe | `go get github.com/duxweb/runa/observe` |
+| OpenAPI | `go get github.com/duxweb/runa/openapi` |
+| Queue | `go get github.com/duxweb/runa/queue` |
+| Rate | `go get github.com/duxweb/runa/rate` |
+| Resource | `go get github.com/duxweb/runa/resource` |
+| Schedule | `go get github.com/duxweb/runa/schedule` |
+| Session | `go get github.com/duxweb/runa/session` |
+| Storage | `go get github.com/duxweb/runa/storage` |
+| Task | `go get github.com/duxweb/runa/task` |
+| View | `go get github.com/duxweb/runa/view` |
+| View RHTML | `go get github.com/duxweb/runa/view` |
+| Lang | `go get github.com/duxweb/runa/lang` |
+| Lang View | `go get github.com/duxweb/runa/lang/view` |
+
+## 驱动与可选块
+
+| 模块 | 安装 |
+| --- | --- |
+| Cache Redis | `go get github.com/duxweb/runa/cache/redis` |
+| Cluster Redis | `go get github.com/duxweb/runa/cluster/redis` |
+| CRUD | `go get github.com/duxweb/runa/crud` |
+| CRUD Oro Store | `go get github.com/duxweb/runa/crud/orostore` |
+| Database Oro | `go get github.com/duxweb/runa/database/oro` |
+| Database Redis | `go get github.com/duxweb/runa/database/redis` |
+| ID Snowflake | `go get github.com/duxweb/runa/id/snowflake` |
+| Lock Redis | `go get github.com/duxweb/runa/lock/redis` |
+| Message AMQP | `go get github.com/duxweb/runa/message/amqp` |
+| Message MQTT | `go get github.com/duxweb/runa/message/mqtt` |
+| Message NATS | `go get github.com/duxweb/runa/message/nats` |
+| Message Redis | `go get github.com/duxweb/runa/message/redis` |
+| Observe Prometheus | `go get github.com/duxweb/runa/observe/prometheus` |
+| Queue AMQP | `go get github.com/duxweb/runa/queue/amqp` |
+| Queue Redis | `go get github.com/duxweb/runa/queue/redis` |
+| Rate Redis | `go get github.com/duxweb/runa/rate/redis` |
+| Storage S3 | `go get github.com/duxweb/runa/storage/s3` |
+| WebSocket Redis | `go get github.com/duxweb/runa/ws/redis` |
+
+## 工具库
+
+| 工具 | 安装 |
+| --- | --- |
+| Devtools | `go get github.com/duxweb/runa/devtools` |
+| ID | `go get github.com/duxweb/runa/id` |
+| Middleware | `go get github.com/duxweb/runa/middleware` |
+| Middleware Lang | `go get github.com/duxweb/runa/middleware/lang` |
+| RBAC | `go get github.com/duxweb/runa/rbac` |
+| Sanitize | `go get github.com/duxweb/runa/sanitize` |
+| Scope | `go get github.com/duxweb/runa/scope` |
+| Security | `go get github.com/duxweb/runa/security` |
+| Validate | `go get github.com/duxweb/runa/validate` |

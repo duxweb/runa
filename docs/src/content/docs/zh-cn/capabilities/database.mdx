@@ -1,0 +1,176 @@
+---
+title: "数据库 Database"
+description: "统一管理多个数据库运行时"
+---
+
+`database` 负责注册数据库驱动、启动时打开连接、关闭时释放连接。它只定义运行时契约，具体 SQL 或 Redis 数据源由驱动模块提供。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/database
+```
+
+常用驱动按需安装：
+
+```bash
+go get github.com/duxweb/runa/database/oro
+go get github.com/duxweb/runa/database/redis
+```
+
+`database/oro` 用于 SQL 数据库，`database/redis` 用于把 Redis 客户端作为数据库运行时纳入统一生命周期。Oro 驱动的完整用法见 [Database Oro](../drivers/database-oro/)。
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/database"
+    dboro "github.com/duxweb/runa/database/oro"
+    _ "modernc.org/sqlite"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(database.Provider(
+        database.RegisterDriver("default", dboro.Driver(
+            dboro.DSN(":memory:"),
+            dboro.Dialect("sqlite"),
+        )),
+    ))
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    db := database.Default().MustGet("default")
+    _ = db
+}
+```
+
+`database.Provider()` 在 `Boot` 阶段调用 `Registry.Open`，所以数据库连接会在应用启动时统一打开，在 DI 关闭时统一 `Shutdown`。
+
+## 独立 New 使用
+
+```go
+registry := database.New()
+registry.RegisterDriver("default", dboro.Driver(dboro.DSN(":memory:"), dboro.Dialect("sqlite")))
+
+if err := registry.Open(context.Background(), nil); err != nil {
+    panic(err)
+}
+defer registry.Close(context.Background())
+
+db := registry.MustGet("default")
+_ = db
+```
+
+独立使用时需要自己调用 `Open` 和 `Close`。
+
+## 配置
+
+`database` 本身只管理驱动和运行时。具体配置由驱动读取。Oro 驱动默认读取 `database.connections.<name>`，也可以通过 `dboro.Config(path)` 改成其他配置路径。
+
+```toml
+# config/database.toml
+[connections.default]
+dsn = "file:app.db"
+dialect = "sqlite"
+max_open = 10
+max_idle = 2
+max_lifetime = "1h"
+debug = true
+```
+
+```go
+app.Install(database.Provider(
+    database.RegisterDriver("default", dboro.Driver()),
+))
+```
+
+如果你希望配置结构完全由自己控制，也可以在业务 Provider 中读取 `runa.Config("database")` 后构造驱动。
+
+## Oro 驱动
+
+更完整的模型、查询和配置示例见 [Database Oro](../drivers/database-oro/)。
+
+
+```go
+import dboro "github.com/duxweb/runa/database/oro"
+
+driver := dboro.Driver(
+    dboro.DSN("file:app.db"),
+    dboro.Dialect("sqlite"),
+    dboro.MaxOpen(20),
+    dboro.Debug(true),
+)
+```
+
+取出 Oro 原生对象：
+
+```go
+db := database.Default().MustGet("default")
+orm := dboro.From(db)
+_ = orm
+```
+
+在 HTTP handler 中也可以直接取默认注册表：
+
+```go
+route.Default().Get("/users", func(ctx *route.Context) error {
+    db := database.Default().MustGet("default")
+    orm := dboro.From(db)
+    _ = orm
+    return ctx.JSON(runa.Map{"ok": true})
+})
+```
+
+## Redis 驱动
+
+```go
+import dbredis "github.com/duxweb/runa/database/redis"
+
+app.Install(database.Provider(
+    database.RegisterDriver("cache", dbredis.Driver(
+        dbredis.Addr("127.0.0.1:6379"),
+        dbredis.DB(1),
+    )),
+))
+```
+
+## 命令
+
+安装 `database.Provider()` 后会注册：
+
+```bash
+go run . database:list
+go run . database:ping default
+```
+
+## 常见错误
+
+### 只安装 database，没有安装具体驱动
+
+`database` 只定义统一运行时。连接 SQL 数据库通常需要安装 `database/oro`，连接 Redis 运行时需要安装 `database/redis`。
+
+### 忘记导入数据库底层驱动
+
+使用 SQLite、MySQL、Postgres 时，需要根据 Oro 文档导入对应底层 SQL 驱动。示例里 `_ "modernc.org/sqlite"` 就是 SQLite 驱动。
+
+### 在 Boot 前取连接
+
+`database.Provider()` 在 Boot 阶段打开连接。业务代码应在应用 `Run` / `Freeze` 后，或 handler、命令、Module 生命周期内取连接。
+
+## API 速查
+
+- `database.New()` 创建独立注册表
+- `database.Provider(...)` 接入框架生命周期
+- `database.Default()` 从默认 DI 取 `*database.Registry`
+- `database.RegisterDriver(name, driver)` 注册数据库驱动
+- `registry.MustGet(name)` 获取已打开的数据库运行时
+- `registry.Ping(ctx, name)` 检查连接
+- `registry.Close(ctx)` 关闭所有数据库

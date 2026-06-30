@@ -1,0 +1,240 @@
+---
+title: "CRUD Oro Store"
+description: "Connect Oro models to Runa CRUD and quickly expose business data APIs"
+---
+
+`crud/orostore` adapts Oro model queries to Runa `crud.Store`. If your project already uses [Database Oro](./database-oro/) or raw [Oro ORM](https://duxweb.github.io/oro/), this adapter lets you expose list, show, create, edit, patch, delete, soft-delete, and export APIs with much less code
+
+It solves the bridge between Oro models and Runa CRUD. Models, relations, query expressions, and database behavior belong to Oro. Resource routes, actions, writable fields, output transforms, filters, and pagination belong to Runa CRUD
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/crud github.com/duxweb/runa/crud/orostore
+```
+
+If Runa manages the database lifecycle, also install:
+
+```bash
+go get github.com/duxweb/runa/database github.com/duxweb/runa/database/oro
+```
+
+SQLite examples need:
+
+```bash
+go get modernc.org/sqlite
+```
+
+## Prerequisite
+
+First prepare an Oro DB:
+
+```go
+app.Install(database.Provider(
+    database.RegisterDriver("default", dboro.Driver(
+        dboro.DSN("file:app.db"),
+        dboro.Dialect("sqlite"),
+    )),
+))
+```
+
+After `Freeze`, read the Oro runtime:
+
+```go
+orm := dboro.From(database.Default().MustGet("default"))
+```
+
+## Define a model
+
+```go
+import oro "github.com/duxweb/oro"
+
+type User struct {
+    oro.Model
+    Name   string
+    Email  string
+    Status int
+}
+
+func (User) Define(s *oro.SchemaBuilder) {
+    s.Table("users")
+    s.Field("Name").String().Size(120)
+    s.Field("Email").String().Size(180).Unique()
+    s.Field("Status").Int()
+}
+```
+
+Register and sync during development:
+
+```go
+if err := orm.Register(User{}); err != nil {
+    panic(err)
+}
+if err := orm.Sync(context.Background()); err != nil {
+    panic(err)
+}
+```
+
+## Create CRUD APIs
+
+```go
+import (
+    "github.com/duxweb/runa/crud"
+    "github.com/duxweb/runa/crud/filter"
+    "github.com/duxweb/runa/crud/orostore"
+    "github.com/duxweb/runa/resource"
+    "github.com/duxweb/runa/route"
+)
+
+func registerUserRoutes(orm *oro.DB) {
+    users := resource.New(route.Default().Group("/admin"), "/users").
+        Name("user").
+        Summary("Users")
+
+    crud.New[User](users, orostore.Store[User](orm)).
+        Actions(crud.ListAction, crud.ShowAction, crud.CreateAction, crud.EditAction, crud.StoreAction, crud.DeleteAction).
+        Key("id").
+        Page(20, 100).
+        Sort("id", "desc").
+        SortFields(crud.SortField{Name: "name"}).
+        Filters(
+            filter.Eq[int]("status"),
+            filter.Like("name"),
+        )
+}
+```
+
+Common generated routes:
+
+| Action | Method and path | Description |
+| --- | --- | --- |
+| `ListAction` | `GET /admin/users` | List and paginate |
+| `ShowAction` | `GET /admin/users/{id}` | Show one record |
+| `CreateAction` | `POST /admin/users` | Create |
+| `EditAction` | `PUT /admin/users/{id}` | Full update |
+| `StoreAction` | `PATCH /admin/users/{id}` | Partial update |
+| `DeleteAction` | `DELETE /admin/users/{id}` | Delete |
+
+## Output transform
+
+Prefer returning explicit output structs instead of exposing database models directly:
+
+```go
+type UserOutput struct {
+    ID     uint64 `json:"id"`
+    Name   string `json:"name"`
+    Email  string `json:"email"`
+    Status int    `json:"status"`
+}
+
+crud.New[User](users, orostore.Store[User](orm)).
+    Transform[UserOutput](func(c *crud.Context[User], model *User) UserOutput {
+        return UserOutput{ID: model.ID, Name: model.Name, Email: model.Email, Status: model.Status}
+    })
+```
+
+## Writable fields
+
+Use `Format` to define which request fields can write to the model:
+
+```go
+crud.New[User](users, orostore.Store[User](orm)).
+    Format(func(c *crud.Context[User], f *crud.Formatter[User]) {
+        f.Field("name").To(&c.Model.Name).Actions(crud.CreateAction, crud.EditAction, crud.StoreAction)
+        f.Field("email").To(&c.Model.Email).Actions(crud.CreateAction, crud.EditAction, crud.StoreAction)
+        f.Field("status").To(&c.Model.Status).Actions(crud.CreateAction, crud.EditAction, crud.StoreAction)
+    })
+```
+
+## Filters, sorting, and pagination
+
+```go
+crud.New[User](users, orostore.Store[User](orm)).
+    Page(20, 100).
+    Sort("id", "desc").
+    SortFields(crud.SortField{Name: "id"}, crud.SortField{Name: "name"}).
+    Filters(filter.Eq[int]("status"), filter.Like("name"))
+```
+
+Runa CRUD reads request parameters and creates filter/sort values. `orostore` applies them to Oro queries
+
+## Relations
+
+If the model defines Oro relations, preload them through CRUD:
+
+```go
+crud.New[User](users, orostore.Store[User](orm)).
+    Relations("Role")
+```
+
+Relation definitions still follow Oro's model conventions
+
+## Soft delete
+
+If the model uses Oro softdelete extension:
+
+```go
+crud.New[User](users, orostore.Store[User](orm)).
+    Actions(crud.ListAction).
+    SoftDelete()
+```
+
+## Export
+
+```go
+crud.New[User](users, orostore.Store[User](orm)).
+    Export[UserOutput](func(c *crud.Context[User], model *User) (UserOutput, error) {
+        return UserOutput{ID: model.ID, Name: model.Name}, nil
+    }, func(exporter *crud.Exporter[User, UserOutput]) error {
+        exporter.Name("users").Formats("csv").Batch(500)
+        exporter.Field("id").Title("ID")
+        exporter.Field("name").Title("Name")
+        return nil
+    })
+```
+
+## Resolve database per request
+
+```go
+store := orostore.StoreFrom[User](func(ctx *crud.Context[User]) *oro.DB {
+    return dboro.From(database.Default().MustGet("default"))
+})
+
+crud.New[User](users, store)
+```
+
+Use `StoreFrom` for tenants, regions, or business lines that select different connections per request
+
+## Standalone usage
+
+If you already have a raw Oro DB, pass it directly:
+
+```go
+oroDB, err := oro.Open(oro.Config{/* ... */})
+if err != nil {
+    panic(err)
+}
+
+store := orostore.Store[User](oroDB)
+crud.New[User](users, store)
+```
+
+## Supported capabilities
+
+`orostore` implements standard CRUD store behavior, transactions, pagination, cursor pagination, sorting, filtering, relation loading, soft-delete actions, and export batch reads
+
+## Common mistakes
+
+- `orostore database is nil` means the `*oro.DB` resolver returned nil, often because the database was read before `Freeze`
+- Keep `Key("id")` aligned with your route parameter and model primary key
+- Use `Transform` for output instead of exposing models directly
+- Use `Format` to restrict writable fields
+- Read Oro docs for model, relation, transaction, and query details
+
+## Continue reading
+
+- [CRUD APIs](../routing/crud/)
+- [REST Resources](../routing/rest/)
+- [Database Oro](./database-oro/)
+- [Oro Docs](https://duxweb.github.io/oro/)
+- [Oro Chinese Docs](https://duxweb.github.io/oro/zh-cn/)

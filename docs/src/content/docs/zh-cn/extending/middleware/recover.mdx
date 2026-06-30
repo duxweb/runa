@@ -1,0 +1,95 @@
+---
+title: "Recover 中间件"
+description: "捕获 HTTP handler 中的 panic，并转换成路由错误"
+---
+
+`middleware/recover` 用来捕获请求链路中的 panic。没有它时，panic 会交给底层 HTTP server 处理，通常会中断当前连接并输出不可控日志。加上 recover 后，panic 会被转换成 Runa route 错误，再交给统一错误渲染流程处理。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## 基本用法
+
+```go
+import "github.com/duxweb/runa/middleware/recover"
+
+route.Default().Use(recover.New())
+```
+
+建议把 recover 放在全局中间件最前面，让它包住后续所有中间件和 handler。
+
+## 完整示例
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/middleware/recover"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+
+    route.Default().Use(recover.New())
+    route.Default().Get("/panic", func(ctx *route.Context) error {
+        panic("something broken")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## 自定义错误响应
+
+```go
+route.Default().Use(recover.New(recover.Config{
+    Stack: false,
+    OnRecover: func(ctx *route.Context, value any, stack []byte) error {
+        return ctx.Status(500).JSON(map[string]any{
+            "message": "server error",
+        })
+    },
+}))
+```
+
+`OnRecover` 适合接入自定义日志、告警或统一错误格式。如果你返回普通 error，后续仍会进入 Runa 错误渲染流程。
+
+## 配置项
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | 返回 `true` 时跳过 recover |
+| `Stack` | `bool` | `true` | 是否把 stack 放进 panic 错误 |
+| `OnRecover` | `func(*route.Context, any, []byte) error` | `nil` | panic 捕获后的自定义处理函数 |
+
+注意：传入 `recover.Config{}` 时 `Stack` 会变成 `false`，因为 Go 的零值就是 false。如果你希望保留 stack，要写 `recover.Config{Stack: true}` 或直接使用 `recover.New()`
+
+## 常见用法
+
+生产环境通常关闭 stack，避免把内部路径暴露给用户：
+
+```go
+route.Default().Use(recover.New(recover.Config{Stack: false}))
+```
+
+开发环境可以保留 stack，方便定位问题：
+
+```go
+route.Default().Use(recover.New())
+```
+
+## 常见问题
+
+- recover 只能捕获当前请求 goroutine 内的 panic。如果你在 handler 里启动新 goroutine，需要在 goroutine 内自己 recover
+- recover 不会吞掉普通 error。handler 返回的 error 仍会走 Runa 的错误处理
+- 如果已经使用 `security.New(...)`，里面已经包含 recover，不需要重复挂载

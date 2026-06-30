@@ -1,0 +1,268 @@
+---
+title: "CRUD Oro Store"
+description: "把 Oro 模型接入 Runa CRUD，快速生成业务数据接口"
+---
+
+`crud/orostore` 把 Oro 模型查询适配成 Runa `crud.Store`。如果你的项目已经使用 [Database Oro](./database-oro/) 或原生 [Oro ORM](https://duxweb.github.io/oro/zh-cn/)，就可以用它快速生成列表、详情、新增、编辑、局部更新、删除、软删除、导出等接口。
+
+它解决的是“如何把 Oro 模型变成 Runa CRUD 接口”的问题。模型定义、关联、查询表达式和数据库能力仍然属于 Oro；资源路由、动作、表单字段、输出转换、过滤和分页属于 Runa CRUD。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/crud github.com/duxweb/runa/crud/orostore
+```
+
+如果数据库由 Runa 生命周期管理，通常还需要：
+
+```bash
+go get github.com/duxweb/runa/database github.com/duxweb/runa/database/oro
+```
+
+SQLite 示例需要：
+
+```bash
+go get modernc.org/sqlite
+```
+
+## 前置条件
+
+你需要先有一个 Oro DB：
+
+```go
+app.Install(database.Provider(
+    database.RegisterDriver("default", dboro.Driver(
+        dboro.DSN("file:app.db"),
+        dboro.Dialect("sqlite"),
+    )),
+))
+```
+
+应用 `Freeze` 后取出 Oro runtime：
+
+```go
+orm := dboro.From(database.Default().MustGet("default"))
+```
+
+## 定义模型
+
+```go
+import oro "github.com/duxweb/oro"
+
+type User struct {
+    oro.Model
+    Name   string
+    Email  string
+    Status int
+}
+
+func (User) Define(s *oro.SchemaBuilder) {
+    s.Table("users")
+    s.Field("Name").String().Size(120)
+    s.Field("Email").String().Size(180).Unique()
+    s.Field("Status").Int()
+}
+```
+
+开发阶段可以注册并同步：
+
+```go
+if err := orm.Register(User{}); err != nil {
+    panic(err)
+}
+if err := orm.Sync(context.Background()); err != nil {
+    panic(err)
+}
+```
+
+生产环境请按项目迁移策略处理 schema。
+
+## 创建 CRUD 接口
+
+```go
+import (
+    "github.com/duxweb/runa/crud"
+    "github.com/duxweb/runa/crud/filter"
+    "github.com/duxweb/runa/crud/orostore"
+    "github.com/duxweb/runa/resource"
+    "github.com/duxweb/runa/route"
+)
+
+func registerUserRoutes(orm *oro.DB) {
+    users := resource.New(route.Default().Group("/admin"), "/users").
+        Name("user").
+        Summary("用户")
+
+    crud.New[User](users, orostore.Store[User](orm)).
+        Actions(crud.ListAction, crud.ShowAction, crud.CreateAction, crud.EditAction, crud.StoreAction, crud.DeleteAction).
+        Key("id").
+        Page(20, 100).
+        Sort("id", "desc").
+        SortFields(crud.SortField{Name: "name"}).
+        Filters(
+            filter.Eq[int]("status"),
+            filter.Like("name"),
+        )
+}
+```
+
+生成的常见接口包括：
+
+| 动作 | 方法和路径 | 说明 |
+| --- | --- | --- |
+| `ListAction` | `GET /admin/users` | 列表和分页 |
+| `ShowAction` | `GET /admin/users/{id}` | 详情 |
+| `CreateAction` | `POST /admin/users` | 新增 |
+| `EditAction` | `PUT /admin/users/{id}` | 全量编辑 |
+| `StoreAction` | `PATCH /admin/users/{id}` | 局部更新 |
+| `DeleteAction` | `DELETE /admin/users/{id}` | 删除 |
+
+## 输出转换
+
+不要直接把数据库模型完整暴露给前端。推荐定义输出结构：
+
+```go
+type UserOutput struct {
+    ID     uint64 `json:"id"`
+    Name   string `json:"name"`
+    Email  string `json:"email"`
+    Status int    `json:"status"`
+}
+
+crud.New[User](users, orostore.Store[User](orm)).
+    Transform[UserOutput](func(c *crud.Context[User], model *User) UserOutput {
+        return UserOutput{
+            ID:     model.ID,
+            Name:   model.Name,
+            Email:  model.Email,
+            Status: model.Status,
+        }
+    })
+```
+
+## 写入字段控制
+
+`Format` 用来声明请求字段如何写入模型。这样可以避免用户提交不该写的字段：
+
+```go
+crud.New[User](users, orostore.Store[User](orm)).
+    Format(func(c *crud.Context[User], f *crud.Formatter[User]) {
+        f.Field("name").To(&c.Model.Name).Actions(crud.CreateAction, crud.EditAction, crud.StoreAction)
+        f.Field("email").To(&c.Model.Email).Actions(crud.CreateAction, crud.EditAction, crud.StoreAction)
+        f.Field("status").To(&c.Model.Status).Actions(crud.CreateAction, crud.EditAction, crud.StoreAction)
+    })
+```
+
+## 过滤、排序和分页
+
+```go
+crud.New[User](users, orostore.Store[User](orm)).
+    Page(20, 100).
+    Sort("id", "desc").
+    SortFields(
+        crud.SortField{Name: "id"},
+        crud.SortField{Name: "name"},
+    ).
+    Filters(
+        filter.Eq[int]("status"),
+        filter.Like("name"),
+    )
+```
+
+Runa CRUD 负责读取请求参数并转换成过滤和排序条件，`orostore` 负责把这些条件应用到 Oro 查询上。
+
+## 关联预加载
+
+如果模型定义了 Oro 关联，可以让 CRUD 在列表或详情中预加载关联：
+
+```go
+crud.New[User](users, orostore.Store[User](orm)).
+    Relations("Role")
+```
+
+关联定义仍按 Oro 的方式写。`Relations("Role")` 只是在 CRUD 查询阶段启用该关联。
+
+## 软删除
+
+如果模型使用 Oro softdelete 扩展，可以启用软删除相关动作：
+
+```go
+crud.New[User](users, orostore.Store[User](orm)).
+    Actions(crud.ListAction).
+    SoftDelete()
+```
+
+启用后可以支持恢复、永久删除等软删除动作。具体可用路径由 Runa CRUD 的 soft delete 行为决定。
+
+## 导出
+
+`orostore` 支持按批读取大列表，供 CRUD export 使用：
+
+```go
+crud.New[User](users, orostore.Store[User](orm)).
+    Export[UserOutput](func(c *crud.Context[User], model *User) (UserOutput, error) {
+        return UserOutput{ID: model.ID, Name: model.Name}, nil
+    }, func(exporter *crud.Exporter[User, UserOutput]) error {
+        exporter.Name("users").Formats("csv").Batch(500)
+        exporter.Field("id").Title("ID")
+        exporter.Field("name").Title("Name")
+        return nil
+    })
+```
+
+## 每次请求动态选择数据库
+
+多租户或多连接场景可以用 `StoreFrom`：
+
+```go
+store := orostore.StoreFrom[User](func(ctx *crud.Context[User]) *oro.DB {
+    tenant := route.Header[string](ctx.Context, "X-Tenant")
+    _ = tenant
+    return dboro.From(database.Default().MustGet("default"))
+})
+
+crud.New[User](users, store)
+```
+
+`StoreFrom` 会在每次 CRUD 请求时执行 resolver，适合按租户、区域或业务线选择连接。
+
+## 独立使用
+
+如果你已经有原生 Oro DB，不需要通过 Runa database 管理，也可以直接传入：
+
+```go
+oroDB, err := oro.Open(oro.Config{/* ... */})
+if err != nil {
+    panic(err)
+}
+
+store := orostore.Store[User](oroDB)
+crud.New[User](users, store)
+```
+
+## 支持的能力
+
+`orostore` 实现了：
+
+- 标准 `crud.Store`
+- 事务 `Tx`
+- 分页、滚动分页、排序、筛选
+- 关联加载
+- 软删除相关动作，前提是模型使用 Oro softdelete 扩展
+- 导出接口，适合大列表分批读取
+
+## 常见问题
+
+- `orostore database is nil` 表示传入的 `*oro.DB` 为空，常见原因是在数据库打开前取值
+- `Key("id")` 要和路由参数、模型主键含义保持一致，避免更新或删除目标不明确
+- 不建议直接返回模型给前端，优先使用 `Transform` 定义输出结构
+- 写接口一定要用 `Format` 限制可写字段，避免用户提交内部字段
+- Oro 关联、事务、查询细节看 Oro 文档，Runa CRUD 只负责 HTTP 接口层和 Store 适配
+
+## 继续阅读
+
+- [CRUD 接口](../routing/crud/)
+- [资源路由](../routing/rest/)
+- [Database Oro](./database-oro/)
+- [Oro 中文文档](https://duxweb.github.io/oro/zh-cn/)
+- [Oro English Docs](https://duxweb.github.io/oro/)

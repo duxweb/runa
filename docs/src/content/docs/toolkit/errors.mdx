@@ -1,0 +1,82 @@
+---
+title: "Errors"
+description: "Structured application errors"
+---
+
+`errs` provides structured errors. An error can carry a code, parameters, a cause, and stack information, making it suitable for route error rendering.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa
+```
+
+`errs` belongs to the core module. Import it directly:
+
+```go
+import "github.com/duxweb/runa/errs"
+```
+
+## Create an error
+
+```go
+err := errs.New("user not found",
+    errs.Code("USER_NOT_FOUND"),
+    errs.Params(errs.Map{"id": "1"}),
+)
+```
+
+## Wrap an error
+
+```go
+if err != nil {
+    return errs.Wrap(err)
+}
+```
+
+`Wrap` converts a regular error into `*errs.Error`, preserves the cause, and records the call stack.
+
+## Read an error
+
+```go
+if item := errs.As(err); item != nil {
+    code := item.Code
+    params := item.Params
+    _ = code
+    _ = params
+}
+```
+
+## Use with HTTP errors
+
+```go
+route.Default().Get("/users/{id}", func(ctx *route.Context) error {
+    return ctx.Error(404, errs.New("user not found", errs.Code("USER_NOT_FOUND")))
+})
+```
+
+Route error rendering reads the error message, code, and parameters.
+
+## Common mistakes
+
+### Mixing error code and message
+
+Use stable codes such as `user.not_found`; use messages for human-readable text.
+
+### Exposing underlying errors directly
+
+Database, filesystem, and third-party errors should usually be logged and wrapped before returning to external callers.
+
+### Forgetting to keep the cause
+
+Use `errs.Wrap(err)` when converting lower-level errors so logs can still show the original cause.
+
+## API quick reference
+
+- `errs.New(message, options...)` creates a structured error.
+- `errs.Wrap(err)` wraps a regular error.
+- `errs.As(err)` converts to `*errs.Error`.
+- `errs.Code(code)` sets the error code.
+- `errs.Params(map)` sets parameters.
+- `errs.Attr(key, value)` sets a single parameter.
+- `errs.Cause(err)` sets the cause.

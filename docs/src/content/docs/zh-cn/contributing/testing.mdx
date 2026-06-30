@@ -1,0 +1,61 @@
+---
+title: "测试"
+description: "全模块测试矩阵"
+---
+
+Runa 是多模块仓库，根目录 `go test ./...` 只覆盖根模块，不会自动进入嵌套模块。
+
+这条是多模块 Monorepo 最容易漏掉的点。任何涉及子模块的改动，都必须按模块矩阵测试。
+
+## 先测试根模块
+
+```bash
+go test ./...
+go build ./...
+go vet ./...
+```
+
+## 再跑完整模块矩阵
+
+```bash
+for mod in $(find . -name go.mod -not -path './.git/*' -not -path './docs/node_modules/*'); do
+  dir=$(dirname "$mod")
+  echo "==> $dir"
+  (cd "$dir" && go test ./...) || exit 1
+done
+```
+
+## 本地联调用 go.work
+
+本地开发使用 `go.work` 把所有模块连起来：
+
+```bash
+go work sync
+go test ./...
+```
+
+发布前需要用 `GOWORK=off` 检查单模块消费者行为：
+
+```bash
+GOWORK=off go list -deps .
+```
+
+## 检查核心是否误引入可选模块
+
+核心模块不应出现可选块依赖：
+
+```bash
+GOWORK=off go list -deps . | grep 'github.com/duxweb/runa/route' && echo FAIL
+```
+
+如果只 import 核心的最小项目出现 Redis、S3、WebSocket、ORM 等依赖，说明模块边界被破坏。
+
+## 按模块运行 govulncheck
+
+如果环境安装了 `govulncheck`，应按模块矩阵执行：
+
+```bash
+for mod in $(find . -name go.mod -not -path './.git/*'); do
+  (cd "$(dirname "$mod")" && govulncheck ./...) || exit 1
+done
+```

@@ -1,0 +1,76 @@
+---
+title: "Toolkit"
+description: "Helper packages that can be used without Provider"
+---
+
+Toolkit packages are helpers you can import directly. They do not always have a Provider and do not always enter the Runa lifecycle. They solve common problems such as errors, IDs, input sanitization, security middleware, permission checks, and development tools.
+
+For beginners, treat toolkit packages like ordinary Go packages. Import the package that contains the function you need. If a page does not mention `Provider()`, you do not put it in `app.Install(...)`.
+
+Only a few toolkit packages interact with the framework lifecycle. For example, `devtools.Provider()` registers development commands, and `security.New(...)` returns HTTP middleware that is mounted on route.
+
+## Available toolkit packages
+
+| Tool | Install path | Purpose |
+| --- | --- | --- |
+| Errors | `github.com/duxweb/runa/errs` | Structured errors, codes, parameters, stack |
+| ID | `github.com/duxweb/runa/id` | Random IDs and formatting |
+| Snowflake | `github.com/duxweb/runa/id/snowflake` | Snowflake ID generator |
+| Sanitize | `github.com/duxweb/runa/sanitize` | Text, URL, and HTML sanitization |
+| Security | `github.com/duxweb/runa/security` | HTTP security middleware chain |
+| RBAC | `github.com/duxweb/runa/rbac` | Role-based permission checker |
+| Devtools | `github.com/duxweb/runa/devtools` | Scaffold, build, and template embed commands |
+
+## How toolkit packages differ from capability packages
+
+Capability packages usually have `New()`, `Provider()`, and `Default()`, and connect to DI and the lifecycle. Toolkit packages are lighter:
+
+```go
+id := id.MustRandom(16)
+clean := sanitize.Text("<b>Hello</b>")
+err := errs.New("user not found", errs.Code("USER_NOT_FOUND"))
+```
+
+`security` and `devtools` are exceptions: `security` is a middleware library, and `devtools` has a Provider for registering commands.
+
+## Install and use pattern
+
+Most toolkit packages only need `go get` for the module:
+
+```bash
+go get github.com/duxweb/runa/sanitize
+```
+
+Then import it in business code:
+
+```go
+import "github.com/duxweb/runa/sanitize"
+
+name := sanitize.Text(input)
+```
+
+## Do toolkit packages need config files
+
+Most toolkit packages do not need config files. `id`, `sanitize`, and `errs` are direct function calls.
+
+The exceptions are connected to framework usage: `security` is an HTTP middleware preset, and `devtools` can register commands through Provider.
+
+## When to use toolkit packages directly
+
+- Import a toolkit package directly when business code needs common helpers.
+- Use `security.New(...)` when you need an HTTP security chain.
+- Install `devtools.Provider()` when you need development commands.
+- Use `rbac.Checker(store)` and pass it to `auth/middleware` when you need permission checks.
+
+## Beginner path
+
+Start with these pages:
+
+- [Errors](./errors/) for stable business errors and HTTP errors.
+- [Sanitize](./sanitize/) when handling user input, URLs, or rich text.
+- [Security](./security/) for the standard HTTP security middleware chain.
+- [RBAC](./rbac/) when roles and permissions are needed together with `auth`.
+
+For i18n and message translation, read [Lang capability](../capabilities/lang/) because it has `Provider()`, config, and request-scoped translators.
+
+Read the other toolkit pages when the need appears. You do not need to learn every helper before building your first application.

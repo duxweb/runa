@@ -1,0 +1,178 @@
+---
+title: "会话 Session"
+description: "HTTP 会话、Cookie 和服务端会话存储"
+---
+
+`session` 提供命名会话、Cookie 编码和多种会话驱动。默认使用内存驱动，适合开发；也可以用 Cookie 驱动或基于 `cache` 的驱动。
+
+Session 适合浏览器登录态、后台管理登录态、一次性 flash 消息。API Token 或第三方调用通常更适合用 Auth 的 JWT / API Key。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/session
+```
+
+如果要把会话存在缓存里，再安装并接入 `cache`：
+
+```bash
+go get github.com/duxweb/runa/cache github.com/duxweb/runa/session
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/session"
+    sessionmw "github.com/duxweb/runa/session/middleware"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        session.Provider(
+            session.RegisterSession("web", session.CookieName("sid"), session.TTL(24*time.Hour)),
+        ),
+    )
+
+    route.Default().Use(sessionmw.Use("web"))
+    route.Default().Get("/login", func(ctx *route.Context) error {
+        sess, _ := ctx.Locals("runa.session.web").(*session.Session)
+        if err := sess.Set("user_id", "1"); err != nil {
+            return err
+        }
+        return ctx.Text("ok")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`session/middleware.Use("web")` 会从请求 Cookie 加载会话，并在请求结束时保存。handler 里可以从 `ctx.Locals("runa.session.<name>")` 读取当前会话。比如 `web` 会话对应 `runa.session.web`。
+
+## 独立 New 使用
+
+```go
+registry := session.New()
+registry.Session("web", session.CookieName("sid"), session.TTL(time.Hour))
+
+sess, err := registry.Load(context.Background(), "web", "", func(name string, value string, options session.CookieOptions) {
+    _ = name
+    _ = value
+})
+if err != nil {
+    panic(err)
+}
+_ = sess.Set("user_id", "1")
+_ = sess.Save(context.Background())
+```
+
+## 配置
+
+`session` 读取 `session.sessions.<name>`，只作用到已经注册的会话。
+
+```toml
+[session.sessions.web]
+driver = "memory"
+cookie_name = "sid"
+cookie_domain = ""
+cookie_path = "/"
+ttl = "24h"
+idle_timeout = "30m"
+shared = false
+
+[session.sessions.web.meta]
+area = "frontend"
+```
+
+| 键 | 类型 | 说明 |
+| --- | --- | --- |
+| `driver` | string | `memory`、`cookie` 或自定义驱动名 |
+| `cookie_name` | string | Cookie 名称 |
+| `cookie_domain` | string | Cookie 域 |
+| `cookie_path` | string | Cookie 路径 |
+| `ttl` | duration | 会话总有效期 |
+| `idle_timeout` | duration | 空闲过期时间 |
+| `shared` | bool | 是否共享同一个会话 ID |
+| `meta` | table | 自定义元数据 |
+
+`session.Provider()` 也会从应用 secret 或环境变量派生签名密钥。生产环境应设置稳定的 `RUNA_SECRET`，否则重启后已签名的 Cookie 可能失效。
+
+## Session 和 Auth 的关系
+
+`session` 只负责保存会话数据，比如 `user_id`。`auth` 负责把会话、JWT 或 API Key 转成当前用户信息，并做权限检查。
+
+常见组合是：
+
+```text
+session.Provider -> sessionmw.Use("web") -> auth.SessionAuth("web") -> authmw.Use("web")
+```
+
+## 驱动
+
+内置驱动覆盖开发、本地 Cookie 和服务端存储三类场景。`RegisterDriver(name, driver)` 负责注册驱动，`RegisterSession(name, session.Use(name))` 负责让指定会话使用这个驱动。
+
+默认驱动：
+
+```go
+session.MemoryDriver(session.Name("memory"), session.DriverTTL(time.Hour))
+session.CookieDriver()
+```
+
+基于缓存的驱动：
+
+```go
+app.Install(session.Provider(
+    session.RegisterDriver("cache", session.CacheDriverFrom("cache", func() cache.Cache[runa.Map] {
+        return cache.Default().MustOf[runa.Map](cache.Session)
+    })),
+    session.RegisterSession("web", session.Use("cache")),
+))
+```
+
+## 常用 API
+
+```go
+sess, _ := ctx.Locals("runa.session.web").(*session.Session)
+_ = sess.Set("flash", "saved")
+value, ok, err := sess.Get[string]("flash")
+_ = value
+_ = ok
+_ = err
+_ = sess.Delete("flash")
+_ = sess.Regenerate(ctx.Context())
+```
+
+## 常见错误
+
+### 只安装 session，没有使用中间件
+
+`session.Provider(...)` 只是注册会话能力。HTTP 请求里要自动加载和保存会话，还需要 `route.Default().Use(sessionmw.Use("web"))`。
+
+### 生产环境没有设置 RUNA_SECRET
+
+生产环境应设置稳定的 `RUNA_SECRET`，不要每次启动都变化。
+
+### 从 Locals 读取时 name 写错
+
+`sessionmw.Use("web")` 对应的 key 是 `runa.session.web`。
+
+## API 速查
+
+- `session.New()` 创建独立注册表
+- `session.Provider(...)` 接入框架生命周期
+- `session.Default()` 从默认 DI 取 `*session.Registry`
+- `session.RegisterDriver(name, driver)` 注册驱动
+- `session.RegisterSession(name, options...)` 注册命名会话
+- `session/middleware.Use(name)` 注册 HTTP 会话中间件
+- `registry.Load(ctx, name, rawCookie, setter)` 手动加载会话

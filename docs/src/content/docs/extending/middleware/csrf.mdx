@@ -1,0 +1,200 @@
+---
+title: "CSRF"
+description: "Protect browser forms and cookie-authenticated HTTP endpoints"
+---
+
+CSRF middleware protects against cross-site request forgery. It is mainly useful for browser pages, form submissions, and APIs that rely on cookies for authentication.
+
+If an API is only called by non-browser clients and authentication is entirely sent through headers such as `Authorization: Bearer ...`, CSRF is usually not the main risk. If the browser automatically sends cookies, consider enabling CSRF.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## Basic usage
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/middleware/csrf"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+
+    web := route.Default().Group("")
+    web.Use(csrf.New())
+    web.Get("/form", form)
+    web.Post("/submit", submit)
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`csrf.New()` returns `route.Middleware`. It is HTTP middleware, not a Provider, so it does not go into `app.Install`.
+
+## How it works
+
+The default implementation uses the double-submit cookie pattern:
+
+1. Safe methods such as `GET`, `HEAD`, and `OPTIONS` issue a CSRF token.
+2. The token is written to a cookie named `runa_csrf_token` by default.
+3. Unsafe methods such as `POST`, `PUT`, `PATCH`, and `DELETE` must submit the same token.
+4. The submitted token can come from the `X-CSRF-Token` header or the `_csrf` form field.
+5. Missing or mismatched tokens return `403`.
+
+This mode does not require session storage, so it is a good default protection layer.
+
+## Output token in templates
+
+When rendering a form page, read the current token with `csrf.Token(ctx)`.
+
+```go
+func form(ctx *route.Context) error {
+    return ctx.Render("form.html", map[string]any{
+        "csrf": csrf.Token(ctx),
+    })
+}
+```
+
+Put the token into a hidden form field:
+
+```html
+<form method="post" action="/submit">
+  <input type="hidden" name="_csrf" value="{{ .csrf }}">
+  <button type="submit">Submit</button>
+</form>
+```
+
+For Ajax requests, send it as a header:
+
+```js
+await fetch('/submit', {
+  method: 'POST',
+  headers: {
+    'X-CSRF-Token': token,
+  },
+})
+```
+
+## Protected methods
+
+By default, only unsafe methods are verified:
+
+| Method | Behavior |
+| --- | --- |
+| `GET` | Pass and issue token |
+| `HEAD` | Pass and issue token |
+| `OPTIONS` | Pass and issue token |
+| `POST` | Verify token |
+| `PUT` | Verify token |
+| `PATCH` | Verify token |
+| `DELETE` | Verify token |
+
+Normal page visits are not blocked, while requests that modify data are protected.
+
+## Common options
+
+```go
+web.Use(csrf.New(
+    csrf.Cookie("runa_csrf_token"),
+    csrf.Header("X-CSRF-Token"),
+    csrf.Field("_csrf"),
+    csrf.Path("/"),
+    csrf.SameSite(http.SameSiteLaxMode),
+    csrf.Secure(true),
+    csrf.HTTPOnly(false),
+    csrf.MaxAge(3600),
+))
+```
+
+| Option | Description |
+| --- | --- |
+| `csrf.Cookie(name)` | Set the cookie name |
+| `csrf.Header(name)` | Set the submitted header name |
+| `csrf.Field(name)` | Set the submitted form field |
+| `csrf.Path(path)` | Set cookie path |
+| `csrf.Domain(domain)` | Set cookie domain |
+| `csrf.Secure(true)` | Send cookie only over HTTPS |
+| `csrf.HTTPOnly(true)` | Prevent frontend JavaScript from reading the cookie |
+| `csrf.SameSite(mode)` | Set SameSite mode |
+| `csrf.MaxAge(seconds)` | Set cookie Max-Age |
+
+If the cookie name uses `__Secure-` or `__Host-`, the middleware automatically applies the browser-required cookie attributes. `__Host-` forces `Secure`, `Path=/`, and clears `Domain`.
+
+## Skip selected requests
+
+Webhooks, third-party callbacks, and open APIs are often not good CSRF targets. Skip them explicitly:
+
+```go
+web.Use(csrf.New(
+    csrf.SkipPaths("/webhook/stripe", "/webhook/github"),
+))
+```
+
+Use `Next` for custom logic:
+
+```go
+web.Use(csrf.New(
+    csrf.Next(func(ctx *route.Context) bool {
+        return strings.HasPrefix(ctx.Request().URL.Path, "/api/")
+    }),
+))
+```
+
+When `Next` returns `true`, the middleware is skipped.
+
+## Custom error response
+
+The default error goes through route's normal error rendering flow with status `403`.
+
+```go
+web.Use(csrf.New(
+    csrf.OnError(func(ctx *route.Context) error {
+        return ctx.Status(403).JSON(map[string]any{
+            "code":    "csrf_token_mismatch",
+            "message": "The page has expired. Please refresh and try again.",
+        })
+    }),
+))
+```
+
+## Relationship with session and auth
+
+CSRF does not log users in and does not store user state. It only verifies that a mutating request came from the current page.
+
+A common order is:
+
+```go
+web.Use(
+    sessionmw.New(...),
+    authmw.New(...),
+    csrf.New(),
+)
+```
+
+The exact order depends on your application. The important rule is simple: browser pages or endpoints using cookie authentication should usually have CSRF protection.
+
+## Common mistakes
+
+### Mounting CSRF only on POST endpoints
+
+If the GET form page does not pass through CSRF middleware, it cannot receive a token. Mount CSRF on the same web group used by both the form page and the submit endpoint.
+
+### Sending Ajax without the header
+
+Non-form requests do not automatically include `_csrf`. Frontend code should send `X-CSRF-Token`.
+
+### Adding CSRF to pure token APIs
+
+Mobile apps, CLI clients, and service-to-service calls usually do not rely on automatic cookie authentication. CSRF is not the main risk there, and adding it blindly only makes clients harder to use.

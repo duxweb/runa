@@ -1,0 +1,152 @@
+---
+title: "视图 View"
+description: "模板渲染和命名视图域"
+---
+
+`view` 管理命名模板域。默认提供基于标准库 `html/template` 的渲染器，支持本地目录、嵌入文件系统、开发环境热加载和模板函数。
+
+如果你只写 JSON API，可以不安装 `view`。如果你要做服务端渲染页面、后台页面、邮件模板，才需要它。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/view
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/provider"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/view"
+)
+
+type appModule struct {
+    provider.ModuleBase
+}
+
+func (appModule) Name() string { return "app" }
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    views, err := provider.Invoke[*view.Registry](app)
+    if err != nil {
+        return err
+    }
+    return views.Register(ctx, "web", view.HTML(view.Dir("views").Reload(true)))
+}
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")), view.Provider())
+    app.Module(appModule{})
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        return ctx.Render("index", runa.Map{"title": "Runa"}, "web")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## 独立 New 使用
+
+```go
+registry := view.New()
+_ = registry.Register(context.Background(), "web", view.HTML(view.Dir("views")))
+
+html, err := registry.RenderString(routeContext, "web", "index", map[string]any{"title": "Runa"})
+_ = html
+_ = err
+```
+
+`Render` 需要一个实现 `Context() context.Context` 的上下文，HTTP 场景直接使用 `*route.Context`。
+
+## 配置
+
+`view` 当前没有 TOML 配置。模板来源和函数通常由代码注册，便于本地目录和嵌入文件系统按环境切换。
+
+## RHTML 增强模板
+
+默认 `view.HTML(...)` 使用标准库 `html/template`。如果你需要布局、区块、include、条件、循环和自定义 `r:` 标签，可以使用 `view/rhtml`。
+
+```go
+import "github.com/duxweb/runa/view/rhtml"
+
+renderer := rhtml.New(view.Dir("views", "**/*.html").Reload(true))
+_ = views.Register(context.Background(), "web", renderer)
+```
+
+完整语法见 [RHTML 模板](./rhtml/)。
+
+## 模板来源
+
+```go
+view.Dir("views", "**/*.html").Reload(true)
+view.Embed(viewFS, "views", "**/*.html")
+view.Embed(viewFS, "views").Dev(view.Dir("views").Reload(true))
+```
+
+## 模板函数
+
+静态函数可以直接注册到具体 renderer：
+
+```go
+renderer := view.HTML(view.Dir("views")).Func("asset", func(path string) string {
+    return "/assets/" + path
+})
+
+_ = views.Register(context.Background(), "web", renderer)
+```
+
+也可以注册到 `view.Registry`，让所有后续注册的 renderer 都能使用同一套函数：
+
+```go
+views.Func("asset", func(path string) string {
+    return "/assets/" + path
+})
+```
+
+需要按请求变化的函数用 `ContextFunc`。它在模板解析时提供函数名，在每次渲染时根据 `context.Context` 生成真正的函数：
+
+```go
+views.ContextFunc("tenant", func(ctx context.Context) any {
+    return func() string {
+        return tenantFromContext(ctx)
+    }
+})
+```
+
+`view.HTML` 和 `view/rhtml` 都使用这套 `Func` / `ContextFunc` 注入机制。语言翻译里的 `{{ t "key" }}` 也是通过 `lang/view.Provider()` 调用 `ContextFunc` 注入的。
+
+## 常见错误
+
+### 安装了 view.Provider 但没有注册渲染器
+
+`view.Provider()` 只把视图注册表接入生命周期。你还需要 `views.Register(ctx, "web", view.HTML(...))` 注册具体模板域。
+
+### ctx.Render 报 renderer is not configured
+
+通常是没有安装 `view.Provider()`，或者没有注册任何 view 域。
+
+### 开发环境改模板不生效
+
+本地开发建议使用 `view.Dir("views", "**/*.html").Reload(true)`。生产环境建议关闭热加载。
+
+## API 速查
+
+- `view.New()` 创建独立注册表
+- `view.Provider()` 接入框架生命周期
+- `view.Default()` 从默认 DI 取 `*view.Registry`
+- `registry.Register(ctx, name, renderer)` 注册视图域
+- `registry.Render(ctx, writer, domain, name, data)` 渲染到 writer
+- `registry.RenderString(ctx, domain, name, data)` 渲染成字符串
+- `view.HTML(sources...)` 创建 html/template 渲染器
+- `view.Dir`、`view.Embed` 创建模板来源

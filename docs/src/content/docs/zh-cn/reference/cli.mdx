@@ -1,0 +1,73 @@
+---
+title: "命令行参考"
+description: "全部命令"
+---
+
+Runa 命令由内核和各 Provider 注册。只安装核心时只有内核命令；安装能力 Provider 后，对应命令才会出现。
+
+命令的运行方式取决于你的入口代码。大多数应用使用 `app.Run(context.Background())`，它会读取终端参数。
+
+## 内核命令
+
+| 命令 | 来源 | 说明 |
+| --- | --- | --- |
+| `serve` | `github.com/duxweb/runa` | 启动已注册的 Host，如 HTTP server、调度器等 |
+| `config:show` | `github.com/duxweb/runa/config` | 输出合并后的配置 |
+
+## 路由与文档
+
+| 命令 | 安装 Provider | 说明 |
+| --- | --- | --- |
+| `route:list` | `route.Provider()` | 查看已注册路由 |
+| `openapi:export` | `openapi.Provider(...)` | 导出 OpenAPI 文档 |
+
+## 数据与后台任务
+
+| 命令 | 安装 Provider | 说明 |
+| --- | --- | --- |
+| `database:list` | `database.Provider(...)` | 查看数据库连接 |
+| `database:ping` | `database.Provider(...)` | ping 指定数据库 |
+| `queue:list` | `queue.Provider(...)` | 查看队列、worker 和 job |
+| `queue:work` | `queue.Provider(...)` | 启动指定 worker |
+| `task:list` | `task.Provider()` | 查看任务 |
+| `task:run` | `task.Provider()` | 手动执行任务 |
+| `schedule:list` | `schedule.Provider()` | 查看调度项 |
+| `schedule:run` | `schedule.Provider()` | 启动调度 worker |
+| `event:list` | `event.Provider()` | 查看事件监听器 |
+
+## WebSocket
+
+| 命令 | 安装 Provider | 说明 |
+| --- | --- | --- |
+| `ws:list` | `ws.Provider(...)` | 查看 Hub |
+| `ws:channels` | `ws.Provider(...)` | 查看频道 |
+| `ws:stats` | `ws.Provider(...)` | 查看 Hub 统计 |
+| `ws:kick` | `ws.Provider(...)` | 踢出客户端 |
+
+## 开发工具
+
+| 命令 | 安装 Provider | 说明 |
+| --- | --- | --- |
+| `devtools:new` | `devtools.Provider(...)` | 创建最小项目脚手架 |
+| `devtools:build` | `devtools.Provider(...)` | 执行 `go build` |
+| `devtools:embed` | `devtools.Provider(...)` | 生成模板 embed 文件 |
+
+## 查看帮助
+
+```bash
+go run . --help
+go run . route:list --help
+```
+
+如果某个命令不存在，通常说明你没有安装对应 Provider。
+
+## 运行方式
+
+```bash
+go run . serve
+go run . route:list
+go run . queue:work default
+go run . config:show
+```
+
+如果直接 `go run .`，应用会走默认命令行为，具体取决于入口如何调用 `app.Run` 或 `app.Execute`。

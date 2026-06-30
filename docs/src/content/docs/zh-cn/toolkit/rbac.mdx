@@ -1,0 +1,90 @@
+---
+title: "RBAC"
+description: "基于角色的权限控制辅助包"
+---
+
+`rbac` 提供 `auth.PermissionChecker` 实现。它不负责登录，只根据当前认证信息里的 subject 解析角色和权限。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/rbac
+```
+
+通常配合 `auth` 使用：
+
+```bash
+go get github.com/duxweb/runa/auth github.com/duxweb/runa/rbac
+```
+
+## 内存 Store
+
+```go
+store := rbac.NewMemoryStore()
+store.AssignRole("1", "admin")
+store.Grant("admin", "system.user.*")
+store.GrantSubject("1", "profile.view")
+```
+
+## 权限检查
+
+```go
+checker := rbac.Checker(store)
+info := &auth.Info{Data: runa.Map{"id": "1"}}
+err := checker.Check(context.Background(), info, "system.user.edit")
+_ = err
+```
+
+权限支持精确匹配和 `.*` 前缀匹配，例如 `system.user.*` 可以匹配 `system.user.edit`。
+
+## 接入 HTTP
+
+```go
+route.Default().Get("/admin/users", handler).
+    Name("system.user.list").
+    Use(authmw.Use("web"), authmw.Permission(rbac.Checker(store)))
+```
+
+默认 subject 会从 `auth.Info.Data` 中依次读取 `id`、`user_id`、`subject`、`sub`。
+
+## 自定义 subject
+
+```go
+checker := rbac.Checker(store, rbac.Subject(func(ctx any, info *auth.Info) string {
+    return core.Cast[string](info.Data["tenant_id"]) + ":" + core.Cast[string](info.Data["id"])
+}))
+```
+
+## 自定义 Store
+
+```go
+type Store struct{}
+
+func (Store) Roles(ctx context.Context, subject string) ([]string, error) { return []string{"admin"}, nil }
+func (Store) RolePermissions(ctx context.Context, roles []string) ([]string, error) { return []string{"*"}, nil }
+func (Store) SubjectPermissions(ctx context.Context, subject string) ([]string, error) { return nil, nil }
+```
+
+
+## 常见错误
+
+### 把 RBAC 当登录系统
+
+`rbac` 只负责权限判断，不负责登录。登录态由 `auth` 和 `session` 或 JWT/API Key 处理。
+
+### 权限命名不稳定
+
+权限 ID 建议和路由名保持一致，例如 `system.user.list`、`system.user.edit`。
+
+### 内存 Store 用于生产权限
+
+`NewMemoryStore` 适合测试和示例。生产环境通常应实现自己的 Store，从数据库或配置中心读取角色权限。
+
+## API 速查
+
+- `rbac.Checker(store, options...)` 创建权限检查器
+- `rbac.NewMemoryStore()` 创建内存 Store
+- `store.AssignRole(subject, roles...)` 分配角色
+- `store.Grant(role, permissions...)` 给角色授权
+- `store.GrantSubject(subject, permissions...)` 给主体直接授权
+- `rbac.Subject(fn)` 自定义 subject 解析

@@ -1,0 +1,151 @@
+---
+title: "审计 Audit"
+description: "审计日志与请求审计中间件"
+---
+
+`audit` 提供审计配置、审计写入器和 HTTP 审计中间件。它不会自动挂到路由上，需要你明确使用 `audit/middleware`。
+
+审计和普通日志不同。普通日志用于排查问题，审计用于记录“谁在什么时候做了什么操作”，常见于后台管理、权限系统、财务和合规场景。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/audit
+```
+
+如果要写入队列或日志，按需安装：
+
+```bash
+go get github.com/duxweb/runa/queue github.com/duxweb/runa/log
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/audit"
+    auditmw "github.com/duxweb/runa/audit/middleware"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        audit.Provider(audit.Config{Writer: audit.DefaultLogWriter()}),
+    )
+
+    route.Default().Use(auditmw.Default())
+    route.Default().Post("/users", func(ctx *route.Context) error {
+        return ctx.JSON(runa.Map{"ok": true})
+    }).Name("user.create")
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`audit.Provider(...)` 会把 `*audit.Registry` 注册进 DI。`auditmw.Default()` 从 DI 获取配置并生成中间件。
+
+## 独立 New 使用
+
+```go
+runtime := audit.New(audit.Config{Writer: audit.LogWriter(nil)})
+_ = audit.Record(context.Background(), runtime.Config().Writer, audit.Entry{Action: "manual"})
+```
+
+## 配置
+
+`audit` 读取 `[audit]` 配置。
+
+审计记录的 `Time` 默认使用应用时区。可以通过 `runa.Timezone("Asia/Shanghai")` 或 `config/app.toml` 的 `timezone` 统一设置。
+
+```toml
+[audit]
+methods = ["POST", "PUT", "PATCH", "DELETE"]
+mode = "async"
+strict = false
+capture_input = true
+mask_fields = ["password", "token", "secret"]
+mask_value = "***"
+max_input_size = 16384
+buffer = 100
+write_timeout = "3s"
+```
+
+| 键 | 类型 | 说明 |
+| --- | --- | --- |
+| `methods` | []string | 需要审计的 HTTP 方法 |
+| `mode` | string | `sync` 或 `async` |
+| `strict` | bool | 写入失败是否阻断请求 |
+| `capture_input` | bool | 是否采集输入 |
+| `mask_fields` | []string | 脱敏字段 |
+| `max_input_size` | int | 最大采集 body 字节数 |
+| `write_timeout` | duration | 写入超时 |
+
+## 写入日志
+
+```go
+writer := audit.DefaultLogWriter("audit")
+app.Install(audit.Provider(audit.Config{Writer: writer}))
+```
+
+## 写入队列
+
+```go
+app.Install(
+    queue.Provider(queue.RegisterQueue("audit", queue.Workers("default"))),
+    audit.Provider(audit.Config{Writer: audit.DefaultQueueWriter("audit")}),
+)
+
+type auditModule struct {
+    provider.ModuleBase
+}
+
+func (auditModule) Name() string { return "audit-handler" }
+
+func (auditModule) Register(ctx context.Context, app provider.Context) error {
+    queues, err := provider.Invoke[*queue.Registry](app)
+    if err != nil {
+        return err
+    }
+    audit.HandleQueue(queues, func(ctx context.Context, entry audit.Entry) error {
+        return audit.DefaultLogWriter().Write(ctx, entry)
+    })
+    return nil
+}
+
+app.Module(auditModule{})
+```
+
+队列方式适合高吞吐请求审计，避免请求路径直接等待外部日志系统。
+
+## 常见错误
+
+### 安装 audit.Provider 后没有任何记录
+
+`audit.Provider(...)` 只注册审计运行时。HTTP 请求要记录审计，还需要使用 `auditmw.Default()` 或 `auditmw.New(...)` 中间件。
+
+### 审计里保存敏感字段
+
+开启 `capture_input` 时，一定要配置 `mask_fields`，至少包含 `password`、`token`、`secret`。
+
+### 高吞吐接口同步写审计
+
+高吞吐接口建议使用队列写入，避免审计后端慢导致请求变慢。
+
+## API 速查
+
+- `audit.New(config)` 创建审计注册表
+- `audit.Provider(config)` 接入框架生命周期
+- `audit.Default()` 从默认 DI 取 `*audit.Registry`
+- `auditmw.New(config)` 创建 HTTP 审计中间件
+- `auditmw.Default()` 使用默认审计配置
+- `audit.LogWriter`、`audit.QueueWriter` 创建写入器
+- `audit.Record(ctx, writer, entry)` 手动写审计记录

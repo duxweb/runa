@@ -1,0 +1,139 @@
+---
+title: "Resource Routes"
+description: "Organize structured resource APIs on top of route.Group"
+---
+
+The `resource` package provides a REST-style API organization layer on top of `route.Group`. It is not a Provider and does not need `runa.Install`; it is usually used directly during route registration.
+
+Resource fits admin panels, management APIs, and REST-style resource APIs. It helps keep route names, summaries, tags, permission metadata, and OpenAPI metadata consistent across a group of routes.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/resource
+```
+
+You still need the HTTP transport when using Resource in an HTTP application:
+
+```bash
+go get github.com/duxweb/runa/route
+```
+
+## Create a Resource
+
+```go
+users := resource.New(route.Default().Group("/admin"), "/users").
+    Name("user").
+    Summary("User").
+    Tags("User")
+```
+
+This creates a `/users` resource under the `/admin` group.
+
+## Standard actions
+
+```go
+users.List[ListInput, []UserOutput](listUsers)
+users.Show[ShowInput, UserOutput](showUser)
+users.Create[CreateInput, UserOutput](createUser)
+users.Edit[EditInput, UserOutput](editUser)
+users.Store[StoreInput, UserOutput](storeUser)
+users.Delete[DeleteInput, runa.Map](deleteUser)
+```
+
+Default action paths:
+
+| Method | Path | Action | Common use |
+| --- | --- | --- | --- |
+| GET | `/users` | list | List records |
+| GET | `/users/{id}` | show | Detail |
+| POST | `/users` | create | Create |
+| PUT | `/users/{id}` | edit | Full edit |
+| PATCH | `/users/{id}` | store | Partial save |
+| DELETE | `/users/{id}` | delete | Delete |
+
+## Complete small example
+
+```go
+type ShowInput struct {
+    ID string `param:"id"`
+}
+
+type UserOutput struct {
+    ID   string `json:"id"`
+    Name string `json:"name"`
+}
+
+users := resource.New(route.Default().Group("/admin"), "/users").
+    Name("user").
+    Summary("User").
+    Tags("User")
+
+users.Show[ShowInput, UserOutput](func(ctx *route.Context, input *ShowInput) (*UserOutput, error) {
+    return &UserOutput{ID: input.ID, Name: "Runa"}, nil
+})
+```
+
+The registered path is:
+
+```text
+GET /admin/users/{id}
+```
+
+## Custom actions
+
+```go
+users.Post[ImportInput, ImportOutput]("import", "/import", importUsers)
+```
+
+This registers:
+
+```text
+POST /admin/users/import
+```
+
+The action name is `import`, and the route name is built from Resource `Name("user")`, such as `user.import`.
+
+## Route metadata
+
+Resource applies name, summary, tags, permission markers, document domains, and other metadata to every route.
+
+```go
+users.Name("system.user").Doc("admin").Meta("permission", "system.user")
+```
+
+You can also mark a resource to skip authentication or permission checks:
+
+```go
+users.SkipAuth()
+users.SkipPermission()
+```
+
+Whether those markers take effect depends on how your auth and permission middleware reads route metadata.
+
+## Relationship with OpenAPI
+
+Resource itself does not generate OpenAPI. It writes schema and metadata into routes. After installing `openapi.Provider(...)`, OpenAPI can read that information.
+
+## Resource vs CRUD
+
+| Tool | What it solves |
+| --- | --- |
+| `resource` | Organizes a group of resource routes and metadata |
+| `crud` | Builds list, detail, create, edit, delete, and other data APIs on top of Resource and Store |
+
+Use Resource when you only want consistent route structure. Use CRUD when you also want to reduce repeated data API logic.
+
+## Common mistakes
+
+### Treating Resource as a Provider
+
+`resource` does not need `app.Install(resource.Provider())`. It is a route-registration helper.
+
+### Not planning route names
+
+`Name("user")` affects generated route names such as `user.list` and `user.show`. Choose names by business domain from the start.
+
+### Confusing Resource and CRUD
+
+Resource organizes routes. CRUD connects Store and generates data APIs.

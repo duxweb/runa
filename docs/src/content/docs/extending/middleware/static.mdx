@@ -1,0 +1,85 @@
+---
+title: "Static Middleware"
+description: "Serve a local directory or http.FileSystem through HTTP routes"
+---
+
+`middleware/static` serves static files through `http.FileServer`. When a file is missing, it does not return 404 immediately; it continues to later routes. This makes it useful with APIs and SPA fallbacks.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## Basic usage
+
+```go
+import (
+    "net/http"
+
+    "github.com/duxweb/runa/middleware/static"
+)
+
+route.Default().Use(static.New(static.Config{
+    Root: http.Dir("public"),
+    Path: "/assets",
+}))
+```
+
+A request to `/assets/app.css` reads `public/app.css`.
+
+## Allow directory index
+
+```go
+route.Default().Use(static.New(static.Config{
+    Root:  http.Dir("public"),
+    Path:  "/",
+    Index: true,
+}))
+```
+
+When `Index` is false, directory requests ending with `/` skip static and continue to later routes.
+
+## Embedded file system
+
+```go
+//go:embed public/*
+var publicFS embed.FS
+
+route.Default().Use(static.New(static.Config{
+    Root: http.FS(publicFS),
+    Path: "/assets",
+}))
+```
+
+If your embed root includes the `public/` prefix, pay attention to the mapping between request path and filesystem path.
+
+## SPA fallback
+
+```go
+route.Default().Use(static.New(static.Config{
+    Root: http.Dir("dist"),
+    Path: "/",
+}))
+
+route.Default().Get("/*", func(ctx *route.Context) error {
+    return ctx.HTML("index fallback")
+})
+```
+
+Because static continues to later routes when a file is missing, you can add a frontend-router fallback afterward.
+
+## Config fields
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | Skip when true |
+| `Root` | `http.FileSystem` | `http.Dir(".")` | Static file root |
+| `Path` | `string` | `/` | URL prefix |
+| `Index` | `bool` | `false` | Allow directory index requests |
+
+## Common problems
+
+- static is not a capability Provider and does not need `runa.Install`.
+- Missing directories or files continue to later routes.
+- Large downloads, range requests, and CDN cache strategy are usually better handled by Nginx, object storage, or a CDN.

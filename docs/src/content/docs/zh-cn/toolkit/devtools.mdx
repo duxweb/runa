@@ -1,0 +1,94 @@
+---
+title: "开发工具 Devtools"
+description: "开发辅助命令"
+---
+
+`devtools` 提供开发期命令：生成项目脚手架、执行构建、生成模板 embed 文件。它通过 Provider 注册命令，不建议在生产入口安装。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/devtools
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+    "os"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/devtools"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(devtools.Provider(
+        devtools.Embed("views", "internal/embed/view.go", "**/*.html"),
+    ))
+
+    if err := app.Execute(context.Background(), os.Args[1:]); err != nil {
+        panic(err)
+    }
+}
+```
+
+普通应用也可以安装它后直接运行命令：
+
+```bash
+go run . devtools:new ./demo example.com/demo
+go run . devtools:build ./...
+go run . devtools:embed --root views --out internal/embed/view.go
+```
+
+## 配置
+
+`devtools` 读取 `[devtools]` 配置。
+
+```toml
+[devtools]
+embed_root = "views"
+embed_patterns = ["**/*.html"]
+embed_package = "embed"
+embed_name = "ViewFS"
+embed_out = "internal/embed/view.go"
+```
+
+## 独立 Scaffold
+
+```go
+err := devtools.Scaffold("./demo", "example.com/demo")
+_ = err
+```
+
+`Scaffold` 会生成一个最小 Runa HTTP 项目。
+
+## 命令
+
+- `devtools:new [dir] [module]` 创建项目脚手架
+- `devtools:build [args...]` 执行 `go build`
+- `devtools:embed` 生成 `go:embed` 文件
+
+
+## 常见错误
+
+### 生产入口安装 devtools
+
+`devtools` 面向开发期，不建议在生产入口安装。可以单独做一个开发入口，或者只在本地需要时安装。
+
+### devtools:embed 找不到模板
+
+确认 `embed_root` 或 `--root` 指向真实目录，并且 `embed_patterns` 能匹配模板文件。
+
+### devtools:build 参数为空
+
+不传参数时默认执行 `go build ./...`。如果要传自定义参数，直接跟在命令后面。
+
+## API 速查
+
+- `devtools.Provider(options...)` 注册开发命令
+- `devtools.Embed(root, out, patterns...)` 配置 embed 默认值
+- `devtools.Scaffold(dir, module)` 直接创建脚手架

@@ -1,0 +1,159 @@
+---
+title: "HTTP Routing"
+description: "Register routes, groups, domains, and typed handlers"
+---
+
+`route` is Runa's HTTP transport block. The core does not include HTTP. An application starts an HTTP service only after installing `route.Provider()`.
+
+If you are new to Go web development, think of `route` as three things: register paths, handle requests, and write responses.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/route
+```
+
+If the kernel is not installed yet, install both:
+
+```bash
+go get github.com/duxweb/runa github.com/duxweb/runa/route
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        return ctx.Text("Hello Runa")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`route.Provider` registers the default route registry, HTTP Host, and `route:list` command.
+
+## Register routes
+
+```go
+route.Default().Get("/", home)
+route.Default().Post("/users", createUser)
+route.Default().Put("/users/{id}", updateUser)
+route.Default().Patch("/users/{id}", patchUser)
+route.Default().Delete("/users/{id}", deleteUser)
+```
+
+`{id}` is a path parameter. Read it in a handler:
+
+```go
+func showUser(ctx *route.Context) error {
+    id := ctx.ParamString("id")
+    return ctx.JSON(runa.Map{"id": id})
+}
+```
+
+## Groups
+
+Groups are useful when several routes share the same prefix, middleware, name prefix, or documentation tags.
+
+```go
+api := route.Default().Group("/api").Name("api").Tags("API")
+api.Get("/users", listUsers).Name("users.index")
+api.Get("/users/{id}", showUser).Name("users.show")
+```
+
+Actual paths become:
+
+```text
+GET /api/users
+GET /api/users/{id}
+```
+
+## Domains
+
+Domains fit large entry sections such as admin, API, internal APIs, or open platforms.
+
+```go
+admin := route.Default().Domain("admin", "/admin")
+admin.Get("/", dashboard).Name("dashboard")
+```
+
+The domain name here is not a DNS domain. It is Runa's logical partition for a group of routes.
+
+## Typed routes
+
+Regular handlers are quick to write. Typed routes fit business APIs better.
+
+```go
+type GetUserInput struct {
+    ID string `param:"id"`
+}
+
+type GetUserOutput struct {
+    ID   string `json:"id"`
+    Name string `json:"name"`
+}
+
+route.Get[GetUserInput, GetUserOutput](
+    route.Default(),
+    "/users/{id}",
+    func(ctx *route.Context, input *GetUserInput) (*GetUserOutput, error) {
+        return &GetUserOutput{ID: input.ID, Name: "Runa"}, nil
+    },
+).Name("user.show").Summary("User detail").Tags("User")
+```
+
+Typed routes automatically bind input, render output, and write schema metadata into the route so OpenAPI can use it.
+
+## Standalone New usage
+
+You can also create a route registry without connecting it to a Runa app:
+
+```go
+registry := route.New()
+registry.Get("/", func(ctx *route.Context) error {
+    return ctx.Text("ok")
+})
+
+if err := http.ListenAndServe(":8080", registry.Handler()); err != nil {
+    panic(err)
+}
+```
+
+This only uses `route` and does not enter the Runa application lifecycle. It fits very small experiments or embedding into an existing `net/http` project.
+
+## List routes
+
+After installing `route.Provider`, list registered routes:
+
+```bash
+go run . route:list
+```
+
+## Common mistakes
+
+### route.Default() panics
+
+This usually means `route.Provider(...)` was not installed. Install route before registering routes.
+
+### Registering routes in package-level variables
+
+Do not register routes during package variable initialization. Register them in `main` or in a business Module's `Register` stage.
+
+### Not knowing regular handler vs typed route
+
+Use regular handlers for simple pages and health checks. Use typed routes for business APIs, OpenAPI, and request validation.

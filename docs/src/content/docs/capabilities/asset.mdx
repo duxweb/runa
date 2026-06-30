@@ -1,0 +1,131 @@
+---
+title: "Asset"
+description: "Static asset URLs, manifests, and file serving"
+---
+
+`asset` manages named static asset domains. It can scan local or embedded filesystems, generate hashed asset URLs, and read manifests produced by frontend build tools.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/asset github.com/duxweb/runa/view
+```
+
+`asset` reuses `view.Source` to describe file sources, so it is usually used together with `view`.
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/asset"
+    "github.com/duxweb/runa/provider"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/view"
+)
+
+type appModule struct {
+    provider.ModuleBase
+}
+
+func (appModule) Name() string { return "app" }
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    assets, err := provider.Invoke[*asset.Registry](app)
+    if err != nil {
+        return err
+    }
+    set := asset.Assets(view.Dir("public", "**/*")).Prefix("/assets")
+    return assets.Register(ctx, "web", set)
+}
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")), asset.Provider())
+    app.Module(appModule{})
+
+    route.Default().Get("/assets/{path...}", func(ctx *route.Context) error {
+        asset.Default().Handler("web").ServeHTTP(ctx.Response(), ctx.Request())
+        return nil
+    }).SkipDoc()
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        return ctx.HTML(`<link rel="stylesheet" href="` + asset.Default().URL("web", "app.css") + `">`)
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## Standalone New usage
+
+```go
+registry := asset.New()
+set := asset.Assets(view.Dir("public", "**/*")).Prefix("/assets")
+_ = registry.Register(context.Background(), "web", set)
+
+url := registry.URL("web", "app.css")
+handler := registry.Handler("web")
+_ = url
+_ = handler
+```
+
+## Config
+
+`asset` currently has no TOML config. Asset sources, prefix, and manifest path are registered in code.
+
+## Manifest
+
+If your frontend build tool generates a manifest, the asset domain can prefer filenames from the manifest.
+
+```go
+set := asset.Assets(view.Dir("public", "**/*")).
+    Prefix("/assets").
+    Manifest("manifest.json")
+```
+
+When the manifest contains `app.css -> app.abc123.css`, `URL("web", "app.css")` returns `/assets/app.abc123.css`.
+
+## Use in templates
+
+A common pattern is to register an asset registry and expose its URL helper to templates:
+
+```go
+assets := asset.Default()
+url := assets.URL("app.css")
+_ = url
+```
+
+When used with `view/rhtml`, register a template function such as `asset` and call it from HTML templates.
+
+## Common mistakes
+
+### URL returns the original path
+
+This usually means the asset is not found in the manifest. Check the manifest source, build output path, and asset key.
+
+### Static files return 404
+
+`asset` resolves asset URLs. It does not replace static file serving. Mount static files with route, static middleware, or your web server.
+
+### Manifest path is wrong
+
+Make sure the path points to the generated manifest file, not only the build directory.
+
+## API quick reference
+
+- `asset.New()` creates a standalone registry.
+- `asset.Provider()` connects to the framework lifecycle.
+- `asset.Default()` reads `*asset.Registry` from default DI.
+- `asset.Assets(sources...)` creates an asset set.
+- `set.Prefix(prefix)` sets the URL prefix.
+- `set.Manifest(path)` sets the manifest file.
+- `registry.Register(ctx, name, set)` registers an asset domain.
+- `registry.URL(domain, path)` generates an asset URL.
+- `registry.Handler(domain)` returns an HTTP file serving handler.

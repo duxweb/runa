@@ -1,0 +1,128 @@
+---
+title: "JSON-RPC"
+description: "运行于 HTTP 或 WebSocket 之上"
+---
+
+`jsonrpc` 提供 JSON-RPC 2.0 服务端。它挂载到 `route`，可以通过 HTTP POST 调用，也可以启用 WebSocket 通道。
+
+JSON-RPC 适合“方法调用”风格的接口，比如内部工具、编辑器插件、桌面端、需要统一 RPC envelope 的场景。如果你只是做普通 REST API，优先使用 `route`。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/jsonrpc github.com/duxweb/runa/route
+```
+
+## 创建 Server
+
+```go
+server := jsonrpc.New()
+
+jsonrpc.Method[AddInput, AddOutput](server, "math.add", func(ctx *jsonrpc.Context, input *AddInput) (*AddOutput, error) {
+    return &AddOutput{Sum: input.A + input.B}, nil
+})
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/jsonrpc"
+    "github.com/duxweb/runa/route"
+)
+
+type AddInput struct {
+    A int `json:"a"`
+    B int `json:"b"`
+}
+
+type AddOutput struct {
+    Sum int `json:"sum"`
+}
+
+func main() {
+    server := jsonrpc.New()
+    jsonrpc.Method[AddInput, AddOutput](server, "math.add", func(ctx *jsonrpc.Context, input *AddInput) (*AddOutput, error) {
+        return &AddOutput{Sum: input.A + input.B}, nil
+    })
+
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        jsonrpc.Provider(server, jsonrpc.Path("/rpc")),
+    )
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+调用：
+
+```bash
+curl -X POST http://localhost:8080/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"math.add","params":{"a":2,"b":3},"id":1}'
+```
+
+响应：
+
+```json
+{"jsonrpc":"2.0","result":{"sum":5},"id":1}
+```
+
+## WebSocket
+
+```go
+app.Install(jsonrpc.Provider(server,
+    jsonrpc.Path("/rpc"),
+    jsonrpc.WSPath("/rpc/ws", jsonrpc.Origin("http://localhost:3000")),
+))
+```
+
+也可以手动挂载：
+
+```go
+jsonrpc.Mount(route.Default(), server, jsonrpc.WebSocket("/rpc/ws"))
+```
+
+## 配置
+
+`jsonrpc` 读取 `[jsonrpc]` 配置。
+
+```toml
+[jsonrpc]
+path = "/rpc"
+ws_path = "/rpc/ws"
+```
+
+WebSocket 的超时、消息大小和 Origin 通过代码选项传入。
+
+## 常见错误
+
+### 只安装 jsonrpc，没有安装 route
+
+`jsonrpc` 需要挂到 HTTP route 上，所以应用里也要安装 `route.Provider(...)`。
+
+### method 名称不稳定
+
+JSON-RPC 调用方依赖 method 字符串。建议使用稳定命名，例如 `user.get`、`order.close`、`math.add`。
+
+### WebSocket Origin 没有限制
+
+浏览器场景建议配置 `jsonrpc.Origin(...)`，避免任意站点直接连接你的 RPC WebSocket。
+
+## API 速查
+
+- `jsonrpc.New()` 创建 Server
+- `jsonrpc.Method[I,O](server, name, handler)` 注册强类型方法
+- `jsonrpc.Provider(server, options...)` 接入框架
+- `jsonrpc.Path(path)` 设置 HTTP 路径
+- `jsonrpc.WSPath(path, options...)` 设置 WebSocket 路径
+- `jsonrpc.Mount(target, server, options...)` 手动挂载

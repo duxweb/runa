@@ -1,0 +1,148 @@
+---
+title: "限流 Rate"
+description: "命名限流规则与 HTTP 中间件"
+---
+
+`rate` 提供命名限流器。默认使用内存驱动，支持 token bucket、fixed window 和 sliding window。HTTP 场景通过 `rate/middleware` 接入。
+
+典型场景是限制登录尝试次数、短信发送次数、API 调用频率，避免接口被刷。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/rate
+```
+
+Redis 驱动按需安装：
+
+```bash
+go get github.com/duxweb/runa/rate/redis
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/rate"
+    ratemw "github.com/duxweb/runa/rate/middleware"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        rate.Provider(rate.RegisterLimiter("api", rate.TokenBucket(60, time.Minute), rate.Key(rate.ByIP()))),
+    )
+
+    route.Default().Group("/api").Use(ratemw.Use("api")).Get("/ping", func(ctx *route.Context) error {
+        return ctx.Text("pong")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## 独立 New 使用
+
+```go
+registry := rate.New()
+registry.Rate("api", rate.TokenBucket(60, time.Minute), rate.Key(rate.ByIP()))
+
+result, err := registry.MustOf("api").Allow(context.Background(), "ip:127.0.0.1")
+_ = result
+_ = err
+```
+
+## 配置
+
+`rate` 读取 `rate.limiters.<name>`，只作用到已经注册的 limiter。
+
+```toml
+[rate.limiters.api]
+driver = "memory"
+algorithm = "token_bucket"
+limit = 60
+window = "1m"
+burst = 10
+key = ["ip", "route"]
+```
+
+| 键 | 类型 | 说明 |
+| --- | --- | --- |
+| `driver` | string | 驱动名，默认 `memory` |
+| `algorithm` | string | `token_bucket`、`fixed_window`、`sliding_window` |
+| `limit` | int | 窗口内允许次数 |
+| `window` | duration | 统计窗口 |
+| `burst` | int | 突发容量 |
+| `key` | []string | key 来源，如 `ip`、`route`、`user`、`session` |
+| `meta` | table | 自定义元数据 |
+
+## 驱动
+
+内置 `memory` 驱动适合单进程限流。多实例部署时，安装 `rate/redis` 并通过 `RegisterDriver` 注册 Redis 驱动，再用 `rate.Use("redis")` 让指定 limiter 使用它。
+
+```go
+import (
+    goredis "github.com/redis/go-redis/v9"
+    rateredis "github.com/duxweb/runa/rate/redis"
+)
+
+client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
+
+app.Install(rate.Provider(
+    rate.RegisterDriver("redis", rateredis.Driver(client, rate.Prefix("runa:rate:"))),
+    rate.RegisterLimiter("api", rate.Use("redis"), rate.FixedWindow(100, time.Minute), rate.Key(rate.ByIP())),
+))
+```
+
+## 三种算法怎么选
+
+| 算法 | 特点 | 适合场景 |
+| --- | --- | --- |
+| `TokenBucket` | 平滑限流，允许一定突发 | 通用 API 限流 |
+| `FixedWindow` | 实现简单，按固定窗口统计 | 登录、短信这类简单限制 |
+| `SlidingWindow` | 边界更平滑，统计更精细 | 对限流准确性要求更高的接口 |
+
+新手可以先用 `TokenBucket`。
+
+## Key 来源
+
+```go
+rate.Key(rate.ByIP())
+rate.Key(rate.ByRoute(), rate.ByUser())
+rate.Key(rate.ByHeader("X-Tenant"))
+rate.Key(rate.ByQuery("token"))
+rate.Key(rate.ByFunc(func(ctx any) string { return "custom" }))
+```
+
+## 常见错误
+
+### 只注册 limiter，没有使用中间件
+
+`rate.Provider(...)` 只注册限流规则。HTTP 路由要生效，还需要 `ratemw.Use("api")`。
+
+### 多实例部署还用 memory 驱动
+
+memory 驱动只限制当前进程。多实例部署要使用 Redis 驱动。
+
+### key 设计太粗
+
+默认按 IP 限流。登录、短信、API Key 等场景建议注册更明确的 key source。
+
+## API 速查
+
+- `rate.New()` 创建独立注册表
+- `rate.Provider(...)` 接入框架生命周期
+- `rate.Default()` 从默认 DI 取 `*rate.Registry`
+- `rate.RegisterDriver(name, driver)` 注册驱动
+- `rate.RegisterLimiter(name, options...)` 注册限流器
+- `rate/middleware.Use(name)` 创建 HTTP 限流中间件

@@ -1,0 +1,176 @@
+---
+title: "Database"
+description: "Manage multiple database runtimes through one registry"
+---
+
+`database` registers database drivers, opens connections during startup, and releases them during shutdown. It only defines the runtime contract. Concrete SQL or Redis data sources are provided by driver modules.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/database
+```
+
+Common drivers are installed on demand:
+
+```bash
+go get github.com/duxweb/runa/database/oro
+go get github.com/duxweb/runa/database/redis
+```
+
+`database/oro` is for SQL databases. `database/redis` brings a Redis client into the unified database lifecycle.
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/database"
+    dboro "github.com/duxweb/runa/database/oro"
+    _ "modernc.org/sqlite"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(database.Provider(
+        database.RegisterDriver("default", dboro.Driver(
+            dboro.DSN(":memory:"),
+            dboro.Dialect("sqlite"),
+        )),
+    ))
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    db := database.Default().MustGet("default")
+    _ = db
+}
+```
+
+`database.Provider()` calls `Registry.Open` during `Boot`, so database connections open during application startup and are closed through `Shutdown` when DI closes.
+
+## Standalone New usage
+
+```go
+registry := database.New()
+registry.RegisterDriver("default", dboro.Driver(dboro.DSN(":memory:"), dboro.Dialect("sqlite")))
+
+if err := registry.Open(context.Background(), nil); err != nil {
+    panic(err)
+}
+defer registry.Close(context.Background())
+
+db := registry.MustGet("default")
+_ = db
+```
+
+Standalone usage requires calling `Open` and `Close` yourself.
+
+## Config
+
+`database` itself does not scan a fixed `[database]` config table. Drivers read `database.connections.<name>` by default, or they can choose another path through their own `Config(path)` option.
+
+```toml
+# config/database.toml
+[connections.default]
+dsn = "file:app.db"
+dialect = "sqlite"
+max_open = 10
+max_idle = 2
+max_lifetime = "1h"
+debug = true
+```
+
+```go
+app.Install(database.Provider(
+    database.RegisterDriver("default", dboro.Driver()),
+))
+```
+
+If you want full control over config structure, read `runa.Config("database")` in your business Provider and construct the driver yourself.
+
+## Oro driver
+
+For complete model, query, and config examples, see [Database Oro](../drivers/database-oro/).
+
+
+```go
+import dboro "github.com/duxweb/runa/database/oro"
+
+driver := dboro.Driver(
+    dboro.DSN("file:app.db"),
+    dboro.Dialect("sqlite"),
+    dboro.MaxOpen(20),
+    dboro.Debug(true),
+)
+```
+
+Get the native Oro object:
+
+```go
+db := database.Default().MustGet("default")
+orm := dboro.From(db)
+_ = orm
+```
+
+In an HTTP handler, you can also use the default registry directly:
+
+```go
+route.Default().Get("/users", func(ctx *route.Context) error {
+    db := database.Default().MustGet("default")
+    orm := dboro.From(db)
+    _ = orm
+    return ctx.JSON(runa.Map{"ok": true})
+})
+```
+
+## Redis driver
+
+```go
+import dbredis "github.com/duxweb/runa/database/redis"
+
+app.Install(database.Provider(
+    database.RegisterDriver("cache", dbredis.Driver(
+        dbredis.Addr("127.0.0.1:6379"),
+        dbredis.DB(1),
+    )),
+))
+```
+
+## Commands
+
+After installing `database.Provider()`, these commands are registered:
+
+```bash
+go run . database:list
+go run . database:ping default
+```
+
+## Common mistakes
+
+### Installing database without a concrete driver
+
+`database` manages database runtimes. You still need a driver such as `database/oro` or `database/redis` for actual connections.
+
+### Forgetting the underlying database driver
+
+SQL drivers may require their own underlying driver import. Follow the selected driver documentation.
+
+### Reading a connection before Boot
+
+Configure database connections through Provider options and config. Read them after the application is frozen or inside handlers, commands, and lifecycle code that runs after registration.
+
+## API quick reference
+
+- `database.New()` creates a standalone registry.
+- `database.Provider(...)` connects to the framework lifecycle.
+- `database.Default()` reads `*database.Registry` from default DI.
+- `database.RegisterDriver(name, driver)` registers a database driver.
+- `registry.MustGet(name)` gets an opened database runtime.
+- `registry.Ping(ctx, name)` checks a connection.
+- `registry.Close(ctx)` closes all databases.

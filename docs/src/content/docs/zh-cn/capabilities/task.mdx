@@ -1,0 +1,117 @@
+---
+title: "任务 Task"
+description: "业务任务注册与直接/队列分发"
+---
+
+`task` 用于注册命名业务任务。默认直接在当前进程执行；安装 `queue` 后可以把任务分发到队列 worker 执行。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/task
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/provider"
+    "github.com/duxweb/runa/task"
+)
+
+type SendMail struct {
+    To string `json:"to"`
+}
+
+type appModule struct {
+    provider.ModuleBase
+}
+
+func (appModule) Name() string { return "app" }
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    tasks, err := provider.Invoke[*task.Registry](app)
+    if err != nil {
+        return err
+    }
+    tasks.Register("mail.send", func(ctx context.Context, item *task.TaskOf[SendMail]) error {
+        fmt.Println("send", item.Payload.To)
+        return nil
+    })
+    return nil
+}
+
+func main() {
+    app := runa.New()
+    app.Install(task.Provider())
+    app.Module(appModule{})
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    _, _ = task.Default().Dispatch(context.Background(), "mail.send", SendMail{To: "hello@runa.dev"})
+}
+```
+
+## 独立 New 使用
+
+```go
+registry := task.New()
+registry.Register("mail.send", handler)
+_, err := registry.Dispatch(context.Background(), "mail.send", SendMail{To: "hello@runa.dev"})
+_ = err
+```
+
+## 配置
+
+`task` 当前没有 TOML 配置。任务名、载荷类型、重试、超时、队列等通过注册或分发选项声明。
+
+## 分发选项
+
+```go
+_, err := tasks.Dispatch(ctx, "mail.send", payload,
+    task.Queue("default"),
+    task.Delay(time.Minute),
+    task.Unique("mail:1"),
+)
+```
+
+- `Direct()` 强制直接执行
+- `Queue(name)` 指定队列
+- `Delay(duration)` 延迟执行
+- `Unique(key)` 去重
+
+## 命令
+
+安装 `task.Provider()` 后会注册：
+
+```bash
+go run . task:list
+go run . task:run mail.send '{"to":"hello@runa.dev"}'
+```
+
+## 常见错误
+
+### 任务名和载荷类型不稳定
+
+任务可能被队列序列化后异步执行。任务名和 payload 结构应保持稳定，避免 worker 反序列化失败。
+
+### 以为 task 一定异步
+
+默认 task 是直接执行。需要异步执行时，要安装 `queue` 并使用 `task.Queue("default")`。
+
+## API 速查
+
+- `task.New()` 创建独立注册表
+- `task.Provider()` 接入框架生命周期
+- `task.Default()` 从默认 DI 取 `*task.Registry`
+- `registry.Register(name, handler, options...)` 注册任务
+- `registry.Dispatch(ctx, name, payload, options...)` 分发任务
+- `task.MarshalPayload(payload)` 序列化任务载荷

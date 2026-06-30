@@ -1,0 +1,157 @@
+---
+title: "安装"
+description: "从空目录开始安装 Runa 内核和按需能力包"
+---
+
+Runa 是多模块框架。你不需要一次安装全部能力，先安装内核，需要 HTTP、缓存、数据库、队列时再安装对应模块。
+
+如果你刚开始学 Go，可以先记住一句话：`go get` 会把你 import 的包写进 `go.mod`，Go 只会编译你真正 import 到代码里的包。
+
+## 准备一个 Go 项目
+
+先确认本机已经安装 Go：
+
+```bash
+go version
+```
+
+然后创建项目目录并初始化模块：
+
+```bash
+mkdir runa-demo
+cd runa-demo
+go mod init example.com/runa-demo
+```
+
+`go mod init` 会创建 `go.mod`，它记录当前项目的模块名和依赖。示例里的 `example.com/runa-demo` 可以换成你自己的项目名。
+
+## 先安装内核
+
+```bash
+go get github.com/duxweb/runa
+```
+
+内核负责应用启动、DI、配置、命令、Host 和生命周期。它不包含 HTTP 路由、缓存、队列、数据库和存储。
+
+只安装内核时，你可以写命令行工具、worker 骨架，或者先搭好应用入口。
+
+## 需要 HTTP 时安装 route
+
+Runa 的 HTTP 路由是独立传输模块。要写 HTTP 服务，需要再安装 `route`：
+
+```bash
+go get github.com/duxweb/runa/route
+```
+
+最小 HTTP 应用通常一次安装这两个模块：
+
+```bash
+go get github.com/duxweb/runa github.com/duxweb/runa/route
+```
+
+## 检查是否安装成功
+
+创建 `main.go`：
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        return ctx.Text("Hello Runa")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+运行：
+
+```bash
+go run .
+```
+
+再打开一个终端访问：
+
+```bash
+curl http://localhost:8080/
+```
+
+看到 `Hello Runa` 就说明内核和 `route` 都安装成功。
+
+## 需要什么能力就安装什么
+
+按需安装你实际使用的能力：
+
+```bash
+go get github.com/duxweb/runa/cache
+go get github.com/duxweb/runa/queue
+go get github.com/duxweb/runa/database
+go get github.com/duxweb/runa/storage
+```
+
+需要连接外部系统时，再安装驱动模块：
+
+```bash
+go get github.com/duxweb/runa/cache/redis
+go get github.com/duxweb/runa/queue/redis
+go get github.com/duxweb/runa/storage/s3
+go get github.com/duxweb/runa/database/oro
+```
+
+比如你没有 import `github.com/duxweb/runa/storage/s3`，项目就不会把 AWS SDK 编进来。
+
+## 业务项目不需要 go.work
+
+Runa 仓库内部使用 `go.work` 管理多个子模块，这是框架开发时用的。
+
+普通业务项目只需要 `go.mod`，正常 `go get` 对应模块即可，不需要复制 Runa 仓库里的 `go.work`。
+
+如果你是在开发 Runa 框架本身，才需要在仓库根目录执行：
+
+```bash
+go work sync
+go test ./...
+```
+
+## 版本尽量保持一致
+
+同一个应用里，Runa 内核、能力包和驱动包建议使用同一版本号。
+
+比如内核使用 `v0.3.0`，`route`、`cache`、`cache/redis` 也尽量使用兼容的 `v0.3.0`。这样可以减少多模块版本不一致带来的问题。
+
+## 常见问题
+
+### 提示 no required module provides package
+
+说明当前项目还没有安装这个模块，或者 import 路径写错了。先确认路径，再执行 `go get`。
+
+### 提示 route provider is not installed
+
+说明代码调用了 `route.Default()`，但还没有安装 `route.Provider(...)`。先执行：
+
+```go
+app.Install(route.Provider(route.Addr(":8080")))
+```
+
+再注册路由。
+
+### 端口被占用
+
+如果 `:8080` 已经被其他程序占用，把端口换成其他值：
+
+```go
+route.Provider(route.Addr(":8081"))
+```

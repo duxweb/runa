@@ -1,0 +1,53 @@
+---
+title: "gRPC"
+description: "规划中的传输块"
+---
+
+Runa 当前仓库还没有 gRPC Go 包。gRPC 会作为未来的传输块接入，而不是放进内核。
+
+这页只说明当前状态和未来边界，避免用户误以为已经可以 `go get github.com/duxweb/runa/grpc`。
+
+
+## 安装
+
+当前没有可安装的 Runa gRPC 模块。不要执行下面这种命令：
+
+```bash
+# 当前不存在
+go get github.com/duxweb/runa/grpc
+```
+
+## 常见错误
+
+### 在业务代码里提前 import grpc 模块
+
+当前仓库没有 `github.com/duxweb/runa/grpc`，提前 import 会导致构建失败。
+
+### 把规划文档当成已实现 API
+
+本页只记录规划方向。可运行传输请使用 `route`、`ws` 或 `jsonrpc`。
+
+## 现在还没有可用模块
+
+- 暂无 `github.com/duxweb/runa/grpc` 模块
+- 暂无 `grpc.Provider` API
+- 当前文档只说明目标形态，不提供可运行代码
+
+## 未来会怎么接入
+
+未来 gRPC 传输块应遵守和 route、ws、jsonrpc 相同的架构规则。它会以 Provider 形式接入应用，但当前没有可用 API。
+
+Provider 内部需要负责：
+
+- 注册 gRPC Server 到 DI
+- 注册 Host 单元
+- 在 Boot 阶段启动服务所需依赖
+- 在 Shutdown 阶段优雅关闭
+
+## gRPC handler 怎么使用能力
+
+业务能力仍通过 DI 获取。gRPC handler 不应该依赖 HTTP 路由上下文，而应使用标准 `context.Context` 和能力包的 `Default()` 或显式注入。
+
+## 未实现前不写假示例
+
+在代码实现前，文档中不会出现 `grpc.Provider` 的可复制示例。等 gRPC 模块落地后，再补安装路径、Provider 选项、配置和完整示例。

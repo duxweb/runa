@@ -1,0 +1,12 @@
+.DS_Store
+**/data/
+_plans/
+docs/node_modules/
+docs/dist/
+docs/.astro/
+/cmd/runa/runa
+/examples/admin/admin
+/examples/api/api
+/examples/basic/basic
+/examples/console/console
+/examples/fullstack/fullstack

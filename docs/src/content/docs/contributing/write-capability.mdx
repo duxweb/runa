@@ -1,0 +1,87 @@
+---
+title: "Write a Capability Block"
+description: "New / Provider / Default / Registry"
+---
+
+A capability block should work standalone first, then connect to the Runa framework. Do not put all logic into Provider from the beginning.
+
+## Keep the directory clear first
+
+```text
+hello/
+  go.mod
+  registry.go
+  provider.go
+  default.go
+  options.go
+  types.go
+```
+
+## Make New usable standalone first
+
+```go
+type Registry struct {
+    message string
+}
+
+func New(options ...Option) *Registry {
+    cfg := Config{Message: "hello"}
+    for _, option := range options {
+        option(&cfg)
+    }
+    return &Registry{message: cfg.Message}
+}
+
+func (r *Registry) Message() string { return r.message }
+```
+
+## Then provide a Default facade
+
+```go
+func Default() *Registry {
+    return provider.MustInvokeDefault[*Registry]()
+}
+```
+
+## Finally connect through Provider
+
+```go
+func Provider(options ...Option) provider.Provider {
+    return providerImpl{options: options}
+}
+
+type providerImpl struct {
+    provider.Base
+    options []Option
+}
+
+func (providerImpl) Name() string { return "hello" }
+
+func (p providerImpl) Init(_ context.Context, ctx provider.Context) error {
+    provider.ProvideDefault(ctx, func(do.Injector) (*Registry, error) {
+        return New(p.options...), nil
+    })
+    return nil
+}
+```
+
+## Read config during Register
+
+If the capability supports config, read its own scope during Register:
+
+```go
+func (p providerImpl) Register(ctx provider.Context) error {
+    registry := provider.MustInvoke[*Registry](ctx)
+    store := provider.MustInvoke[*config.Store](ctx)
+    _ = registry
+    _ = store.Scope("hello")
+    return nil
+}
+```
+
+## Acceptance checklist
+
+- `hello.New()` works standalone.
+- `hello.Provider()` can connect through `runa.Install`.
+- `hello.Default()` returns the same core object after `Freeze`.
+- Config reads only the `hello` scope and does not cross into other package config.

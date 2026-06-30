@@ -1,0 +1,116 @@
+---
+title: "集群 Cluster"
+description: "服务实例心跳与集群注册"
+---
+
+`cluster` 用于把当前进程注册为一个服务实例，并持续发送心跳。默认提供内存驱动，生产环境可以使用 Redis 驱动共享实例状态。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/cluster
+```
+
+Redis 驱动按需安装：
+
+```bash
+go get github.com/duxweb/runa/cluster/redis
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/cluster"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(cluster.Provider(
+        cluster.DriverWith(cluster.MemoryDriver()),
+        cluster.Service("api"),
+        cluster.Env("dev"),
+        cluster.HeartbeatInterval(5*time.Second),
+    ))
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`cluster.Provider()` 会注册一个生命周期 service，Boot 时注册实例并启动心跳，Shutdown 时注销实例。
+
+开发环境可以用内存驱动观察流程。多实例生产环境需要 Redis 这类共享驱动，否则每个进程只能看到自己。
+
+## 配置
+
+`cluster` 读取 `[cluster]` 配置。
+
+```toml
+[cluster]
+driver = "memory"
+id = "api-1"
+service = "api"
+env = "production"
+version = "1.0.0"
+addr = "http://127.0.0.1:8080"
+heartbeat_interval = "5s"
+ttl = "15s"
+
+[cluster.meta]
+zone = "cn-east"
+```
+
+`driver` 用于匹配代码中注册的驱动名。生产环境使用 Redis 时，需要在代码里传入 Redis 驱动实例。
+
+## Redis 驱动
+
+```go
+import clusterredis "github.com/duxweb/runa/cluster/redis"
+
+app.Install(cluster.Provider(
+    cluster.DriverWith(clusterredis.Driver(client, clusterredis.Prefix("runa:cluster:"))),
+    cluster.Service("api"),
+))
+```
+
+## 实例信息
+
+```go
+registry := cluster.Default()
+current := registry.Instance()
+items, err := registry.Instances(context.Background())
+_ = current
+_ = items
+_ = err
+```
+
+## 常见错误
+
+### 生产环境使用 memory 驱动
+
+memory 驱动只在当前进程内保存实例信息。多实例部署要使用 Redis 驱动。
+
+### 心跳 TTL 设置太短
+
+`ttl` 应该大于 `heartbeat_interval`，否则实例可能在下一次心跳前被判断为离线。
+
+### 把 cluster 当服务发现系统
+
+`cluster` 提供实例心跳和列表，不等同于完整服务发现、负载均衡或注册中心。
+
+## API 速查
+
+- `cluster.Provider(options...)` 接入生命周期
+- `cluster.Default()` 从默认 DI 取 `*cluster.Registry`
+- `cluster.MemoryDriver()` 创建内存驱动
+- `cluster.DriverWith(driver)` 设置驱动
+- `registry.Instance()` 当前实例快照
+- `registry.Instances(ctx, service...)` 查询实例列表

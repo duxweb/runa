@@ -1,0 +1,283 @@
+---
+title: "Database Oro"
+description: "用 Oro ORM 作为 Runa 的 SQL 数据库驱动"
+---
+
+`database/oro` 把 [Oro ORM](https://duxweb.github.io/oro/zh-cn/) 接入 Runa 的 `database` 能力。Runa 负责生命周期：注册驱动、读取配置、打开连接、关闭连接、注册命令；Oro 负责 ORM：模型、查询、关联、事务、同步和 SQL 执行。
+
+如果你只是想在 Runa 里使用 SQL 数据库，并希望继续使用 Go 类型定义模型，推荐从这个驱动开始。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/database github.com/duxweb/runa/database/oro
+```
+
+SQLite 示例还需要具体 SQL 驱动：
+
+```bash
+go get modernc.org/sqlite
+```
+
+MySQL 和 PostgreSQL 的底层驱动、DSN 写法、模型关系和查询能力请参考 Oro 文档：
+
+- [Oro 中文文档](https://duxweb.github.io/oro/zh-cn/)
+- [Oro English Docs](https://duxweb.github.io/oro/)
+
+## 最小接入
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/database"
+    dboro "github.com/duxweb/runa/database/oro"
+    _ "modernc.org/sqlite"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(database.Provider(
+        database.RegisterDriver("default", dboro.Driver(
+            dboro.DSN("file:app.db"),
+            dboro.Dialect("sqlite"),
+        )),
+    ))
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    db := database.Default().MustGet("default")
+    orm := dboro.From(db)
+    _ = orm
+}
+```
+
+注意：`database.Provider` 在 `Boot` 阶段打开数据库，所以 `database.Default().MustGet(...)` 要在 `Freeze` 或 `Run` 之后使用。
+
+## 使用配置文件
+
+推荐把 DSN、方言和连接池放到配置文件：
+
+```toml
+# config/database.toml
+[connections.default]
+dsn = "file:app.db"
+dialect = "sqlite"
+max_open = 10
+max_idle = 2
+debug = true
+```
+
+代码只注册驱动：
+
+```go
+app.Install(database.Provider(
+    database.RegisterDriver("default", dboro.Driver()),
+))
+```
+
+默认读取路径是 `database.connections.<连接名>`
+
+## 自定义配置路径
+
+```go
+app.Install(database.Provider(
+    database.RegisterDriver("report", dboro.Driver(
+        dboro.Config("database.connections.report"),
+    )),
+))
+```
+
+## 多连接
+
+```go
+app.Install(database.Provider(
+    database.RegisterDriver("default", dboro.Driver(
+        dboro.Config("database.connections.default"),
+    )),
+    database.RegisterDriver("report", dboro.Driver(
+        dboro.Config("database.connections.report"),
+    )),
+))
+```
+
+使用时按名称取：
+
+```go
+mainORM := dboro.From(database.Default().MustGet("default"))
+reportORM := dboro.From(database.Default().MustGet("report"))
+```
+
+## 定义 Oro 模型
+
+```go
+import oro "github.com/duxweb/oro"
+
+type User struct {
+    oro.Model
+    Name   string
+    Email  string
+    Status int
+}
+
+func (User) Define(s *oro.SchemaBuilder) {
+    s.Table("users")
+    s.Field("Name").String().Size(120)
+    s.Field("Email").String().Size(180).Unique()
+    s.Field("Status").Int()
+}
+```
+
+字段、索引、关联、软删除等写法属于 Oro ORM 能力，详细规则看 [Oro 模型文档](https://duxweb.github.io/oro/zh-cn/)
+
+## 注册模型并同步结构
+
+```go
+orm := dboro.From(database.Default().MustGet("default"))
+
+if err := orm.Register(User{}); err != nil {
+    panic(err)
+}
+if err := orm.Sync(context.Background()); err != nil {
+    panic(err)
+}
+```
+
+`Sync` 适合开发和快速原型。生产环境是否自动同步，要看你的迁移策略；如果项目有严格迁移流程，应使用迁移工具或人工审核 SQL。
+
+## 基本查询
+
+```go
+ctx := context.Background()
+orm := dboro.From(database.Default().MustGet("default"))
+
+created, err := orm.Use[User]().Create(ctx, &User{
+    Name:  "Runa",
+    Email: "hi@example.com",
+})
+if err != nil {
+    return err
+}
+
+found, err := orm.Use[User]().
+    Where("Email", "hi@example.com").
+    First(ctx)
+
+items, err := orm.Use[User]().
+    Where("Status", 1).
+    OrderByDesc("ID").
+    Limit(20).
+    Get(ctx)
+
+_ = created
+_ = found
+_ = items
+```
+
+完整查询能力请看 [Oro 查询文档](https://duxweb.github.io/oro/zh-cn/)
+
+## 在 HTTP handler 中使用
+
+```go
+route.Default().Get("/users", func(ctx *route.Context) error {
+    orm := dboro.From(database.Default().MustGet("default"))
+    users, err := orm.Use[User]().Limit(20).Get(ctx.Context())
+    if err != nil {
+        return err
+    }
+    return ctx.JSON(users)
+})
+```
+
+业务代码里建议把 `orm` 注入到 service，而不是在每个 handler 里直接取。文档示例直接取，是为了让流程更清楚。
+
+## 独立使用 Driver
+
+如果不走 Runa 生命周期，也可以直接打开驱动：
+
+```go
+driver := dboro.Driver(
+    dboro.DSN(":memory:"),
+    dboro.Dialect("sqlite"),
+)
+
+runtime, err := driver.Open(context.Background(), database.Config{Name: "default"})
+if err != nil {
+    panic(err)
+}
+defer runtime.Close(context.Background())
+
+orm := dboro.From(runtime)
+```
+
+这种方式适合测试、工具脚本或临时任务。应用服务里更推荐使用 `database.Provider`。
+
+## 命令
+
+安装 `database.Provider` 后会注册数据库命令：
+
+```bash
+go run . database:list
+go run . database:ping
+```
+
+`database:list` 查看已注册连接，`database:ping` 检查连接可用性。
+
+## 常用选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `dboro.DSN(value)` | 设置数据库 DSN |
+| `dboro.Dialect(name)` | 设置方言，常用 `sqlite`、`mysql`、`postgres` |
+| `dboro.Config(path)` | 指定配置读取路径 |
+| `dboro.MaxOpen(value)` | 最大打开连接数 |
+| `dboro.MaxIdle(value)` | 最大空闲连接数 |
+| `dboro.MaxLifetime(duration)` | 连接最大生命周期 |
+| `dboro.Debug(true)` | 开启 SQL debug 日志 |
+| `dboro.Logger(name)` | 设置 Runa 日志通道，默认 `orm` |
+| `dboro.Location(loc)` | 设置 Oro 使用的时区，默认跟随应用时区 |
+| `dboro.Meta(key, value)` | 设置数据库运行时元数据 |
+
+## 时区
+
+Oro 驱动默认把 Runa 的应用时区传给 Oro 配置。也就是说，设置 `runa.Timezone("Asia/Shanghai")` 或 `config/app.toml` 的 `timezone` 后，Oro 驱动会使用同一个时区。
+
+如果某个连接需要独立时区，可以显式传入：
+
+```go
+dboro.Driver(
+    dboro.Location(time.UTC),
+)
+```
+
+## 调试 SQL 日志
+
+```toml
+[connections.default]
+dsn = "file:app.db"
+dialect = "sqlite"
+debug = true
+logger = "orm"
+```
+
+如果安装了 `log.Provider`，Oro 驱动会把 SQL 日志写入配置的日志通道，并记录 SQL、耗时、行数和错误。
+
+## 常见问题
+
+- `oro database default dsn is required` 表示没有通过代码或配置提供 DSN
+- `database default is not open` 通常表示在 `Freeze` 前读取了 `database.Default().MustGet(...)`
+- `dboro.From(db)` 返回 nil，通常表示传入的不是 Oro 驱动打开的数据库
+- SQLite、MySQL、PostgreSQL 的 DSN 差异属于 Oro 和底层驱动范围，按 Oro 文档配置
+- Runa 不替代 Oro 文档。Runa 只负责把 Oro 接入应用生命周期
+
+## 继续阅读
+
+- [数据库能力](../capabilities/database/)
+- [CRUD Oro Store](./crud-orostore/)
+- [Oro 中文文档](https://duxweb.github.io/oro/zh-cn/)
+- [Oro English Docs](https://duxweb.github.io/oro/)

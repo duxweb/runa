@@ -1,0 +1,64 @@
+---
+title: "扩展生态"
+description: "扩展生态"
+---
+
+扩展是框架之外的能力块、驱动块、传输块或工具库。使用方式和官方能力一致：安装模块，再接入应用。
+
+普通应用开发者通常只需要知道三件事：安装哪个模块、要不要 `app.Install(...)`、配置文件怎么写。只有你要开发可复用扩展时，才需要深入 Provider 细节。
+
+## 扩展通常提供什么
+
+一个扩展可以是：
+
+- 能力块：例如支付、搜索、短信、租户
+- 驱动块：例如新的缓存驱动、队列驱动、存储驱动
+- 传输块：例如 gRPC、自定义 RPC、Webhook 服务
+- 工具库：例如字段脱敏、业务校验、代码生成
+
+## 怎么接入扩展
+
+这里用官方 Redis 缓存驱动举例。它不是核心依赖，只有你安装并 import 时才会进入项目：
+
+```bash
+go get github.com/duxweb/runa/cache github.com/duxweb/runa/cache/redis
+```
+
+```go
+import (
+    goredis "github.com/redis/go-redis/v9"
+
+    "github.com/duxweb/runa/cache"
+    cacheredis "github.com/duxweb/runa/cache/redis"
+)
+
+client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
+
+app := runa.New()
+app.Install(cache.Provider(
+    cache.RegisterDriver("redis", cacheredis.Driver(client)),
+    cache.RegisterPool("default", cache.Use("redis")),
+))
+```
+
+扩展自己的配置和使用方式以扩展文档为准。常见模式是：
+
+- `go get` 安装扩展模块
+- `app.Install(...)` 接入应用
+- 在配置文件里增加扩展自己的配置域
+- 在业务 Module 中调用扩展提供的能力
+
+## 扩展和业务 Module 的区别
+
+| 类型 | 用途 | 谁来写 |
+| --- | --- | --- |
+| 扩展 | 可复用能力、驱动、传输、工具 | 框架作者或扩展作者 |
+| Module | 当前应用的业务入口 | 业务项目自己 |
+
+写业务系统时，优先写 Module。只有某段能力需要跨项目复用，才考虑做成扩展。
+
+例如订单、用户、商品这些属于你的业务，应该写成 `Module`。Redis 缓存驱动、S3 存储驱动、Prometheus 指标导出这类通用能力，才适合做成扩展。
+
+## 去哪里找扩展
+
+先看 [扩展目录](directory/)。官方可选驱动、观测适配和传输增强会优先收录在这里。

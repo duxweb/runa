@@ -1,0 +1,47 @@
+---
+title: "gRPC"
+description: "Planned transport block"
+---
+
+Runa does not currently include a gRPC Go package. gRPC will be integrated as a future transport block instead of being built into the kernel.
+
+## No module is available yet
+
+- There is no `github.com/duxweb/runa/grpc` module yet.
+- There is no `grpc.Provider` API yet.
+- This page describes the intended shape only and does not provide runnable code.
+
+## How it will connect in the future
+
+The future gRPC transport block should follow the same architecture rules as route, ws, and jsonrpc. It will connect to the application through a Provider, but no public API is available today.
+
+The Provider will be responsible for:
+
+- Registering a gRPC Server in DI.
+- Registering a Host unit.
+- Starting dependencies needed by the service during Boot.
+- Shutting down gracefully during Shutdown.
+
+## How gRPC handlers should use capabilities
+
+Business capabilities should still be obtained through DI. A gRPC handler should not depend on the HTTP route context. It should use standard `context.Context` plus capability package `Default()` helpers or explicit injection.
+
+## No fake examples before implementation
+
+Before the code exists, this documentation will not include copyable `grpc.Provider` examples. After the gRPC module lands, this page will add the install path, Provider options, config, and complete examples.
+
+## Install
+
+```text
+No package exists today
+```
+
+## Common mistakes
+
+### Importing a grpc module before it exists
+
+Do not import `github.com/duxweb/runa/grpc` in business code today. The package is not implemented yet.
+
+### Treating this planning page as implemented API
+
+This page describes the intended transport model only. Copyable examples are intentionally not provided before implementation.

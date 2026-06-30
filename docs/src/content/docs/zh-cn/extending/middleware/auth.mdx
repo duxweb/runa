@@ -1,0 +1,132 @@
+---
+title: "Auth 中间件"
+description: "为路由增加登录态认证、可选认证和权限检查"
+---
+
+`auth/middleware` 用来把认证和权限检查接入 HTTP 路由。它依赖 `auth.Provider` 注册的 `*auth.Registry`。如果使用 session 登录，还需要安装 session 能力并挂载 session 中间件。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/auth
+```
+
+使用 session 登录时还需要：
+
+```bash
+go get github.com/duxweb/runa/session
+```
+
+## 基本接入
+
+```go
+import (
+    "github.com/duxweb/runa/auth"
+    authmw "github.com/duxweb/runa/auth/middleware"
+)
+
+app.Install(auth.Provider())
+
+auth.Default().Auth("api", auth.APIKeyAuth(func(token string) (core.Map, bool, error) {
+    if token != "secret" {
+        return nil, false, nil
+    }
+    return core.Map{"id": "1", "name": "admin", "permissions": []string{"*"}}, true, nil
+}))
+
+route.Default().Get("/profile", profile).Use(authmw.Use("api"))
+```
+
+## Session 登录
+
+```go
+app.Install(session.Provider(session.RegisterSession("web")))
+app.Install(auth.Provider())
+
+route.Default().Use(sessionmw.Use("web"))
+auth.Default().Auth("web", auth.SessionAuth("web"))
+
+route.Default().Get("/profile", profile).Use(authmw.Use("web"))
+```
+
+`auth.SessionAuth("web")` 会从当前 session 中读取登录数据。只要 session 数据里有 `auth` 字段，就认为已经登录。
+
+## JWT 登录
+
+```go
+secret := []byte("change-me")
+
+auth.Default().Auth("jwt", auth.JWTAuth(secret, auth.Header("Authorization")))
+
+route.Default().Get("/api/me", me).Use(authmw.Use("jwt"))
+```
+
+`Authorization: Bearer <token>` 会自动去掉 `Bearer ` 前缀。
+
+## 可选登录
+
+```go
+route.Default().Get("/feed", feed).Use(authmw.Optional("web", "jwt"))
+```
+
+`Optional` 会尝试认证。如果没有凭证，继续进入 handler；如果凭证存在但无效，仍会返回 401。
+
+## 权限检查
+
+```go
+route.Default().Get("/admin/users", users).
+    Name("system.user.list").
+    Summary("用户列表").
+    Use(authmw.Use("web"), authmw.Permission())
+```
+
+`Permission()` 默认使用 auth 注册表里的权限检查器。默认检查器会从 `auth.Info.Data` 中读取 `permissions`、`permission` 或 `can`
+
+```go
+auth.Default().Auth("web", auth.APIKeyAuth(func(token string) (core.Map, bool, error) {
+    return core.Map{
+        "id":          "1",
+        "permissions": []string{"system.user.list"},
+    }, true, nil
+}))
+```
+
+## 路由元信息
+
+跳过登录：
+
+```go
+route.Default().Get("/public", public).Meta("auth", false)
+```
+
+可选登录：
+
+```go
+route.Default().Get("/feed", feed).Meta("auth", "optional")
+```
+
+跳过权限检查：
+
+```go
+route.Default().Get("/admin/help", help).Meta("can", false)
+```
+
+## API 速查
+
+| API | 说明 |
+| --- | --- |
+| `authmw.Use(names...)` | 必须通过任意一个认证器 |
+| `authmw.Optional(names...)` | 尝试认证，没有凭证时放行 |
+| `authmw.Permission(checkers...)` | 检查当前路由权限 ID |
+| `authmw.PermissionInfo(routes)` | 从路由生成权限信息快照 |
+| `auth.APIKeyAuth(fn, sources...)` | API Key 认证器 |
+| `auth.JWTAuth(secret, sources...)` | HS256 JWT 认证器 |
+| `auth.SessionAuth(name)` | session 认证器 |
+| `auth.AuthMux(items...)` | 多认证器组合 |
+
+## 常见问题
+
+- `auth.Provider()` 只注册认证注册表，不会自动保护路由
+- `authmw.Use()` 不传名称时默认使用 `default` 认证器
+- 权限 ID 默认来自路由 `Name(...)` 拼接后的 RouteID
+- 如果你用 session 登录，session 中间件应该在 auth 中间件之前执行

@@ -1,0 +1,91 @@
+---
+title: "Real IP Middleware"
+description: "Resolve client IP, scheme, and host from trusted proxy headers"
+---
+
+`middleware/realip` fixes `ctx.IP()`, scheme, and host. When an app runs behind Nginx, a CDN, a load balancer, or Kubernetes Ingress, the direct peer is usually a proxy, not the final user. Real IP reads forwarded headers only when the peer IP is trusted, preventing clients from spoofing IP headers.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## Basic usage
+
+```go
+import "github.com/duxweb/runa/middleware/realip"
+
+route.Default().Use(realip.New(realip.Config{
+    TrustedProxies: []string{"127.0.0.1", "10.0.0.0/8"},
+}))
+```
+
+## Common reverse-proxy config
+
+```go
+route.Default().Use(realip.New(realip.Config{
+    TrustedProxies: []string{
+        "127.0.0.1",
+        "::1",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+    },
+}))
+```
+
+If your app is directly exposed to the public internet, do not trust every source and do not blindly read `X-Forwarded-For`.
+
+## Header reading rules
+
+Default client IP headers:
+
+```go
+[]string{"X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP"}
+```
+
+Default scheme headers:
+
+```go
+[]string{"X-Forwarded-Proto"}
+```
+
+Default host headers:
+
+```go
+[]string{"X-Forwarded-Host"}
+```
+
+`X-Forwarded-For` can contain multiple IPs. Middleware scans from right to left and uses the first IP that is not in the trusted proxy list as the real client IP.
+
+## Config fields
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | Skip when true |
+| `TrustedProxies` | `[]string` | `127.0.0.1`, `::1` | Trusted IPs or CIDRs |
+| `Headers` | `[]string` | `X-Forwarded-For` and others | Client IP headers |
+| `SchemeHeaders` | `[]string` | `X-Forwarded-Proto` | Scheme headers |
+| `HostHeaders` | `[]string` | `X-Forwarded-Host` | Host headers |
+
+## Relationship with rate limit and logs
+
+Real IP should run before logger, rate, and audit:
+
+```go
+route.Default().Use(
+    requestid.New(),
+    realip.New(realip.Config{TrustedProxies: []string{"10.0.0.0/8"}}),
+    logger.New(),
+    ratemw.Use("api"),
+)
+```
+
+Then logs, rate-limit keys, and audit records use the real client IP.
+
+## Common problems
+
+- Do not put `0.0.0.0/0` in `TrustedProxies`; that trusts arbitrary client-forged headers.
+- With CDN, Ingress, and Nginx layers, add the proxy networks you actually control.
+- `security.New(...)` includes realip, but the production preset clears trusted proxies. Configure `security.TrustedProxies(...)` explicitly in production behind a gateway.

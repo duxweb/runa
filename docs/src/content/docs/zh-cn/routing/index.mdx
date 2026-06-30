@@ -1,0 +1,159 @@
+---
+title: "HTTP 路由"
+description: "注册路由、分组、域和强类型处理器"
+---
+
+`route` 是 Runa 的 HTTP 传输模块。Runa 内核不自带 HTTP，只有安装 `route.Provider()` 后，应用才会启动 HTTP 服务。
+
+如果你刚开始写 Go Web，可以先把 `route` 理解成三件事：注册路径、处理请求、写出响应。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/route
+```
+
+如果还没有安装内核，一起安装：
+
+```bash
+go get github.com/duxweb/runa github.com/duxweb/runa/route
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        return ctx.Text("Hello Runa")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`route.Provider` 会注册默认路由表、HTTP Host 和 `route:list` 命令。
+
+## 注册路由
+
+```go
+route.Default().Get("/", home)
+route.Default().Post("/users", createUser)
+route.Default().Put("/users/{id}", updateUser)
+route.Default().Patch("/users/{id}", patchUser)
+route.Default().Delete("/users/{id}", deleteUser)
+```
+
+路径里的 `{id}` 是路径参数，可以在 handler 里读取：
+
+```go
+func showUser(ctx *route.Context) error {
+    id := ctx.ParamString("id")
+    return ctx.JSON(runa.Map{"id": id})
+}
+```
+
+## 分组
+
+分组适合给一批路由加同一个前缀、中间件、名称或文档标签。
+
+```go
+api := route.Default().Group("/api").Name("api").Tags("API")
+api.Get("/users", listUsers).Name("users.index")
+api.Get("/users/{id}", showUser).Name("users.show")
+```
+
+实际路径会变成：
+
+```text
+GET /api/users
+GET /api/users/{id}
+```
+
+## 域
+
+域适合后台、开放平台、内部接口这类大入口分区。
+
+```go
+admin := route.Default().Domain("admin", "/admin")
+admin.Get("/", dashboard).Name("dashboard")
+```
+
+这里的 domain 不是 DNS 域名，而是 Runa 对一组路由的逻辑分区。
+
+## 强类型路由
+
+普通 handler 写起来快，强类型路由更适合业务接口。
+
+```go
+type GetUserInput struct {
+    ID string `param:"id"`
+}
+
+type GetUserOutput struct {
+    ID   string `json:"id"`
+    Name string `json:"name"`
+}
+
+route.Get[GetUserInput, GetUserOutput](
+    route.Default(),
+    "/users/{id}",
+    func(ctx *route.Context, input *GetUserInput) (*GetUserOutput, error) {
+        return &GetUserOutput{ID: input.ID, Name: "Runa"}, nil
+    },
+).Name("user.show").Summary("用户详情").Tags("User")
+```
+
+强类型路由会自动绑定输入、渲染输出，并把 schema 写入路由元数据，方便后续生成 OpenAPI。
+
+## 独立 New 使用
+
+不接入 Runa 应用时，也可以独立创建路由表：
+
+```go
+registry := route.New()
+registry.Get("/", func(ctx *route.Context) error {
+    return ctx.Text("ok")
+})
+
+if err := http.ListenAndServe(":8080", registry.Handler()); err != nil {
+    panic(err)
+}
+```
+
+这种方式只使用 `route`，不走 Runa 应用生命周期，适合非常小的实验或嵌入到已有 `net/http` 项目。
+
+## 查看路由
+
+接入 `route.Provider` 后，可以查看已注册路由：
+
+```bash
+go run . route:list
+```
+
+## 常见错误
+
+### route.Default() panic
+
+通常是没有安装 `route.Provider(...)`。先安装 route，再注册路由。
+
+### 路由写在全局变量里
+
+不要在包级变量初始化时注册路由。推荐在 `main` 或业务 Module 的 `Register` 阶段注册。
+
+### 不知道该用普通 handler 还是强类型路由
+
+简单页面或健康检查用普通 handler。业务 API、需要 OpenAPI、需要请求验证时，用强类型路由。

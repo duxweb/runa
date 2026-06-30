@@ -1,0 +1,202 @@
+---
+title: "CSRF"
+description: "保护浏览器表单和 Cookie 登录场景"
+---
+
+CSRF 中间件用于防止跨站请求伪造。它主要保护浏览器页面、表单提交、Cookie 登录态接口这类场景。
+
+如果接口只给非浏览器客户端使用，并且认证完全走 `Authorization: Bearer ...` 这类 Header，CSRF 通常不是主要风险。只要请求会自动带 Cookie，就应该考虑启用 CSRF。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## 基本用法
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/middleware/csrf"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+
+    web := route.Default().Group("")
+    web.Use(csrf.New())
+    web.Get("/form", form)
+    web.Post("/submit", submit)
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`csrf.New()` 返回 `route.Middleware`。它只属于 HTTP 中间件，不是能力包，也不需要 `app.Install`。
+
+## 工作方式
+
+默认使用双提交 Cookie 模式：
+
+1. `GET`、`HEAD`、`OPTIONS` 等安全方法会签发 CSRF token。
+2. token 会写入 Cookie，默认 Cookie 名是 `runa_csrf_token`。
+3. `POST`、`PUT`、`PATCH`、`DELETE` 等非安全方法必须提交同一个 token。
+4. token 可以通过 `X-CSRF-Token` Header 或 `_csrf` 表单字段提交。
+5. 缺少 token 或 token 不一致时返回 `403`。
+
+这种方式不依赖 session，适合先作为默认防护起步。
+
+## 在模板中输出 token
+
+在处理表单页面时，用 `csrf.Token(ctx)` 读取当前请求的 token。
+
+```go
+func form(ctx *route.Context) error {
+    return ctx.Render("form.html", map[string]any{
+        "csrf": csrf.Token(ctx),
+    })
+}
+```
+
+模板里放隐藏字段：
+
+```html
+<form method="post" action="/submit">
+  <input type="hidden" name="_csrf" value="{{ .csrf }}">
+  <button type="submit">提交</button>
+</form>
+```
+
+如果你使用 Ajax，可以把 token 放到请求头：
+
+```js
+await fetch('/submit', {
+  method: 'POST',
+  headers: {
+    'X-CSRF-Token': token,
+  },
+})
+```
+
+## 保护哪些请求
+
+默认只校验非安全方法：
+
+| 方法 | 行为 |
+| --- | --- |
+| `GET` | 放行并签发 token。 |
+| `HEAD` | 放行并签发 token。 |
+| `OPTIONS` | 放行并签发 token。 |
+| `POST` | 校验 token。 |
+| `PUT` | 校验 token。 |
+| `PATCH` | 校验 token。 |
+| `DELETE` | 校验 token。 |
+
+所以普通页面访问不会被拦截，真正修改数据的请求会被保护。
+
+## 常用配置
+
+```go
+web.Use(csrf.New(
+    csrf.Cookie("runa_csrf_token"),
+    csrf.Header("X-CSRF-Token"),
+    csrf.Field("_csrf"),
+    csrf.Path("/"),
+    csrf.SameSite(http.SameSiteLaxMode),
+    csrf.Secure(true),
+    csrf.HTTPOnly(false),
+    csrf.MaxAge(3600),
+))
+```
+
+常用选项：
+
+| 选项 | 说明 |
+| --- | --- |
+| `csrf.Cookie(name)` | 设置 Cookie 名。 |
+| `csrf.Header(name)` | 设置 Header token 名。 |
+| `csrf.Field(name)` | 设置表单字段名。 |
+| `csrf.Path(path)` | 设置 Cookie Path。 |
+| `csrf.Domain(domain)` | 设置 Cookie Domain。 |
+| `csrf.Secure(true)` | 只在 HTTPS 下发送 Cookie。 |
+| `csrf.HTTPOnly(true)` | 禁止前端 JS 读取 Cookie。 |
+| `csrf.SameSite(mode)` | 设置 SameSite。 |
+| `csrf.MaxAge(seconds)` | 设置 Cookie 生命周期。 |
+
+如果使用 `__Secure-` 或 `__Host-` Cookie 前缀，中间件会自动补齐浏览器要求的 Cookie 属性。`__Host-` 会强制 `Secure`、`Path=/`，并清空 `Domain`。
+
+## 跳过特定请求
+
+Webhook、第三方回调、开放 API 不一定适合 CSRF 校验，可以跳过。
+
+```go
+web.Use(csrf.New(
+    csrf.SkipPaths("/webhook/stripe", "/webhook/github"),
+))
+```
+
+也可以用 `Next` 写自定义逻辑：
+
+```go
+web.Use(csrf.New(
+    csrf.Next(func(ctx *route.Context) bool {
+        return strings.HasPrefix(ctx.Request().URL.Path, "/api/")
+    }),
+))
+```
+
+`Next` 返回 `true` 表示跳过 CSRF 中间件。
+
+## 自定义错误响应
+
+默认错误会进入 route 的统一错误渲染流程，状态码是 `403`。
+
+```go
+web.Use(csrf.New(
+    csrf.OnError(func(ctx *route.Context) error {
+        return ctx.Status(403).JSON(map[string]any{
+            "code":    "csrf_token_mismatch",
+            "message": "页面已过期，请刷新后重试",
+        })
+    }),
+))
+```
+
+## 和 session / auth 的关系
+
+CSRF 不负责登录，也不保存用户状态。它只负责确认“这个修改请求确实来自当前页面”。
+
+推荐顺序：
+
+```go
+web.Use(
+    sessionmw.New(...),
+    authmw.New(...),
+    csrf.New(),
+)
+```
+
+实际顺序可以按业务调整。重点是：处理 Cookie 登录态的页面或接口，应该挂 CSRF。
+
+## 常见错误
+
+### 只在 POST 接口挂 CSRF
+
+如果 GET 表单页没有经过 CSRF 中间件，页面拿不到 token。推荐把 CSRF 挂在同一个 web 分组上，让表单页和提交接口都经过它。
+
+### 前端发 Ajax 但没有带 Header
+
+非表单请求不会自动带 `_csrf` 字段。前端需要把 token 放进 `X-CSRF-Token`。
+
+### 把 CSRF 用在纯 Token API 上
+
+纯移动端、CLI、服务间调用通常不用 Cookie 自动认证，CSRF 不是主要风险。不要为了“安全感”给所有 API 盲目加 CSRF，否则只会增加调用复杂度。

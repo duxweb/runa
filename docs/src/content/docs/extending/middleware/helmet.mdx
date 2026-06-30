@@ -1,0 +1,88 @@
+---
+title: "Helmet Middleware"
+description: "Write common HTTP security response headers"
+---
+
+`middleware/helmet` writes common security headers to reduce risks such as MIME sniffing, clickjacking, and weak referrer leakage. It does not replace authentication, authorization, CSRF protection, or input validation; it is a baseline response-layer defense.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## Basic usage
+
+```go
+import "github.com/duxweb/runa/middleware/helmet"
+
+route.Default().Use(helmet.New())
+```
+
+## Default headers
+
+| Header | Default | Purpose |
+| --- | --- | --- |
+| `X-Content-Type-Options` | `nosniff` | Prevent browser MIME sniffing |
+| `X-Frame-Options` | `SAMEORIGIN` | Reduce clickjacking risk |
+| `Referrer-Policy` | `no-referrer-when-downgrade` | Control Referer leakage |
+| `X-XSS-Protection` | `0` | Disable old browser XSS Auditor |
+| `Cross-Origin-Opener-Policy` | `same-origin` | Isolate top-level browsing context |
+
+## Custom headers
+
+```go
+route.Default().Use(helmet.New(helmet.Config{
+    ReferrerPolicy: "strict-origin-when-cross-origin",
+    Custom: map[string]string{
+        "Permissions-Policy": "geolocation=(), camera=()",
+    },
+}))
+```
+
+## Allow embedding by a specified page
+
+If the page only needs same-origin iframe embedding, default `SAMEORIGIN` can stay. If another domain must embed it, adjust explicitly:
+
+```go
+route.Default().Use(helmet.New(helmet.Config{
+    FrameOptions: "",
+    Custom: map[string]string{
+        "Content-Security-Policy": "frame-ancestors https://portal.example.com",
+    },
+}))
+```
+
+When a field is set to an empty string, middleware does not write that header.
+
+## Config fields
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | Skip when true |
+| `ContentTypeNosniff` | `string` | `nosniff` | `X-Content-Type-Options` |
+| `FrameOptions` | `string` | `SAMEORIGIN` | `X-Frame-Options` |
+| `ReferrerPolicy` | `string` | `no-referrer-when-downgrade` | `Referrer-Policy` |
+| `XSSProtection` | `string` | `0` | `X-XSS-Protection` |
+| `CrossOriginOpenerPolicy` | `string` | `same-origin` | `Cross-Origin-Opener-Policy` |
+| `Custom` | `map[string]string` | `nil` | Extra headers |
+
+## Relationship with security
+
+`security.New(...)` includes helmet by default. If you need custom helmet config, disable helmet in security and mount helmet yourself:
+
+```go
+route.Default().Use(security.New(
+    security.Production(),
+    security.Disable("helmet"),
+))
+route.Default().Use(helmet.New(helmet.Config{
+    ReferrerPolicy: "strict-origin-when-cross-origin",
+}))
+```
+
+## Common problems
+
+- Helmet does not set CORS. Use [CORS Middleware](./cors/) for CORS.
+- Helmet does not set a complex CSP automatically. Use `Custom` for project-specific CSP.
+- Static assets, HTML pages, and APIs can all use Helmet, but iframe, download, and cross-origin isolation scenarios need explicit header review.

@@ -1,0 +1,89 @@
+---
+title: "RBAC"
+description: "Role-based permission control helper"
+---
+
+`rbac` provides an `auth.PermissionChecker` implementation. It does not handle login. It resolves roles and permissions from the subject in the current auth info.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/rbac
+```
+
+It is usually used with `auth`:
+
+```bash
+go get github.com/duxweb/runa/auth github.com/duxweb/runa/rbac
+```
+
+## Memory Store
+
+```go
+store := rbac.NewMemoryStore()
+store.AssignRole("1", "admin")
+store.Grant("admin", "system.user.*")
+store.GrantSubject("1", "profile.view")
+```
+
+## Permission checks
+
+```go
+checker := rbac.Checker(store)
+info := &auth.Info{Data: runa.Map{"id": "1"}}
+err := checker.Check(context.Background(), info, "system.user.edit")
+_ = err
+```
+
+Permissions support exact matching and `.*` prefix matching. For example, `system.user.*` can match `system.user.edit`.
+
+## Connect to HTTP
+
+```go
+route.Default().Get("/admin/users", handler).
+    Name("system.user.list").
+    Use(authmw.Use("web"), authmw.Permission(rbac.Checker(store)))
+```
+
+The default subject resolver reads `id`, `user_id`, `subject`, and `sub` from `auth.Info.Data` in order.
+
+## Custom subject
+
+```go
+checker := rbac.Checker(store, rbac.Subject(func(ctx any, info *auth.Info) string {
+    return core.Cast[string](info.Data["tenant_id"]) + ":" + core.Cast[string](info.Data["id"])
+}))
+```
+
+## Custom Store
+
+```go
+type Store struct{}
+
+func (Store) Roles(ctx context.Context, subject string) ([]string, error) { return []string{"admin"}, nil }
+func (Store) RolePermissions(ctx context.Context, roles []string) ([]string, error) { return []string{"*"}, nil }
+func (Store) SubjectPermissions(ctx context.Context, subject string) ([]string, error) { return nil, nil }
+```
+
+## Common mistakes
+
+### Treating RBAC as a login system
+
+RBAC checks permissions. It does not authenticate users. Use it together with `auth`.
+
+### Unstable permission names
+
+Permission strings become part of business policy. Keep names stable and organized by domain.
+
+### Using memory Store for production permissions
+
+Memory Store is useful for examples and tests. Production permissions usually need database-backed storage or your own Store implementation.
+
+## API quick reference
+
+- `rbac.Checker(store, options...)` creates a permission checker.
+- `rbac.NewMemoryStore()` creates an in-memory Store.
+- `store.AssignRole(subject, roles...)` assigns roles.
+- `store.Grant(role, permissions...)` grants permissions to a role.
+- `store.GrantSubject(subject, permissions...)` grants permissions directly to a subject.
+- `rbac.Subject(fn)` customizes subject resolution.

@@ -1,0 +1,139 @@
+---
+title: "Security Preset"
+description: "Compose recover, request id, real ip, logger, bodylimit, timeout, and helmet with one middleware"
+---
+
+`security` is Runa's official production entry preset. It combines several baseline HTTP middleware into one chain, so new projects can connect basic protection first, then add CORS, session, auth, rate limit, and audit as needed.
+
+Default chain:
+
+```text
+recover -> requestid -> realip -> logger -> bodylimit -> timeout -> helmet
+```
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/security
+```
+
+## Quick usage
+
+```go
+import "github.com/duxweb/runa/security"
+
+route.Default().Use(security.New(security.Production()))
+```
+
+## Complete example
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/security"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+
+    route.Default().Use(security.New(
+        security.Production(),
+        security.BodyLimit("16MB"),
+        security.Timeout(30*time.Second),
+        security.TrustedProxies("10.0.0.0/8"),
+        security.SkipPaths("/health", "/metrics"),
+    ))
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        return ctx.Text("ok")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## Development and Production
+
+Development preset:
+
+```go
+route.Default().Use(security.New(security.Development()))
+```
+
+Development keeps panic stack output, sets timeout to `120s`, and trusts local proxies.
+
+Production preset:
+
+```go
+route.Default().Use(security.New(security.Production()))
+```
+
+Production disables panic stack output, uses `30s` timeout, and clears trusted proxies. If production runs behind a gateway, configure `security.TrustedProxies(...)` explicitly.
+
+## Common options
+
+| Option | Description |
+| --- | --- |
+| `security.Development()` | Development-friendly defaults |
+| `security.Production()` | Production-friendly defaults |
+| `security.BodyLimit("16MB")` | Set request body size limit |
+| `security.Timeout(30*time.Second)` | Set request timeout |
+| `security.TrustedProxies("10.0.0.0/8")` | Set trusted proxies |
+| `security.SkipPaths("/health")` | Skip logger for paths |
+| `security.Next(fn)` | Skip the whole security chain |
+| `security.Disable("logger")` | Disable one built-in item |
+
+Disable names: `recover`, `requestid`, `realip`, `logger`, `bodylimit`, `timeout`, `helmet`.
+
+## Skip the whole chain
+
+```go
+route.Default().Use(security.New(security.Next(func(ctx *route.Context) bool {
+    return ctx.Request().URL.Path == "/health"
+})))
+```
+
+`Next` skips the whole security chain. If you only want to skip access logs, prefer `security.SkipPaths(...)`.
+
+## Relationship with CORS
+
+security does not include CORS. CORS usually depends on frontend origins, credential strategy, and exposed headers, so configure it explicitly:
+
+```go
+route.Default().Use(security.New(security.Production()))
+route.Default().Use(cors.New(cors.Config{
+    AllowOrigins: []string{"https://admin.example.com"},
+    Credentials:  true,
+}))
+```
+
+## When not to use security
+
+If you need complete control over each middleware's order and config, compose them manually:
+
+```go
+route.Default().Use(
+    recover.New(recover.Config{Stack: false}),
+    requestid.New(),
+    realip.New(realip.Config{TrustedProxies: []string{"10.0.0.0/8"}}),
+    logger.New(logger.Config{SkipPaths: []string{"/health"}}),
+    bodylimit.New(bodylimit.Config{Limit: 16 << 20}),
+    timeout.New(timeout.Config{Timeout: 30 * time.Second}),
+    helmet.New(),
+)
+```
+
+## Common problems
+
+- security is a middleware chain, not a Provider. It does not need `runa.Install`.
+- security does not include session, auth, rate, or audit. Those are business capabilities and should be mounted on demand.
+- If you already use security, do not mount recover, requestid, realip, logger, bodylimit, timeout, or helmet again unless you explicitly disabled that item.

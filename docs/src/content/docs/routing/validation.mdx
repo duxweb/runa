@@ -1,0 +1,128 @@
+---
+title: "Validation"
+description: "Request input validation and field errors"
+---
+
+Runa validation is provided by the `validate` toolkit. Rules are declared with regular Go code instead of hidden tags, so field rules are easier to read and test.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/validate
+```
+
+## Standalone usage
+
+```go
+type CreateUserInput struct {
+    Name  string
+    Email string
+}
+
+input := &CreateUserInput{Name: "Runa", Email: "hello@example.com"}
+
+v := validate.New(input, nil)
+v.Field("Name").Required("Name is required").MinLen(2, "Name must be at least 2 characters")
+v.Field("Email").Required("Email is required").Email("Email format is invalid")
+
+if err := v.Run(); err != nil {
+    return err
+}
+```
+
+`Field("Name")` uses the Go struct field name, not the JSON field name.
+
+## Use with typed routes
+
+Typed routes automatically call `Validate` when the input struct implements it.
+
+```go
+type CreateUserInput struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+func (input *CreateUserInput) Validate(v *validate.Validator) {
+    v.Field("Name").Required("Name is required").MinLen(2, "Name must be at least 2 characters")
+    v.Field("Email").Required("Email is required").Email("Email format is invalid")
+}
+
+route.Post[CreateUserInput, UserOutput](
+    route.Default(),
+    "/users",
+    func(ctx *route.Context, input *CreateUserInput) (*UserOutput, error) {
+        return &UserOutput{Name: input.Name}, nil
+    },
+)
+```
+
+## Use with CRUD
+
+```go
+crud.New[User, UserQuery](res, store).
+    Validate(func(c *crud.Context[User], v *validate.Validator) {
+        v.Field("Name").Required("Name is required").MinLen(2, "Name must be at least 2 characters")
+    })
+```
+
+## Common rules
+
+| Rule | Description |
+| --- | --- |
+| `Required(message)` | Requires a non-empty field |
+| `Min(value, message)` | Numeric value must not be smaller than value |
+| `Max(value, message)` | Numeric value must not be larger than value |
+| `MinLen(value, message)` | String length must not be smaller than value |
+| `MaxLen(value, message)` | String length must not be larger than value |
+| `Email(message)` | Validates email format |
+| `Regex(pattern, message)` | Validates a regular expression |
+| `Call(handler)` | Adds a field-level callback |
+| `Check(handler)` | Adds an input-level callback |
+
+## Field-level callback
+
+```go
+v.Field("Name").Call(func(value string) error {
+    if value == "admin" {
+        return errors.New("name cannot be admin")
+    }
+    return nil
+})
+```
+
+## Input-level callback
+
+```go
+v.Check(func() error {
+    if input.Name == input.Email {
+        return errors.New("name cannot be the same as email")
+    }
+    return nil
+})
+```
+
+## Error format
+
+Validation failure returns `validate.ValidationError`. You can inspect it with:
+
+```go
+if item := validate.AsError(err); item != nil {
+    for _, field := range item.Errors {
+        fmt.Println(field.Field, field.Message)
+    }
+}
+```
+
+## Common mistakes
+
+### Using the JSON name in Field
+
+Do not write `Field("name")`. Use the Go field name: `Field("Name")`.
+
+### Forgetting Run
+
+Standalone usage must call `v.Run()`. Typed routes call it automatically.
+
+### Missing message arguments
+
+Current rule methods require message arguments, for example `Required("Name is required")`.

@@ -1,0 +1,119 @@
+---
+title: "Logger Middleware"
+description: "Write HTTP access logs with status, latency, request ID, IP, and error details"
+---
+
+`middleware/logger` records HTTP access logs. It wraps the response writer so it can capture final status code, latency, request ID, path, IP, and error information.
+
+Logger tries to read `*log.Registry` from route services. If the application does not install `log.Provider()`, requests do not fail; logs simply do not go into the Runa log registry.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+Install the log capability too if you want access logs to go into Runa log channels:
+
+```bash
+go get github.com/duxweb/runa/log
+```
+
+## Basic usage
+
+```go
+import "github.com/duxweb/runa/middleware/logger"
+
+route.Default().Use(logger.New())
+```
+
+By default it writes to the `http` log channel.
+
+## Use with log.Provider
+
+```go
+app.Install(log.Provider(
+    log.Register("http", log.Console(log.Text())),
+))
+
+route.Default().Use(logger.New(logger.Config{Channel: "http"}))
+```
+
+## Skip health checks and static files
+
+```go
+route.Default().Use(logger.New(logger.Config{
+    SkipPaths: []string{"/health", "/metrics", "/assets/"},
+}))
+```
+
+`SkipPaths` supports:
+
+- Exact paths such as `/health`.
+- Directory prefixes such as `/assets/`.
+- Simple wildcards such as `/api/*/internal`.
+
+## Slow requests
+
+```go
+route.Default().Use(logger.New(logger.Config{
+    Slow: 300 * time.Millisecond,
+}))
+```
+
+When request duration is greater than or equal to `Slow`, the log level becomes warn and includes `slow=true`.
+
+## Custom fields
+
+```go
+route.Default().Use(logger.New(logger.Config{
+    Fields: []string{"request_id", "method", "path", "status", "latency_ms"},
+}))
+```
+
+Default fields include `component`, `request_id`, `method`, `path`, `status`, `ip`, `latency_ms`, `slow`, and `error`.
+
+## Custom callback
+
+```go
+route.Default().Use(logger.New(logger.Config{
+    OnLogged: func(ctx *route.Context, entry logger.Entry) error {
+        if entry.Status >= 500 {
+            // connect alerts or metrics here
+        }
+        return nil
+    },
+}))
+```
+
+`OnLogged` runs before writing the log. If it returns an error and the handler itself had no error, middleware returns that error.
+
+## Config fields
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | Skip when true |
+| `SkipPaths` | `[]string` | `nil` | Path rules to skip |
+| `Channel` | `string` | `http` | Runa log channel |
+| `Fields` | `[]string` | default field set | Output fields |
+| `Slow` | `time.Duration` | `0` | Slow request threshold |
+| `OnLogged` | `func(*route.Context, logger.Entry) error` | `nil` | Callback before writing |
+
+## Recommended order
+
+```go
+route.Default().Use(
+    recover.New(),
+    requestid.New(),
+    realip.New(),
+    logger.New(),
+)
+```
+
+This lets logger read request ID and real IP, and record final latency for later middleware and handlers.
+
+## Common problems
+
+- Without `log.Provider()`, requests do not fail; logs just do not enter Runa log channels.
+- Use `SkipPaths` for `/health`; you usually do not need a custom `Next` function.
+- `security.New(...)` already includes logger. Use `security.SkipPaths(...)`, or disable `logger` and mount your own logger when you need full control.

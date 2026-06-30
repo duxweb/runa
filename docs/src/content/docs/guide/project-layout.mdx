@@ -1,0 +1,164 @@
+---
+title: "Project Layout"
+description: "Recommended directory layout for Runa applications"
+---
+
+Runa does not force a project layout. Small projects can start with one `main.go`. As the project grows, separate the application entry, business Modules, configuration, and runtime data directories.
+
+## Minimal projects can stay simple
+
+Start like this if you only have a few routes:
+
+```text
+my-app/
+  main.go
+  go.mod
+```
+
+Split directories when routes, commands, jobs, and business code become harder to scan.
+
+## Recommended layout
+
+```text
+my-app/
+  cmd/app/main.go
+  app/
+    user/
+      module.go
+      routes.go
+      commands.go
+    order/
+      module.go
+      routes.go
+      jobs.go
+  config/
+    app.toml
+    cache.toml
+    queue.toml
+  data/
+  public/
+  go.mod
+```
+
+Directory responsibilities:
+
+| Directory | What it contains |
+| --- | --- |
+| `cmd/app` | Program entrypoint; creates the app and installs capabilities |
+| `app` | Business modules such as user, order, and payment |
+| `config` | TOML config files |
+| `data` | Runtime-writable files such as local cache or temporary uploads |
+| `public` | Public static assets |
+
+## The entry directory only starts the application
+
+`cmd/app/main.go` should only assemble the application. Do not put handler logic, SQL, or job logic here:
+
+```go
+package main
+
+import (
+    "context"
+
+    "example.com/my-app/app/order"
+    "example.com/my-app/app/user"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/cache"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New(
+        runa.ConfigPath("config"),
+        runa.DataPath("data"),
+        runa.PublicPath("public"),
+    )
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        cache.Provider(),
+    )
+    app.Module(
+        user.Module{},
+        order.Module{},
+    )
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+This keeps the entry file readable: it shows which capabilities and business modules the app uses, without being filled with business details.
+
+## Business logic enters through Module
+
+Business modules enter the framework through Module and register routes, commands, queue jobs, and other declarations during `Register`.
+
+```go
+package user
+
+import (
+    "context"
+
+    "github.com/duxweb/runa/provider"
+    "github.com/duxweb/runa/route"
+)
+
+type Module struct {
+    provider.ModuleBase
+}
+
+func (Module) Name() string { return "user" }
+
+func (Module) Register(ctx context.Context, app provider.Context) error {
+    route.Default().Get("/", home)
+    return app.RegisterCommand(SyncUsersCommand{})
+}
+```
+
+Framework capabilities enter through `Install`; business logic enters through `Module`. Both go through the unified lifecycle.
+
+## Split config by capability and module
+
+Configuration files use TOML. The filename is the configuration scope:
+
+```text
+config/cache.toml   -> cache scope
+config/queue.toml   -> queue scope
+config/user.toml    -> user module scope
+```
+
+Environment-specific config can use names such as:
+
+```text
+config/app.production.toml
+config/cache.production.toml
+```
+
+The current environment is selected by `runa.Env("production")` or environment variables.
+
+## When to split directories
+
+Use this pace:
+
+- With only a few endpoints, start with `main.go`.
+- When multiple business domains appear, split `app/user`, `app/order`, and similar modules.
+- When commands, jobs, or event listeners appear, put them inside the related business module.
+- When config grows, split it into multiple TOML files by capability and business module.
+
+Do not split directories early just to look “standard”. Directory structure should reduce complexity, not add ceremony.
+
+## Common mistakes
+
+### Splitting too many directories at the beginning
+
+Small projects can start with `main.go`. Directories are a tool for complexity, not a requirement.
+
+### Putting too much business logic in main.go
+
+The entry file should only assemble the app. Put routes, commands, jobs, and event listeners in Module.
+
+### Mixing all config into one large file
+
+When config grows, split it by capability and business module, such as `cache.toml`, `queue.toml`, and `user.toml`.

@@ -1,0 +1,94 @@
+---
+title: "Write a Provider"
+description: "Implement the Provider lifecycle"
+---
+
+Provider is the only protocol for connecting extensions to Runa. It registers your objects in DI, reads config, registers commands, registers Host units, and joins startup and shutdown.
+
+Regular business code should prefer Module and usually does not need to implement Provider. Write a Provider only when developing reusable capability packages, driver adapters, transport blocks, or third-party extensions.
+
+## Start with a minimal Provider
+
+```go
+package hello
+
+import (
+    "context"
+
+    "github.com/duxweb/runa/provider"
+    "github.com/samber/do/v2"
+)
+
+type Service struct {
+    Message string
+}
+
+func New(message string) *Service {
+    return &Service{Message: message}
+}
+
+func Provider(message string) provider.Provider {
+    return providerImpl{message: message}
+}
+
+type providerImpl struct {
+    provider.Base
+    message string
+}
+
+func (providerImpl) Name() string { return "hello" }
+
+func (p providerImpl) Init(_ context.Context, ctx provider.Context) error {
+    provider.ProvideDefault(ctx, func(do.Injector) (*Service, error) {
+        return New(p.message), nil
+    })
+    return nil
+}
+```
+
+## Use it in an application
+
+```go
+app := runa.New()
+app.Install(hello.Provider("Hello Runa"))
+
+if err := app.Freeze(context.Background()); err != nil {
+    panic(err)
+}
+
+service := runa.MustInvoke[*hello.Service]()
+```
+
+## What each lifecycle stage should do
+
+- Register DI constructors in `Init`.
+- Read config, register commands, and register instances in `Register`.
+- Install business modules through `RegisterModule` in `Register` when needed.
+- Do startup logic that requires all Providers to be registered in `Boot`.
+- Close external connections in `Shutdown`.
+- Do not import `runtime` inside a Provider.
+
+## Register business modules
+
+A Provider can mount business modules shipped with an extension, but application-specific business modules usually use `app.Module(...)` directly.
+
+```go
+func (p providerImpl) Register(ctx provider.Context) error {
+    return ctx.RegisterModule(hello.Module{})
+}
+```
+
+## Register commands during Register
+
+```go
+func (p providerImpl) Register(ctx provider.Context) error {
+    return ctx.RegisterCommand(command{})
+}
+```
+
+## Acceptance checklist
+
+- `go test ./...` passes.
+- The application can start after `Install(provider)`.
+- `Default()` or DI can retrieve the core object.
+- `Shutdown` releases resources.

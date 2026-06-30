@@ -1,0 +1,75 @@
+---
+title: "错误处理"
+description: "结构化错误和 HTTP 错误渲染"
+---
+
+Runa 推荐使用结构化错误表达错误码、消息、参数和原始 cause。这样前端、日志、审计和监控都能拿到稳定信息。
+
+## HTTP 错误
+
+简单场景可以直接返回 HTTP 错误：
+
+```go
+return ctx.Error(404, "user not found")
+```
+
+这种写法适合非常直接的错误，比如资源不存在、无权限、参数错误。
+
+## 结构化错误
+
+安装：
+
+```bash
+go get github.com/duxweb/runa/errs
+```
+
+```go
+return errs.New("user not found",
+    errs.Code("user.not_found"),
+    errs.Params(runa.Map{"id": id}),
+)
+```
+
+建议业务错误都带稳定错误码，比如 `user.not_found`、`order.closed`、`permission.denied`。
+
+## 包装底层错误
+
+```go
+if err != nil {
+    return errs.Wrap(err)
+}
+```
+
+包装后可以保留原始错误，方便日志和排查，同时对外响应可以保持统一格式。
+
+## 提取错误
+
+```go
+if item := errs.As(err); item != nil {
+    code := item.Code
+    _ = code
+}
+```
+
+这适合在统一错误渲染、日志记录或测试里判断错误码。
+
+## 自定义错误渲染
+
+路由注册表支持配置错误处理管线。普通业务项目可以先使用默认错误处理，等需要统一错误 JSON 时再集中配置。
+
+## 建议
+
+- 业务错误使用稳定错误码
+- 系统错误保留原始 cause
+- 对外响应不要直接暴露数据库、文件路径、第三方服务错误细节
+- handler 返回错误，不要在每个 handler 里重复写响应格式
+
+## 常见错误
+
+### 直接把数据库错误返回给用户
+
+数据库错误适合进日志，不适合原样暴露给外部调用方。建议包装成业务错误或统一系统错误。
+
+### 错误码随意写中文
+
+错误消息可以是中文，错误码建议使用稳定英文标识，方便前端和监控系统判断。

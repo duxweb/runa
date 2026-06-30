@@ -1,0 +1,123 @@
+---
+title: "Observe"
+description: "Health checks, metrics, and Prometheus adapter"
+---
+
+`observe` provides health checks, readiness checks, metrics endpoints, and optional debug endpoints. It is used with `route` because the endpoints are exposed through HTTP.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/observe
+```
+
+Install the Prometheus adapter only when needed:
+
+```bash
+go get github.com/duxweb/runa/observe/prometheus
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/observe"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        observe.Provider(observe.Config{Service: "api", Env: "dev", Mount: "/-"}),
+    )
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+Default endpoints:
+
+```bash
+curl http://localhost:8080/-/health
+curl http://localhost:8080/-/ready
+```
+
+## Health checks
+
+```go
+app.Install(observe.Provider(observe.Config{Mount: "/-"},
+    observe.Health("database", observe.CheckerFunc(func(ctx context.Context) observe.Result {
+        return observe.Result{Status: observe.Pass, Message: "database ok"}
+    })),
+    observe.Ready("queue", observe.CheckerFunc(func(ctx context.Context) observe.Result {
+        return observe.Result{Status: observe.Pass, Message: "queue ready"}
+    })),
+))
+```
+
+Built-in checkers can read Host, Database, Cache, Queue, Storage, and other registries to aggregate application state.
+
+## Prometheus
+
+```go
+import obs "github.com/duxweb/runa/observe/prometheus"
+
+app.Install(observe.Provider(observe.Config{Mount: "/-"},
+    observe.Metrics(obs.Exporter()),
+    observe.Trace(obs.HTTPCollector()),
+))
+```
+
+After setup, access:
+
+```bash
+curl http://localhost:8080/-/metrics
+```
+
+## Config
+
+`observe` reads `[observe]` config.
+
+```toml
+[observe]
+service = "api"
+env = "production"
+version = "1.0.0"
+timeout = "2s"
+mount = "/-"
+debug = false
+```
+
+`debug = true` additionally mounts `/debug/monitor`, pprof, and expvar-related endpoints. Enable it only in controlled environments.
+
+## Common mistakes
+
+### route is not installed
+
+Observe exposes HTTP endpoints through route. HTTP applications need `route.Provider(...)` installed.
+
+### Enabling debug endpoints casually in production
+
+Debug endpoints may expose runtime details. Protect them with network rules or authentication when enabled.
+
+### Mixing health and ready
+
+`health` usually means the process is alive. `ready` usually means the process can receive traffic. Keep those meanings stable for infrastructure.
+
+## API quick reference
+
+- `observe.Provider(config, options...)` connects observe endpoints.
+- `observe.Default()` reads the health registry from default DI.
+- `observe.Health(name, checker)` registers a health check.
+- `observe.Ready(name, checker)` registers a readiness check.
+- `observe.Metrics(exporter)` registers a metrics exporter.
+- `observe.Trace(installer)` registers a trace installer.
+- `observe.MountAt(prefix)` sets the mount prefix.

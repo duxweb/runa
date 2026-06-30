@@ -1,0 +1,129 @@
+---
+title: "框架对比"
+description: "和主流 Go Web、全栈、微服务框架的客观对比"
+---
+
+本页只对比框架自身或官方维护能力，不把零散社区包算成框架内置能力，表格里的“有”只表示官方能力存在，不代表默认更适合你的项目。
+
+## 对比范围
+
+这里分两类看，先看更接近业务工程的框架，再看纯 HTTP 路由类框架：
+
+- 工程框架类：GoFrame、go-zero、Kratos、Beego、Buffalo、Runa
+- HTTP 路由类：Gin、Echo、Fiber、Chi、Hertz
+
+表格里的固定口径：
+
+- 内置：框架本体提供
+- 官方模块：由官方包提供，需要按需安装或接入
+- 工具链：通过官方 CLI、代码生成或脚手架提供
+- 自行组合：框架没有统一能力，项目自己选择第三方包
+- 规划中：Runa 文档中明确规划，但当前不当作已完成能力
+
+Runa 更接近第二类，但它不是一体化全家桶，而是微内核加按需能力。
+
+## 架构模式对比
+
+| 框架 | 架构模式 | 更像哪类心智模型 | 说明 |
+| --- | --- | --- | --- |
+| Runa | 微内核 + 多模块能力块 + 生命周期编排 | Go 风格积木式应用骨架 | 内核只管启动、DI、配置、命令、Host 和生命周期，HTTP、缓存、队列、数据库、运维能力按需接入 |
+| GoFrame | 一体化工程框架 + 组件体系 + CLI 工具链 | 更像 Laravel / Spring Boot 的 Go 实现 | 官方首页明确写“类似 PHP-Laravel、Java-SpringBoot”，它更强调完整组件、统一规范和工程化，而不是 Go 生态常见的小包自由组合 |
+| go-zero | API/RPC 代码生成 + 微服务治理 | 生成式微服务框架 | 通过 `goctl` 从 API/RPC 定义生成代码，内置限流、熔断、超时等微服务治理能力 |
+| Kratos | Clean Architecture 风格微服务骨架 + 传输治理 | Go 微服务分层工程 | 重点在 HTTP/gRPC、配置、注册发现、可观测等服务治理，不是传统 Web 全栈 |
+| Beego | MVC + ORM + 工具链的一体化框架 | 传统全栈 Web 框架 | 提供 Controller、Router、ORM、配置、日志、task 等，整体更接近早期大框架模式 |
+| Buffalo | Rails-like Web 开发生态套件 | Rails 风格 Go Web 套件 | 脚手架、Pop ORM、迁移、模板、资产流水线和后台任务组合在一起 |
+| Gin / Echo / Fiber | HTTP router + middleware | 轻量 Web 框架 | 重点是路由、中间件、绑定和响应，业务骨架由项目自行组合 |
+| Chi | `net/http` router | 标准库组合式路由器 | 最贴近 Go 标准库心智，轻量、可组合，但不提供全栈应用编排 |
+| Hertz | 高性能 HTTP 框架 + CloudWeGo 生态 | 高性能微服务 HTTP 入口 | 重点在 HTTP 性能、扩展点、`hz` 工具链和 CloudWeGo 微服务生态 |
+
+## 定位对比
+
+| 框架 | 官方定位更接近什么 | 更适合什么项目 | 主要取舍 |
+| --- | --- | --- | --- |
+| Runa | 微内核业务应用框架 | 微项目、HTTP API、后台服务、复杂业务系统 | 可复用 `net/http` 生态，但 Runa 专属生态仍早期 |
+| Gin | 高性能 HTTP Web 框架 | API 服务、网关、HTTP 中间件链路清晰的项目 | 聚焦 HTTP，不提供统一业务模块和应用生命周期 |
+| Echo | 高性能、可扩展、轻量 Web 框架 | API 服务、SSR/模板、常规 HTTP 应用 | 聚焦 HTTP，业务能力通常自行组合 |
+| Fiber | 类 Express 的高性能 Web 框架 | 熟悉 Express 风格、希望快速写 HTTP API 的项目 | 基于 fasthttp，和标准 `net/http` 生态不是同一路线 |
+| Chi | 轻量、惯用、可组合的 `net/http` 路由器 | 想保留标准库风格，只需要路由和中间件组合的项目 | 非全栈框架，不处理配置、DI、队列等应用骨架 |
+| Hertz | CloudWeGo 的高性能 HTTP 框架 | 高性能 HTTP 服务、微服务体系、CloudWeGo 生态 | 更偏高性能 HTTP 和微服务传输 |
+| GoFrame | 工程化全栈基础框架 | 需要配置、ORM、日志、缓存、命令、工具链等完整组件的业务系统 | 能力完整，核心依赖和框架约束更重 |
+| go-zero | 云原生 Web/RPC 微服务框架 | API/RPC 服务、代码生成、限流熔断等工程治理场景 | 强依赖 goctl 和生成式工程结构 |
+| Kratos | 云原生微服务框架 | HTTP/gRPC、服务治理、配置、注册发现、可观测等微服务系统 | 更偏微服务治理，不是传统 Web 全栈 |
+| Beego | 企业应用快速开发框架 | REST API、Web 应用、后台服务、MVC/ORM 风格项目 | 一体化能力较多，按需裁剪不是核心目标 |
+| Buffalo | Go Web 开发生态套件 | 需要脚手架、模板、ORM、迁移、资产流水线的一体化 Web 应用 | 更像 Rails 风格开发套件 |
+
+## 工程和全栈框架
+
+| 能力 | Runa | GoFrame | go-zero | Kratos | Beego | Buffalo |
+| --- | --- | --- | --- | --- | --- | --- |
+| HTTP 服务 | 官方模块 | 内置 | 内置 | 内置传输 | 内置 | 内置 |
+| WebSocket | 官方模块 | 自行组合 | 自行组合 | 自行组合 | 自行组合 | 自行组合 |
+| JSON-RPC | 官方模块 | 自行组合 | 自行组合 | 自行组合 | 自行组合 | 自行组合 |
+| gRPC / RPC | gRPC 规划中 | 有 | 内置 RPC | 内置 gRPC | 自行组合 | 自行组合 |
+| 配置加载 | 内置 | 内置 | 内置 | 内置 | 内置 | 应用配置 |
+| 命令入口 | 内置 | 内置 | 工具链 | 工具链 | 工具链 | 工具链 |
+| 代码生成 | devtools 脚手架与 embed 命令 | `gf` CLI | `goctl` CLI | Protobuf 工具链 | `bee` CLI | `buffalo` CLI |
+| DI / 应用生命周期 | 内置统一管理 | 框架组件 | 生成式结构 | 应用生命周期 | 框架生命周期 | 应用结构约定 |
+| 业务模块入口 | 内置 `Module` | 分层约定 | 生成目录约定 | 分层约定 | MVC/模块约定 | 生成目录约定 |
+| 数据库/ORM | 官方模块 + 可选驱动 | 内置 ORM | model 代码生成 | 自行组合 | 内置 ORM | Pop 集成 |
+| 缓存 | 官方模块 + 可选驱动 | 内置组件 | 内置相关组件 | 自行组合 | 内置相关组件 | 自行组合 |
+| 队列/任务 | 官方模块 | 有定时等组件 | 自行组合 | 自行组合 | 有 task 模块 | Grift/worker |
+| 前端资产流水线 | 无 | 自行组合 | 无 | 无 | 自行组合 | 内置 |
+| 按需依赖边界 | 多模块按需安装 | 完整框架组件 | 框架和生成代码绑定较强 | 微服务组件体系 | 一体化框架 | 套件化 |
+
+## HTTP 路由类框架
+
+| 能力 | Runa | Gin | Echo | Fiber | Chi | Hertz |
+| --- | --- | --- | --- | --- | --- | --- |
+| HTTP 路由 | 官方模块 | 内置 | 内置 | 内置 | 内置 | 内置 |
+| WebSocket | 官方模块 | 自行组合 | 自行组合 | 自行组合 | 自行组合 | 自行组合 |
+| 中间件 | 官方模块 | 内置 | 内置 | 内置 | 内置 | 内置 |
+| 请求绑定/响应渲染 | 内置 | 内置 | 内置 | 内置 | 自行组合 | 内置 |
+| 配置加载 | 内置 | 无 | 无 | 无 | 无 | 自行组合 |
+| 命令入口 | 内置 | 无 | 无 | 无 | 无 | 工具链 |
+| 业务 Module | 内置 | 无 | 无 | 无 | 无 | 无 |
+| 统一 DI / 生命周期 | 内置 | 无 | 无 | 无 | 无 | 无应用级 DI |
+| 数据库/缓存/队列 | 官方模块 | 自行组合 | 自行组合 | 自行组合 | 自行组合 | 自行组合 |
+| 按需依赖边界 | 多模块按需安装 | 路由轻量，能力外接 | 路由轻量，能力外接 | 路由轻量，能力外接 | 很轻 | HTTP 框架和工具链 |
+
+## Runa 现在明确有
+
+- 应用入口、默认应用、全局 DI、命令入口和统一生命周期
+- `Module` 业务模块入口
+- `route` HTTP 路由、分组、域、中间件、请求上下文、错误渲染
+- `ws` WebSocket Hub、频道订阅、广播和 Redis 横向扩展
+- `jsonrpc` JSON-RPC 2.0 服务端，可运行在 HTTP 或 WebSocket 上
+- 强类型 Input / Output handler、显式验证、结构化路由元数据
+- OpenAPI 文档生成、Resource 资源路由、CRUD Builder
+- cache、database、queue、session、auth、storage、log、lock、rate、event、task、schedule、message、view、asset 等能力模块
+- redis、s3、oro、nats、amqp、mqtt 等可选驱动模块
+- 审计、观测、集群、控制台等配套能力
+
+## Runa 的选型边界
+
+- 性能目标：优先保证业务编排、模块化和可维护性，不把极限 HTTP benchmark 放在第一位
+- 中间件生态：可复用 `net/http` 官方生态和通用中间件，框架专属中间件生态仍在早期
+- 组件规模：采用按需能力模型，不走 GoFrame 那种完整一体化组件路线
+- 代码生成：已有 devtools 脚手架和 embed 命令，当前没有 go-zero 那种完整 API/RPC 代码生成体系
+- gRPC 传输：当前仍是规划中，已实现的是 HTTP、WebSocket 和 JSON-RPC 相关能力
+- 前端流水线：聚焦 Go 业务服务端，不内置 Rails/Buffalo 风格的完整前端资产流水线
+
+## 怎么选择
+
+如果你只想替换一个路由器，并且最看重框架专属中间件生态或纯 HTTP benchmark，Gin、Echo、Fiber、Chi、Hertz 更直接。
+如果你想要内置大而全的一体化框架，GoFrame、Beego、Buffalo 更接近。
+如果你做 API/RPC 微服务，并且接受生成式工程结构，go-zero、Kratos、Hertz 更匹配。
+如果你希望从微项目开始，用同一套应用入口、生命周期、DI、Module、路由、OpenAPI、资源路由、CRUD 和可选能力逐步扩展到企业级业务系统，Runa 更合适。
+
+## 参考来源
+
+- Gin 官方文档：https://gin-gonic.com/en/docs/
+- Echo 官方网站：https://echo.labstack.com/
+- Fiber 官方文档：https://docs.gofiber.io/
+- Chi README：https://github.com/go-chi/chi
+- CloudWeGo Hertz 文档：https://www.cloudwego.io/docs/hertz/
+- GoFrame 文档：https://goframe.org/
+- go-zero 文档：https://go-zero.dev/
+- Kratos 文档：https://go-kratos.dev/docs/
+- Beego 文档：https://beegodoc.com/
+- Buffalo 官方网站：https://gobuffalo.io/

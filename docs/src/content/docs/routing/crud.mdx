@@ -1,0 +1,135 @@
+---
+title: "CRUD APIs"
+description: "Build data APIs quickly from Resource and Store"
+---
+
+The `crud` package builds standard data APIs from `resource.Resource` and `crud.Store`. It is not a Provider and does not need `runa.Install`; it is usually used directly during route registration.
+
+CRUD fits admin panels, data management APIs, and repeated list/detail/save/delete endpoints. If an endpoint is highly custom, use Resource and write the handler yourself.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/crud
+```
+
+If you use Oro as the storage adapter:
+
+```bash
+go get github.com/duxweb/runa/crud/orostore
+```
+
+## Basic flow
+
+The CRUD flow is:
+
+```text
+route.Group -> resource.New -> crud.New -> configure pagination, sorting, validation, and output transform
+```
+
+Minimal structure:
+
+```go
+users := resource.New(route.Default().Group("/admin"), "/users").
+    Name("user").
+    Summary("User").
+    Tags("User")
+
+crud.New[User, UserQuery](users, userStore)
+```
+
+`userStore` must implement `crud.Store[User, UserQuery]`.
+
+## Store interface
+
+```go
+type Store[Model any, Query any] interface {
+    Query(ctx *crud.Context[Model]) (Query, error)
+    List(ctx *crud.Context[Model], query Query) ([]*Model, core.ListMeta, error)
+    Show(ctx *crud.Context[Model], query Query) (*Model, error)
+    Create(ctx *crud.Context[Model]) (*Model, error)
+    Edit(ctx *crud.Context[Model], query Query) (*Model, error)
+    Store(ctx *crud.Context[Model], query Query, fields []string) (*Model, error)
+    Delete(ctx *crud.Context[Model], query Query) error
+    Tx(ctx *crud.Context[Model], fn func(ctx *crud.Context[Model]) error) error
+}
+```
+
+For beginners, Store is the part that actually reads and writes data. CRUD connects HTTP actions to Store methods.
+
+## Choose enabled actions
+
+```go
+crud.New[User, UserQuery](users, userStore).
+    Actions(crud.ListAction, crud.ShowAction, crud.CreateAction, crud.EditAction, crud.DeleteAction)
+```
+
+By default, CRUD registers list, show, create, edit, and delete. Enable store, batch, import, export, or soft delete only when needed.
+
+## Pagination, sorting, and filters
+
+```go
+crud.New[User, UserQuery](users, userStore).
+    Page(20, 100).
+    Sort("id", "desc").
+    SortFields(crud.SortField{Name: "name"}).
+    Filters(
+        filter.Eq[int]("status"),
+        filter.Like("name"),
+    )
+```
+
+This means: default page size 20, maximum 100, default sort by `id desc`, allow sorting by `name`, and allow filtering by `status` and `name`.
+
+## Output transform
+
+Database models are not always safe or suitable as API responses. Use `Transform` to return output structs.
+
+```go
+type UserOutput struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+}
+
+crud.New[User, UserQuery](users, userStore).
+    Transform[UserOutput](func(c *crud.Context[User], model *User) UserOutput {
+        return UserOutput{ID: model.ID, Name: model.Name}
+    })
+```
+
+## Validate input
+
+```go
+crud.New[User, UserQuery](users, userStore).
+    Validate(func(c *crud.Context[User], v *validate.Validator) {
+        v.Field("Name").Required("Name is required")
+    }, crud.CreateAction, crud.EditAction)
+```
+
+The optional action arguments limit validation to selected actions.
+
+## Import and export
+
+CRUD supports CSV/XLSX import and export. These features depend on the `crud` module's own external dependencies, which enter your project only when you import `crud`.
+
+Import and export are advanced features. First get list, show, create, edit, and delete working.
+
+## Oro Store
+
+If the project uses Oro ORM, use `crud/orostore`:
+
+```go
+crud.New[User, *oro.ModelQuery[User]](users, orostore.Store[User](db))
+```
+
+`crud/orostore` adapts `github.com/duxweb/oro` and fits projects already using Oro ORM. See [CRUD Oro Store](../drivers/crud-orostore/) for the full setup.
+
+## Common mistakes
+
+### Treating CRUD as a Provider
+
+`crud` does not need `app.Install(crud.Provider())`. It is a builder called during route registration.
+
+### Mixing Store responsibilities
+
+CRUD only orchestrates HTTP to Store. Real query, save, transaction, and soft-delete logic still belongs in Store.

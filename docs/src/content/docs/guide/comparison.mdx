@@ -1,0 +1,129 @@
+---
+title: "Framework Comparison"
+description: "Objective comparison with mainstream Go web, full-stack, and microservice frameworks"
+---
+
+This page compares only framework-owned or officially maintained capabilities. Scattered community packages are not counted as built-in framework features. “Available” means an official capability exists; it does not mean it is always the best default for your project.
+
+## Scope
+
+We compare two groups: business engineering frameworks first, then pure HTTP router-style frameworks.
+
+- Engineering frameworks: GoFrame, go-zero, Kratos, Beego, Buffalo, Runa.
+- HTTP router frameworks: Gin, Echo, Fiber, Chi, Hertz.
+
+Terms used in the tables:
+
+- Built-in: provided by the framework itself.
+- Official module: provided by an official package and installed or connected on demand.
+- Toolchain: provided by an official CLI, generator, or scaffold.
+- Compose yourself: the framework does not provide a unified capability; the project chooses third-party packages.
+- Planned: explicitly planned in Runa docs, but not counted as implemented today.
+
+Runa is closer to the second group, but it is not an all-in-one bundle. It is a microkernel plus on-demand capabilities.
+
+## Architecture model
+
+| Framework | Architecture model | Mental model | Notes |
+| --- | --- | --- | --- |
+| Runa | Microkernel + multi-module capability blocks + lifecycle orchestration | Go-style composable application skeleton | The kernel handles startup, DI, config, commands, Host, and lifecycle; HTTP, cache, queue, database, and operations capabilities are installed on demand |
+| GoFrame | Integrated engineering framework + component system + CLI toolchain | Closer to Laravel / Spring Boot implemented in Go | Its homepage explicitly mentions “PHP-Laravel” and “Java-SpringBoot”; it emphasizes complete components, unified conventions, and engineering over free composition of small Go packages |
+| go-zero | API/RPC code generation + microservice governance | Generated microservice framework | Uses `goctl` to generate code from API/RPC definitions and provides rate limiting, circuit breaking, timeouts, and other microservice capabilities |
+| Kratos | Clean Architecture-style microservice skeleton + transport governance | Layered Go microservice engineering | Focuses on HTTP/gRPC, config, service discovery, observability, and service governance rather than traditional full-stack web |
+| Beego | MVC + ORM + toolchain integrated framework | Traditional full-stack web framework | Provides Controller, Router, ORM, config, logs, task, and more, closer to an older large-framework model |
+| Buffalo | Rails-like Go web development suite | Rails-style Go web suite | Combines scaffolding, Pop ORM, migrations, templates, asset pipeline, and background tasks |
+| Gin / Echo / Fiber | HTTP router + middleware | Lightweight web framework | Focuses on routing, middleware, binding, and responses; the business skeleton is assembled by the project |
+| Chi | `net/http` router | Standard-library composable router | Closest to the Go standard library model; lightweight and composable, but does not provide full-stack application orchestration |
+| Hertz | High-performance HTTP framework + CloudWeGo ecosystem | High-performance microservice HTTP entry | Focuses on HTTP performance, extension points, the `hz` toolchain, and CloudWeGo microservice ecosystem |
+
+## Positioning
+
+| Framework | Official positioning is closer to | Best for | Main tradeoff |
+| --- | --- | --- | --- |
+| Runa | Microkernel business application framework | Micro projects, HTTP APIs, background services, complex business systems | Can reuse the `net/http` ecosystem, but the Runa-specific ecosystem is still early |
+| Gin | High-performance HTTP web framework | API services, gateways, projects with clear HTTP middleware chains | Focused on HTTP; no unified business module or application lifecycle |
+| Echo | High-performance, extensible, lightweight web framework | API services, SSR/templates, regular HTTP applications | Focused on HTTP; business capabilities are usually composed by the project |
+| Fiber | Express-inspired high-performance web framework | Teams familiar with Express-style APIs that want to write HTTP quickly | Built on fasthttp, not the same path as the standard `net/http` ecosystem |
+| Chi | Lightweight, idiomatic, composable `net/http` router | Projects that want standard-library style with routing and middleware only | Not a full-stack framework; does not manage config, DI, queues, and the application skeleton |
+| Hertz | CloudWeGo high-performance HTTP framework | High-performance HTTP services, microservice systems, CloudWeGo ecosystem | More focused on high-performance HTTP and microservice transport |
+| GoFrame | Engineering-oriented full-stack base framework | Business systems needing config, ORM, logs, cache, commands, and tooling | Rich capabilities, heavier core dependencies and stronger framework constraints |
+| go-zero | Cloud-native web/RPC microservice framework | API/RPC services, code generation, rate limiting and circuit breaking | Strongly tied to `goctl` and generated project structure |
+| Kratos | Cloud-native microservice framework | HTTP/gRPC systems with service governance, config, discovery, and observability | More microservice governance than traditional web full-stack |
+| Beego | Rapid enterprise application development framework | REST APIs, web apps, background services, MVC/ORM-style projects | More integrated capabilities; on-demand trimming is not the core goal |
+| Buffalo | Go web development ecosystem suite | Integrated web apps needing scaffolding, templates, ORM, migrations, and assets | More like a Rails-style development suite |
+
+## Engineering and full-stack frameworks
+
+| Capability | Runa | GoFrame | go-zero | Kratos | Beego | Buffalo |
+| --- | --- | --- | --- | --- | --- | --- |
+| HTTP service | Official module | Built-in | Built-in | Built-in transport | Built-in | Built-in |
+| WebSocket | Official module | Compose yourself | Compose yourself | Compose yourself | Compose yourself | Compose yourself |
+| JSON-RPC | Official module | Compose yourself | Compose yourself | Compose yourself | Compose yourself | Compose yourself |
+| gRPC / RPC | gRPC planned | Available | Built-in RPC | Built-in gRPC | Compose yourself | Compose yourself |
+| Config loading | Built-in | Built-in | Built-in | Built-in | Built-in | Application config |
+| Command entry | Built-in | Built-in | Toolchain | Toolchain | Toolchain | Toolchain |
+| Code generation | devtools scaffold and embed command | `gf` CLI | `goctl` CLI | Protobuf toolchain | `bee` CLI | `buffalo` CLI |
+| DI / application lifecycle | Built-in unified management | Framework components | Generated structure | Application lifecycle | Framework lifecycle | Application structure conventions |
+| Business module entry | Built-in `Module` | Layering convention | Generated directory convention | Layering convention | MVC/module convention | Generated directory convention |
+| Database/ORM | Official module + optional driver | Built-in ORM | model code generation | Compose yourself | Built-in ORM | Pop integration |
+| Cache | Official module + optional driver | Built-in component | Related built-in components | Compose yourself | Related built-in components | Compose yourself |
+| Queue/tasks | Official module | Scheduling and related components | Compose yourself | Compose yourself | task module | Grift/worker |
+| Frontend asset pipeline | No | Compose yourself | No | No | Compose yourself | Built-in |
+| On-demand dependency boundary | Multi-module on-demand install | Complete framework components | Framework and generated code are strongly tied | Microservice component system | Integrated framework | Suite-style |
+
+## HTTP router frameworks
+
+| Capability | Runa | Gin | Echo | Fiber | Chi | Hertz |
+| --- | --- | --- | --- | --- | --- | --- |
+| HTTP routing | Official module | Built-in | Built-in | Built-in | Built-in | Built-in |
+| WebSocket | Official module | Compose yourself | Compose yourself | Compose yourself | Compose yourself | Compose yourself |
+| Middleware | Official modules | Built-in | Built-in | Built-in | Built-in | Built-in |
+| Request binding / response rendering | Built-in | Built-in | Built-in | Built-in | Compose yourself | Built-in |
+| Config loading | Built-in | No | No | No | No | Compose yourself |
+| Command entry | Built-in | No | No | No | No | Toolchain |
+| Business Module | Built-in | No | No | No | No | No |
+| Unified DI / lifecycle | Built-in | No | No | No | No | No application-level DI |
+| Database/cache/queue | Official modules | Compose yourself | Compose yourself | Compose yourself | Compose yourself | Compose yourself |
+| On-demand dependency boundary | Multi-module on-demand install | Lightweight router, external capabilities | Lightweight router, external capabilities | Lightweight router, external capabilities | Very lightweight | HTTP framework and toolchain |
+
+## What Runa clearly has today
+
+- Application entry, default application, global DI, command entry, and unified lifecycle.
+- `Module` as the business module entrypoint.
+- `route` HTTP routing, groups, domains, middleware, request context, and error rendering.
+- `ws` WebSocket Hub, channel subscription, broadcasting, and Redis horizontal scaling.
+- `jsonrpc` JSON-RPC 2.0 server, runnable over HTTP or WebSocket.
+- Typed Input / Output handlers, explicit validation, structured route metadata.
+- OpenAPI generation, Resource routes, CRUD Builder.
+- Capability modules such as cache, database, queue, session, auth, storage, log, lock, rate, event, task, schedule, message, view, asset.
+- Optional driver modules such as redis, s3, oro, nats, amqp, mqtt.
+- Supporting capabilities such as audit, observe, cluster, console.
+
+## Runa's boundaries
+
+- Performance goal: Runa prioritizes business orchestration, modularity, and maintainability over extreme HTTP benchmarks.
+- Middleware ecosystem: Runa can reuse the official `net/http` ecosystem and general middleware, but Runa-specific middleware is still early.
+- Component scale: Runa uses on-demand capabilities instead of a complete integrated component suite like GoFrame.
+- Code generation: Runa already has devtools scaffolding and embed commands, but not a complete API/RPC generation system like go-zero today.
+- gRPC transport: still planned. Implemented transports today are HTTP, WebSocket, and JSON-RPC.
+- Frontend pipeline: Runa focuses on Go business server-side development and does not include a Rails/Buffalo-style frontend asset pipeline.
+
+## How to choose
+
+If you only want to replace a router and care most about a framework-specific middleware ecosystem or pure HTTP benchmarks, Gin, Echo, Fiber, Chi, and Hertz are more direct.
+If you want a large integrated framework, GoFrame, Beego, and Buffalo are closer.
+If you build API/RPC microservices and accept generated project structure, go-zero, Kratos, and Hertz match better.
+If you want to start from a micro project and gradually grow into an enterprise business system with one application entry, lifecycle, DI, Module, routing, OpenAPI, resource routes, CRUD, and optional capabilities, Runa is a better fit.
+
+## References
+
+- Gin docs: https://gin-gonic.com/en/docs/
+- Echo website: https://echo.labstack.com/
+- Fiber docs: https://docs.gofiber.io/
+- Chi README: https://github.com/go-chi/chi
+- CloudWeGo Hertz docs: https://www.cloudwego.io/docs/hertz/
+- GoFrame docs: https://goframe.org/
+- go-zero docs: https://go-zero.dev/
+- Kratos docs: https://go-kratos.dev/docs/
+- Beego docs: https://beegodoc.com/
+- Buffalo website: https://gobuffalo.io/

@@ -1,0 +1,73 @@
+---
+title: "写一个驱动"
+description: "Driver 接口与工厂"
+---
+
+驱动块用于把外部依赖接到能力包。驱动模块应该依赖能力包，能力包不反向依赖驱动模块。
+
+驱动的价值是隔离外部依赖。比如不用 S3 的项目，不应该因为安装 storage 能力就带上 AWS SDK。
+
+## 驱动模块应该放在哪里
+
+以缓存驱动为例，驱动模块路径可以是：
+
+```text
+github.com/acme/runa-cache-driver
+```
+
+## 驱动只实现能力包定义的接口
+
+驱动实现能力包定义的接口：
+
+```go
+type Driver struct {
+    client *Client
+}
+
+func NewDriver(client *Client) cache.Driver {
+    return &Driver{client: client}
+}
+```
+
+官方驱动工厂统一叫 `Driver(...)`：
+
+```go
+func Driver(client *Client, options ...Option) cache.Driver {
+    return &driver{client: client}
+}
+```
+
+## 通过能力包注册驱动
+
+```go
+app.Install(cache.Provider(
+    cache.RegisterDriver("acme", acme.Driver(client)),
+    cache.RegisterPool("default", cache.Use("acme")),
+))
+```
+
+## 持有连接时要接入关闭逻辑
+
+如果驱动持有连接，必须实现能力接口要求的 `Close(ctx)`，让 DI shutdown 能释放资源。
+
+```go
+func (d *driver) Close(ctx context.Context) error {
+    return d.client.Close()
+}
+```
+
+## 文档必须说明的内容
+
+驱动文档至少要说明：
+
+- 需要安装哪个模块
+- 需要用户自己创建哪个外部 client
+- 如何 `RegisterDriver` 和 `Use(name)`
+- 连接如何关闭
+- 不安装该驱动时不会引入哪些外部依赖
+
+## 写完后这样验收
+
+- 驱动包独立 `go test ./...` 通过
+- 不修改能力包源码即可注册使用
+- 不使用该驱动时，外部依赖不进入用户 `go.sum`

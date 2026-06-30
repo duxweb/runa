@@ -1,0 +1,108 @@
+---
+title: "Time and Timezone"
+description: "Application timezone, unified clock, and testable time"
+---
+
+Runa keeps the application timezone and application clock in the kernel. Framework timestamps such as audit records, queue times, cache expiration, cluster heartbeat, and scheduler default timezone use this shared source where applicable.
+
+The goal is simple: one timezone source per application, and a clock that tests can replace.
+
+## Set the application timezone
+
+The recommended entrypoint is the app option:
+
+```go
+app := runa.New(
+    runa.Timezone("Asia/Shanghai"),
+)
+```
+
+You can also set it in `config/app.toml`:
+
+```toml
+timezone = "Asia/Shanghai"
+```
+
+`runa.Timezone(...)` has higher priority than file config. The timezone is applied during `Freeze`, before Provider `Boot`.
+
+## Read current time
+
+Use `core.Now()` when recording business timestamps:
+
+```go
+now := core.Now()
+```
+
+`core.Now()` returns the current time in the application timezone. The default timezone is `time.Local`. `runa.Timezone(...)` or `config/app.toml` changes it.
+
+## Common time helpers
+
+```go
+loc := core.Location()
+now := core.Now()
+
+createdAt := core.In(time.Now())
+startAt, err := core.Parse("2006-01-02 15:04:05", "2026-06-30 12:00:00")
+```
+
+- `core.Location()` returns the application timezone.
+- `core.Now()` returns current time in the application timezone.
+- `core.In(t)` converts any time into the application timezone.
+- `core.Parse(layout, value)` parses a time string in the application timezone.
+
+## Freeze time in tests
+
+Tests can override the application clock:
+
+```go
+fixed := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+core.SetClock(core.FixedClock(fixed))
+defer core.SetClock(nil)
+
+got := core.Now()
+_ = got
+```
+
+If a test changes the timezone, restore it:
+
+```go
+old := core.Location()
+core.SetLocation(time.UTC)
+defer core.SetLocation(old)
+```
+
+## Do not measure duration with core.Now
+
+`core.Now()` converts time into the application timezone, and that conversion does not preserve Go's monotonic clock reading.
+
+Keep these cases separate:
+
+| Case | Recommended API |
+| --- | --- |
+| Records, display, audit, expiration | `core.Now()` |
+| Request latency, timeout, delay, sliding-window timing | `time.Now()` + `time.Since(...)` |
+
+Request latency should stay like this:
+
+```go
+started := time.Now()
+err := handle()
+latency := time.Since(started)
+```
+
+Do not rewrite this kind of code to `core.Now()`.
+
+## Capabilities that follow app timezone
+
+Common framework timestamps follow the application timezone:
+
+- `audit` audit record time.
+- `queue` job creation, run, and update times.
+- `message` message creation time.
+- `cache`, `lock`, and `storage` expiration times.
+- `cluster` instance start and heartbeat time.
+- `console` and `observe` display/check timestamps.
+- `schedule` uses the application timezone by default when no schedule timezone is set.
+- `database/oro` passes the application timezone to Oro config by default.
+
+If a capability exposes its own timezone option, the explicit option overrides the application default.

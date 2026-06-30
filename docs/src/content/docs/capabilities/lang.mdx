@@ -1,0 +1,177 @@
+---
+title: "Lang"
+description: "Message catalogs, translation, pluralization, and request language negotiation"
+---
+
+`lang` is Runa's i18n capability. It loads message catalogs, translates keys by locale, handles template data and pluralization, and stores request translators in standard `context.Context`.
+
+The package itself does not depend on HTTP, route, or view. HTTP negotiation lives in `middleware/lang`, and template `t` injection lives in `lang/view`.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/lang
+```
+
+For HTTP negotiation through query, cookie, and `Accept-Language`:
+
+```bash
+go get github.com/duxweb/runa/middleware/lang
+```
+
+For automatic `{{ t "key" }}` in templates:
+
+```bash
+go get github.com/duxweb/runa/lang/view
+```
+
+## Connect to an application
+
+```go
+app := runa.New()
+app.Install(lang.Provider())
+```
+
+`lang.Provider()` registers `*lang.Registry` and loads `config/lang/*.toml` by default.
+
+## Message catalog layout
+
+Recommended layout:
+
+```text
+config/
+  lang.toml
+  lang/
+    en.toml
+    zh.toml
+```
+
+`config/lang.toml`:
+
+```toml
+default = "en"
+dir = "lang"
+```
+
+`config/lang/en.toml`:
+
+```toml
+[user_welcome]
+other = "Welcome {{.Name}}"
+
+[cart_items]
+one = "{{.Count}} item"
+other = "{{.Count}} items"
+```
+
+`config/lang/zh.toml`:
+
+```toml
+[user_welcome]
+other = "欢迎 {{.Name}}"
+
+[cart_items]
+one = "{{.Count}} 个商品"
+other = "{{.Count}} 个商品"
+```
+
+Catalog files use `go-i18n/v2` format and support TOML, JSON, template data, and plural forms.
+
+## Translate in Go
+
+```go
+text := lang.Default().Translator("zh-CN").T("user_welcome", "Name", "Runa")
+```
+
+Read the current request translator from `context.Context`:
+
+```go
+tr := lang.From(ctx)
+text := tr.T("user_welcome", "Name", "Runa")
+```
+
+If there is no request translator, `lang.From(ctx)` falls back to the default registry. If `lang.Provider()` is not installed, it returns a fallback translator that only performs parameter replacement.
+
+## HTTP language negotiation
+
+```go
+import langmw "github.com/duxweb/runa/middleware/lang"
+
+route.Default().Use(langmw.New(
+    langmw.Query("lang"),
+    langmw.Cookie("lang"),
+    langmw.Header("Accept-Language"),
+))
+```
+
+The middleware:
+
+- collects language preferences in source order
+- creates a request translator through `lang.Default().Translator(...)`
+- stores the translator in `ctx.Context()`
+- sets the current `route.Context` language for `ctx.Lang()`
+
+## Use t in templates
+
+```go
+import langview "github.com/duxweb/runa/lang/view"
+
+app.Install(
+    lang.Provider(),
+    view.Provider(),
+    langview.Provider(),
+)
+```
+
+In templates:
+
+```html
+<h1>{{ t "user_welcome" "Name" .Name }}</h1>
+<p>{{ t "cart_items" "Count" .Count }}</p>
+```
+
+`t` is request-scoped. It reads the translator from `view.Context.Context()` during rendering, so the same template can render different languages for different requests.
+
+## Standalone New usage
+
+```go
+registry := lang.New(lang.DefaultLocale("en"))
+_ = registry.LoadDir("config/lang")
+
+text := registry.Translator("zh-CN").T("user_welcome", "Name", "Runa")
+```
+
+When used outside a Runa application, load catalogs manually with `LoadFile` or `LoadDir`.
+
+## Lightweight replacement helper
+
+`lang.Replace(message, params)` is kept for simple `{name}` replacement when you do not need catalogs.
+
+HTTP language sources such as query, cookie, and `Accept-Language` live in `middleware/lang`, not in the core `lang` package. This keeps the i18n registry independent from HTTP and route.
+
+## Common mistakes
+
+### Installing lang.Provider without middleware
+
+`lang.Provider()` only loads catalogs. It does not read HTTP request language automatically. HTTP apps should add `middleware/lang`.
+
+### Using t without lang/view
+
+`{{ t "key" }}` comes from `lang/view.Provider()`. Without it, templates fail at parse time with `function "t" not defined`.
+
+### Injecting functions after templates are parsed
+
+Runa's `view.Registry.ContextFunc` reloads already registered renderers. Install the Provider instead of mutating low-level template objects manually.
+
+## API quick reference
+
+- `lang.New(options...)` creates a standalone i18n registry.
+- `lang.Provider(options...)` connects to the application lifecycle.
+- `lang.Default()` reads `*lang.Registry` from default DI.
+- `lang.DefaultLocale(locale)` sets the fallback locale.
+- `registry.LoadFile(path)` loads one catalog file.
+- `registry.LoadDir(dir)` loads a catalog directory.
+- `registry.Translator(locales...)` creates a translator.
+- `translator.T(key, params...)` translates a message.
+- `lang.WithTranslator(ctx, tr)` stores a translator in context.
+- `lang.From(ctx)` reads a translator from context.

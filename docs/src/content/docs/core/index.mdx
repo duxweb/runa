@@ -1,0 +1,72 @@
+---
+title: "Core Overview"
+description: "Runa's four-layer microkernel model"
+---
+
+Runa's core is an application runtime, not an HTTP router. It is responsible for capability loading, dependency injection, configuration, commands, Host units, and lifecycle orchestration.
+
+## How Runa is layered
+
+| Layer | Description | Examples |
+| --- | --- | --- |
+| Kernel | Application skeleton and lifecycle | `runa`, `provider`, `config`, `command`, `host` |
+| Transport | External entrypoint or background Host | `route`, `ws`, `jsonrpc` |
+| Capability | Reusable business capability | `cache`, `queue`, `database`, `storage` |
+| Driver | Adapter for concrete external systems | `redis`, `s3`, `oro`, `nats` |
+
+The core does not directly depend on upper layers. Applications import and install only what they use.
+
+## What a kernel-only app looks like
+
+```go
+app := runa.New()
+if err := app.Run(context.Background()); err != nil {
+    panic(err)
+}
+```
+
+This app has only the kernel, config, commands, and lifecycle. It has no HTTP routes.
+
+## Install route only when you need HTTP
+
+```go
+app.Install(route.Provider(route.Addr(":8080")))
+```
+
+`route` is a transport block. Only after installing it will the application start an HTTP service.
+
+## Install capability packages when needed
+
+```go
+app.Install(
+    cache.Provider(),
+    queue.Provider(),
+)
+```
+
+Capability packages register their core objects into DI and complete config, commands, Host registration, or route service registration during the lifecycle.
+
+## Organize business code with Module
+
+```go
+app.Module(user.Module{}, order.Module{})
+```
+
+Module enters the lifecycle just like installed capabilities. It can register commands, routes, queue jobs, and Host units. Business entrypoints live in Modules instead of scattering through `main.go`.
+
+## Why dependencies must be one-way
+
+Correct direction:
+
+```text
+driver -> capability -> transport -> kernel
+```
+
+The kernel does not import capabilities, and capabilities do not depend on the business application. When an application installs only what it uses, the dependency graph stays clear.
+
+## When to read this section
+
+- To understand how the application entry is organized.
+- To understand the difference between business Module and installed capability.
+- To know when `Default()` is safe to use.
+- To understand startup and shutdown order.

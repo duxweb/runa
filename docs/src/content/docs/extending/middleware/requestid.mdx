@@ -1,0 +1,86 @@
+---
+title: "Request ID Middleware"
+description: "Read or generate a request ID for logs, error responses, and audit records"
+---
+
+`middleware/requestid` prepares a request ID for every request. It first reads the configured request header. If the value is missing or invalid, it generates a new ID and writes it to `ctx.RequestID()` and the response header.
+
+Request ID is the basic field for production troubleshooting. One request should carry the same ID through gateways, app logs, audit records, and error reports.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## Basic usage
+
+```go
+import "github.com/duxweb/runa/middleware/requestid"
+
+route.Default().Use(requestid.New())
+```
+
+The default header is `X-Request-ID`.
+
+## Read in a handler
+
+```go
+route.Default().Get("/", func(ctx *route.Context) error {
+    return ctx.JSON(map[string]string{
+        "request_id": ctx.RequestID(),
+    })
+})
+```
+
+## Custom header and generator
+
+```go
+route.Default().Use(requestid.New(requestid.Config{
+    Header: "X-Correlation-ID",
+    Generator: func() string {
+        return "req_" + time.Now().Format("20060102150405")
+    },
+}))
+```
+
+If the generator returns an empty string, middleware falls back to the built-in generator.
+
+## Config fields
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | Skip when true |
+| `Header` | `string` | `X-Request-ID` | Header to read and write |
+| `Generator` | `func() string` | built-in random generator | Generates a new ID when needed |
+
+## Input validation rules
+
+Incoming request IDs must:
+
+- Be non-empty after trimming spaces.
+- Be at most 128 characters long.
+- Contain only printable ASCII characters.
+- Contain no control characters.
+
+Invalid values are discarded and replaced.
+
+## Recommended order
+
+Put request id before logger, audit, and auth:
+
+```go
+route.Default().Use(
+    recover.New(),
+    requestid.New(),
+    logger.New(),
+)
+```
+
+Then later logs and audit records can read `ctx.RequestID()`.
+
+## Common problems
+
+- `security.New(...)` already includes request id.
+- If an upstream gateway already generates request IDs, use the same header name.
+- Do not trust long user-controlled strings as request IDs; middleware validates length and characters automatically.

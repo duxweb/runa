@@ -1,0 +1,62 @@
+---
+title: "驱动与适配器"
+description: "数据库、缓存、队列、存储等可选驱动"
+---
+
+驱动和适配器负责把外部系统接入 Runa 能力包。它们都是按需安装的独立模块，不使用就不会进入应用依赖图。
+
+新手可以先这样理解：能力包定义“能做什么”，驱动包决定“用哪个外部系统来做”。例如 `database` 定义数据库能力，`database/oro` 负责把 SQL 数据库接进来；`storage` 定义文件存储能力，`storage/s3` 负责接入 S3 兼容对象存储。
+
+## 驱动怎么接入
+
+大多数驱动都按三步使用：
+
+1. 安装能力包和驱动包
+2. 创建外部客户端或驱动对象
+3. 在能力 Provider 里注册驱动，并用 `Use(name)` 选择它
+
+以 Redis 缓存为例：
+
+```go
+app.Install(cache.Provider(
+    cache.RegisterDriver("redis", cacheredis.Driver(client)),
+    cache.RegisterPool("default", cache.Use("redis")),
+))
+```
+
+`RegisterDriver("redis", ...)` 只是把驱动放进注册表，`cache.Use("redis")` 才会让缓存池真正使用这个驱动。数据库、队列、锁、限流、消息等能力也遵循类似模式。
+
+## 当前重点驱动
+
+| 驱动 | 用途 | 文档 |
+| --- | --- | --- |
+| Database Oro | SQL 数据库 ORM 运行时 | [Database Oro](./database-oro/) |
+| CRUD Oro Store | 把 Oro 模型接入 CRUD | [CRUD Oro Store](./crud-orostore/) |
+
+## 其他驱动在哪里看
+
+Redis、S3、AMQP、NATS、MQTT、Prometheus 等驱动已经在对应能力文档中给出基本安装和接入方式：
+
+| 你要接入 | 先读能力文档 | 再看驱动模块 |
+| --- | --- | --- |
+| Redis 缓存 | [Cache](../capabilities/cache/) | `github.com/duxweb/runa/cache/redis` |
+| Redis 队列 | [Queue](../capabilities/queue/) | `github.com/duxweb/runa/queue/redis` |
+| AMQP 队列 | [Queue](../capabilities/queue/) | `github.com/duxweb/runa/queue/amqp` |
+| S3 对象存储 | [Storage](../capabilities/storage/) | `github.com/duxweb/runa/storage/s3` |
+| Redis 分布式锁 | [Lock](../capabilities/lock/) | `github.com/duxweb/runa/lock/redis` |
+| Redis 限流 | [Rate](../capabilities/rate/) | `github.com/duxweb/runa/rate/redis` |
+| Prometheus 指标 | [Observe](../ops/observe/) | `github.com/duxweb/runa/observe/prometheus` |
+
+## 常见错误
+
+### 只安装驱动，没有安装能力
+
+驱动通常不能单独完成业务调用。比如 `cache/redis` 只是缓存驱动，业务代码仍然通过 `cache.Default()` 或 `cache.New()` 使用缓存。
+
+### 只注册驱动，没有选择驱动
+
+注册驱动以后，还要在对应实例上使用 `Use(name)`。否则实例仍然会使用默认内存驱动。
+
+### 为了省事一次安装所有驱动
+
+不要一次性安装所有驱动。Runa 的多模块设计就是为了让项目只引入当前用到的依赖。

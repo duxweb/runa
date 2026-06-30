@@ -1,0 +1,150 @@
+---
+title: "Storage"
+description: "Unified access to local disks and object storage"
+---
+
+`storage` manages named disks. It uses a local file driver by default. Production deployments can install an S3-compatible object storage driver on demand.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/storage
+```
+
+S3 driver:
+
+```bash
+go get github.com/duxweb/runa/storage/s3
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/storage"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(storage.Provider(
+        storage.RegisterDisk("public", storage.Prefix("public"), storage.Public()),
+    ))
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    disk := storage.Default().MustOf("public")
+    _ = disk.PutString(context.Background(), "hello.txt", "Hello Runa", storage.ContentType("text/plain"))
+}
+```
+
+`storage.Provider()` registers `*storage.Registry` into DI and reads disk config.
+
+## Standalone New usage
+
+```go
+registry := storage.New(storage.Root("./data/storage"), storage.DriverURLPrefix("/files"))
+disk := registry.MustOf(storage.DiskPublic)
+
+_ = disk.PutString(context.Background(), "hello.txt", "Hello", storage.ContentType("text/plain"))
+body, _ := disk.GetString(context.Background(), "hello.txt")
+_ = body
+```
+
+## Config
+
+`storage` reads `storage.disks.<name>` and only applies config to disks that have already been registered. `New()` registers `local`, `public`, `private`, and `cloud` by default.
+
+```toml
+[storage.disks.public]
+driver = "local"
+prefix = "public"
+public = true
+url_prefix = "/files"
+domain = "https://cdn.example.com"
+
+[storage.disks.private]
+driver = "local"
+prefix = "private"
+public = false
+```
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `driver` | string | driver name, default `local` |
+| `prefix` | string | disk path prefix |
+| `public` | bool | whether the disk is public |
+| `url_prefix` | string | URL prefix |
+| `domain` | string | URL domain |
+| `meta` | table | custom metadata |
+
+## S3 driver
+
+```go
+import s3storage "github.com/duxweb/runa/storage/s3"
+
+app.Install(storage.Provider(
+    storage.RegisterDriver("s3", s3storage.Driver(
+        s3storage.Bucket("app"),
+        s3storage.Region("us-east-1"),
+        s3storage.Endpoint("https://s3.example.com"),
+        s3storage.Credentials("access", "secret"),
+        s3storage.PathStyle(true),
+    )),
+    storage.RegisterDisk("cloud", storage.Use("s3"), storage.Public()),
+))
+```
+
+## Common API
+
+```go
+disk := storage.Default().MustOf("public")
+
+_ = disk.PutString(ctx, "avatars/1.txt", "hello", storage.ContentType("text/plain"))
+body, err := disk.GetString(ctx, "avatars/1.txt")
+exists, err := disk.Exists(ctx, "avatars/1.txt")
+url, err := disk.URL(ctx, "avatars/1.txt")
+_ = body
+_ = exists
+_ = url
+_ = err
+```
+
+## Choosing public and private disks
+
+| Disk | Typical use |
+| --- | --- |
+| `public` | Files that can be directly accessed by URL, such as avatars or public downloads |
+| `private` | Files that need permission checks, signed URLs, or application-controlled streaming |
+
+Use private disks for documents, exports, identity files, and other sensitive content.
+
+## Common mistakes
+
+### Local disk path is unclear
+
+Local drivers read and write relative to their configured root. Use an explicit root path in production so files do not end up in an unexpected working directory.
+
+### URL is empty or unexpected
+
+Public URLs depend on the disk's URL/base configuration. Private disks may intentionally not expose a direct URL.
+
+### Using local public disk for production public files
+
+For production public uploads, object storage plus CDN is usually more reliable than local disk on one application instance.
+
+## API quick reference
+
+- `storage.New(options...)` creates a standalone registry.
+- `storage.Provider(...)` connects to the framework lifecycle.
+- `storage.Default()` reads `*storage.Registry` from default DI.
+- `storage.RegisterDriver(name, driver)` registers a driver.
+- `storage.RegisterDisk(name, options...)` registers a disk.
+- `registry.MustOf(name)` gets a disk.
+- `storage.LocalDriver(...)` creates a local driver.

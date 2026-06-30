@@ -1,0 +1,95 @@
+---
+title: "Recover Middleware"
+description: "Catch panic inside HTTP handlers and convert it into route errors"
+---
+
+`middleware/recover` catches panic in the request chain. Without it, panic is handled by the underlying HTTP server, often interrupting the current connection and producing uncontrolled logs. With recover, panic becomes a Runa route error and goes through unified error rendering.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## Basic usage
+
+```go
+import "github.com/duxweb/runa/middleware/recover"
+
+route.Default().Use(recover.New())
+```
+
+Put recover near the beginning of the global middleware chain so it wraps later middleware and handlers.
+
+## Complete example
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/middleware/recover"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")))
+
+    route.Default().Use(recover.New())
+    route.Default().Get("/panic", func(ctx *route.Context) error {
+        panic("something broken")
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## Custom error response
+
+```go
+route.Default().Use(recover.New(recover.Config{
+    Stack: false,
+    OnRecover: func(ctx *route.Context, value any, stack []byte) error {
+        return ctx.Status(500).JSON(map[string]any{
+            "message": "server error",
+        })
+    },
+}))
+```
+
+`OnRecover` is a good place for custom logging, alerts, or unified error output. If it returns a normal error, the error still enters Runa error rendering.
+
+## Config fields
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | Skip when true |
+| `Stack` | `bool` | `true` | Include stack in panic error |
+| `OnRecover` | `func(*route.Context, any, []byte) error` | `nil` | Custom panic handler |
+
+Passing `recover.Config{}` sets `Stack` to false because false is the Go zero value. Use `recover.Config{Stack: true}` or plain `recover.New()` when you want stack output.
+
+## Common usage
+
+Production usually disables stack output so internal paths are not exposed:
+
+```go
+route.Default().Use(recover.New(recover.Config{Stack: false}))
+```
+
+Development can keep stack output for debugging:
+
+```go
+route.Default().Use(recover.New())
+```
+
+## Common problems
+
+- recover only catches panic in the current request goroutine. If a handler starts another goroutine, recover inside that goroutine too.
+- recover does not swallow normal errors. Handler-returned errors still go through Runa error handling.
+- `security.New(...)` already includes recover, so do not mount it twice unless you disabled it there.

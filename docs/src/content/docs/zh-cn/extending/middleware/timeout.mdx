@@ -1,0 +1,89 @@
+---
+title: "Timeout 中间件"
+description: "给普通 HTTP 请求设置最大执行时间"
+---
+
+`middleware/timeout` 会为请求创建带超时的 `context.Context`，并在超时后返回 `408 Request Timeout`。它适合保护普通 HTTP API，避免慢请求长期占用连接和 goroutine。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/middleware
+```
+
+## 基本用法
+
+```go
+import "github.com/duxweb/runa/middleware/timeout"
+
+route.Default().Use(timeout.New())
+```
+
+默认超时是 `30s`，默认响应文本是 `request timeout`
+
+## 自定义超时
+
+```go
+route.Default().Use(timeout.New(timeout.Config{
+    Timeout: 10 * time.Second,
+    Message: "request timeout",
+}))
+```
+
+## 给长任务跳过
+
+```go
+route.Default().Use(timeout.New(timeout.Config{
+    Timeout: 5 * time.Second,
+    Next: func(ctx *route.Context) bool {
+        return ctx.Request().URL.Path == "/exports"
+    },
+}))
+```
+
+导出、上传、SSE、长轮询等请求不一定适合全局短超时，可以用 `Next` 跳过，再单独设计超时策略。
+
+## WebSocket 和 Upgrade
+
+WebSocket 等 `Upgrade` 请求会自动跳过 timeout。原因是这类连接本来就是长连接，不应该按普通 HTTP 请求超时处理。
+
+## 配置项
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `Next` | `func(*route.Context) bool` | `nil` | 返回 `true` 时跳过 |
+| `Timeout` | `time.Duration` | `30 * time.Second` | 请求最大执行时间 |
+| `Message` | `string` | `request timeout` | 超时响应文本 |
+
+## 和 context 的关系
+
+handler 内应该优先使用 `ctx.Context()` 传给数据库、缓存、HTTP 客户端等下游调用：
+
+```go
+route.Default().Get("/users", func(ctx *route.Context) error {
+    users, err := service.ListUsers(ctx.Context())
+    if err != nil {
+        return err
+    }
+    return ctx.JSON(users)
+})
+```
+
+这样 timeout 触发后，下游调用才有机会尽快取消。
+
+## 和 security 的关系
+
+`security.New(...)` 默认包含 timeout，生产默认 `30s`，开发预设 `120s`。可以这样调整：
+
+```go
+route.Default().Use(security.New(
+    security.Production(),
+    security.Timeout(15*time.Second),
+))
+```
+
+## 常见问题
+
+- timeout 不能强杀已经跑起来的业务代码，只能取消 request context 并停止正常响应
+- 如果 handler 在超时后继续写响应，写入会被丢弃或无效
+- 对 WebSocket、SSE、长任务接口要谨慎使用全局 timeout

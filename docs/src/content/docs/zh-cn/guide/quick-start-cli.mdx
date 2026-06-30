@@ -1,0 +1,170 @@
+---
+title: "快速开始：CLI"
+description: "创建一个不启动 HTTP 的命令行或 worker 应用"
+---
+
+Runa 不要求应用一定启动 HTTP。你可以只使用内核、配置、命令和 Module 生命周期，写一个命令行程序或后台进程。
+
+## 创建项目
+
+```bash
+mkdir runa-cli-demo
+cd runa-cli-demo
+go mod init example.com/runa-cli-demo
+go get github.com/duxweb/runa
+```
+
+## 写一个命令
+
+创建 `main.go`：
+
+```go
+package main
+
+import (
+    "context"
+    "os"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/command"
+)
+
+type HelloCommand struct{}
+
+func (HelloCommand) Name() string { return "hello" }
+func (HelloCommand) Summary() string { return "输出一句问候" }
+
+func (HelloCommand) Run(ctx context.Context, cmd *command.Context) error {
+    name := cmd.Get[string]("name", "runa")
+    return cmd.Println("hello", name)
+}
+
+func (HelloCommand) Flags(flags *command.FlagSet) {
+    flags.String("name", "runa", "要问候的名字")
+}
+
+func main() {
+    app := runa.New()
+    app.Command(HelloCommand{})
+
+    if err := app.Execute(context.Background(), os.Args[1:]); err != nil {
+        panic(err)
+    }
+}
+```
+
+运行：
+
+```bash
+go run . hello
+```
+
+输出：
+
+```text
+hello runa
+```
+
+带参数运行：
+
+```bash
+go run . hello --name Dux
+```
+
+输出：
+
+```text
+hello Dux
+```
+
+## 这段代码做了什么
+
+- `HelloCommand` 实现 Runa 命令接口
+- `Name()` 是命令名，也就是终端里输入的 `hello`
+- `Summary()` 是命令说明，会显示在帮助信息里
+- `Flags(...)` 定义命令参数
+- `Run(...)` 是命令真正执行的逻辑
+- `app.Execute(..., os.Args[1:])` 把终端参数交给 Runa 命令系统
+
+## 业务模块里注册命令
+
+真实项目里，命令通常属于某个业务模块，比如用户同步、订单补偿、数据修复。
+
+```go
+type AppModule struct {
+    provider.ModuleBase
+}
+
+func (AppModule) Name() string { return "app" }
+
+func (AppModule) Register(ctx context.Context, app provider.Context) error {
+    return app.RegisterCommand(HelloCommand{})
+}
+```
+
+注册模块：
+
+```go
+app := runa.New()
+app.Module(AppModule{})
+
+if err := app.Execute(context.Background(), os.Args[1:]); err != nil {
+    panic(err)
+}
+```
+
+Module 写法需要额外 import：
+
+```go
+import (
+    "context"
+
+    "github.com/duxweb/runa/provider"
+)
+```
+
+## 不传命令会发生什么
+
+`app.Run(ctx)` 和 `app.Execute(ctx, nil)` 默认执行 `serve` 命令。没有安装任何 Host 时，通常用于内核启动检查或只运行命令的应用不需要这样做。
+
+写真实 CLI 时，建议使用：
+
+```go
+app.Execute(context.Background(), os.Args[1:])
+```
+
+这样用户输入什么命令，应用就执行什么命令。
+
+## 需要后台进程时再接入能力
+
+队列 worker、定时任务、WebSocket hub 这类长期运行的后台进程，通常通过对应能力包注册 Host。
+
+初学时先掌握命令：
+
+```text
+main.go -> app.Command(...) -> app.Execute(...)
+```
+
+后面需要队列 worker 时，再看 [队列](../capabilities/queue/) 和 [任务](../capabilities/task/)。
+
+## 哪些场景适合 CLI 模式
+
+- 数据迁移工具
+- 一次性数据修复命令
+- 队列 worker 进程
+- 定时任务进程
+- 只需要配置、DI 和命令，不需要 HTTP 的后台服务
+
+## 常见问题
+
+### go run . hello 和 go run . 有什么区别
+
+`go run . hello` 会执行 `hello` 命令。`go run .` 没有传命令，会走默认命令。HTTP 应用通常默认是 `serve`，纯 CLI 应用建议显式传命令。
+
+### Flags 方法必须写吗
+
+不必须。没有参数的命令可以不实现 `Flags`。
+
+### 命令里怎么拿应用对象
+
+可以通过 `cmd.App()` 取得当前应用对象。多数业务场景更推荐从 DI 或能力包的 `Default()` 获取需要的对象。

@@ -1,0 +1,128 @@
+---
+title: "数据验证"
+description: "请求输入验证和字段错误"
+---
+
+Runa 的验证能力由 `validate` 工具包提供。它用普通 Go 代码声明规则，不依赖隐式 tag，字段规则更容易读，也更容易测试。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/validate
+```
+
+## 独立使用
+
+```go
+type CreateUserInput struct {
+    Name  string
+    Email string
+}
+
+input := &CreateUserInput{Name: "Runa", Email: "hello@example.com"}
+
+v := validate.New(input, nil)
+v.Field("Name").Required("请输入名称").MinLen(2, "名称至少 2 个字符")
+v.Field("Email").Required("请输入邮箱").Email("邮箱格式不正确")
+
+if err := v.Run(); err != nil {
+    return err
+}
+```
+
+`Field("Name")` 里的 `Name` 是 Go 结构体字段名，不是 JSON 字段名。
+
+## 在强类型路由中使用
+
+输入结构体实现 `Validate` 方法后，强类型路由会自动调用它。
+
+```go
+type CreateUserInput struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+func (input *CreateUserInput) Validate(v *validate.Validator) {
+    v.Field("Name").Required("请输入名称").MinLen(2, "名称至少 2 个字符")
+    v.Field("Email").Required("请输入邮箱").Email("邮箱格式不正确")
+}
+
+route.Post[CreateUserInput, UserOutput](
+    route.Default(),
+    "/users",
+    func(ctx *route.Context, input *CreateUserInput) (*UserOutput, error) {
+        return &UserOutput{Name: input.Name}, nil
+    },
+)
+```
+
+## 在 CRUD 中使用
+
+```go
+crud.New[User, UserQuery](res, store).
+    Validate(func(c *crud.Context[User], v *validate.Validator) {
+        v.Field("Name").Required("请输入名称").MinLen(2, "名称至少 2 个字符")
+    })
+```
+
+## 常见规则
+
+| 规则 | 说明 |
+| --- | --- |
+| `Required(message)` | 要求字段非空 |
+| `Min(value, message)` | 数值不能小于 value |
+| `Max(value, message)` | 数值不能大于 value |
+| `MinLen(value, message)` | 字符长度不能小于 value |
+| `MaxLen(value, message)` | 字符长度不能大于 value |
+| `Email(message)` | 校验邮箱格式 |
+| `Regex(pattern, message)` | 校验正则表达式 |
+| `Call(handler)` | 添加字段级回调 |
+| `Check(handler)` | 添加输入级回调 |
+
+## 字段级回调
+
+```go
+v.Field("Name").Call(func(value string) error {
+    if value == "admin" {
+        return errors.New("名称不能使用 admin")
+    }
+    return nil
+})
+```
+
+## 输入级回调
+
+```go
+v.Check(func() error {
+    if input.Name == input.Email {
+        return errors.New("名称不能和邮箱相同")
+    }
+    return nil
+})
+```
+
+## 错误格式
+
+验证失败会返回 `validate.ValidationError`，可以用：
+
+```go
+if item := validate.AsError(err); item != nil {
+    for _, field := range item.Errors {
+        fmt.Println(field.Field, field.Message)
+    }
+}
+```
+
+## 常见错误
+
+### Field 里写了 json 名称
+
+不要写 `Field("name")`，应该写 Go 字段名 `Field("Name")`。
+
+### 忘记 Run
+
+独立使用时必须调用 `v.Run()`。强类型路由里由框架自动调用。
+
+### 规则缺少 message
+
+当前规则方法都需要 message 参数，例如 `Required("请输入名称")`。

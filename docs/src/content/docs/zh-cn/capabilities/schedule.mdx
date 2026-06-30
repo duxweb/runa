@@ -1,0 +1,141 @@
+---
+title: "调度 Schedule"
+description: "Cron 定时调度与任务分发"
+---
+
+`schedule` 用于把 cron 表达式映射到 `task` 任务。它本身负责调度时间，真正执行交给 `task`，也可以通过 `queue` 异步执行。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/schedule github.com/duxweb/runa/task
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/provider"
+    "github.com/duxweb/runa/schedule"
+    "github.com/duxweb/runa/task"
+)
+
+type ReportPayload struct {
+    Name string `json:"name"`
+}
+
+type appModule struct {
+    provider.ModuleBase
+}
+
+func (appModule) Name() string { return "app" }
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    tasks, err := provider.Invoke[*task.Registry](app)
+    if err != nil {
+        return err
+    }
+    schedules, err := provider.Invoke[*schedule.Registry](app)
+    if err != nil {
+        return err
+    }
+    tasks.Register("report.daily", func(ctx context.Context, item *task.TaskOf[ReportPayload]) error {
+        fmt.Println("run", item.Payload.Name)
+        return nil
+    })
+    schedules.Register("daily-report", "0 2 * * *", "report.daily", ReportPayload{Name: "daily"})
+    return nil
+}
+
+func main() {
+    app := runa.New()
+    app.Install(task.Provider(), schedule.Provider())
+    app.Module(appModule{})
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+启动调度进程时运行：
+
+```bash
+go run . schedule:run
+```
+
+## 独立 New 使用
+
+```go
+tasks := task.New()
+schedules := schedule.New()
+
+schedules.Register("daily-report", "0 2 * * *", "report.daily", ReportPayload{Name: "daily"})
+unit := schedule.NewUnit(schedules, tasks)
+_ = unit
+```
+
+独立使用时需要自己启动 `schedule.NewUnit(...)`，或者只把注册表用于生成调度信息。
+
+## 配置
+
+`schedule` 当前没有 TOML 配置。调度项由代码注册，便于把任务名、payload 类型和 cron 表达式保持在同一处。
+
+未单独设置调度时区时，cron 表达式会使用应用时区。应用时区可以通过 `runa.Timezone("Asia/Shanghai")` 或 `config/app.toml` 的 `timezone` 设置。
+
+## 调度选项
+
+```go
+schedules.Register("daily-report", "0 2 * * *", "report.daily", payload,
+    schedule.Timezone("Asia/Shanghai"),
+    schedule.Queue("default"),
+    schedule.SkipIfRunning(),
+    schedule.Meta("owner", "ops"),
+)
+```
+
+- `Timezone(name)` 设置这个调度项自己的时区，会覆盖应用时区
+- `Queue(name)` 通过队列执行任务
+- `Direct()` 强制直接执行
+- `SkipIfRunning()` 上一次未结束时跳过本次
+- `DelayIfRunning()` 上一次未结束时延后执行
+- `Enabled(false)` 暂停调度
+
+## 命令
+
+安装 `schedule.Provider()` 后会注册：
+
+```bash
+go run . schedule:list
+go run . schedule:run
+```
+
+`schedule:run` 会启动整个调度 worker，不接收单个调度名称参数。
+
+## 常见错误
+
+### 以为 schedule 会直接写业务逻辑
+
+`schedule` 只负责按时间触发，真正执行的是 `task` 任务。先注册 task，再注册 schedule。
+
+### schedule:run 后面加任务名
+
+`schedule:run` 启动整个调度 worker，不接收单个调度名称参数。
+
+### cron 时区不清楚
+
+如果没有写 `schedule.Timezone(...)`，调度会跟随应用时区。跨时区部署时，建议先在应用入口统一设置 `runa.Timezone("Asia/Shanghai")`；只有某个调度项需要特殊时区时，再单独写 `schedule.Timezone(...)`。
+
+## API 速查
+
+- `schedule.New()` 创建独立注册表
+- `schedule.Provider()` 接入框架生命周期
+- `schedule.Default()` 从默认 DI 取 `*schedule.Registry`
+- `registry.Register(name, spec, taskName, payload, options...)` 注册调度项
+- `schedule.NewUnit(registry, tasks)` 创建调度 Host 单元

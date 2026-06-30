@@ -1,0 +1,40 @@
+---
+title: "模块边界"
+description: "Monorepo 模块划分"
+---
+
+Runa 使用一个仓库、多 Go 模块。这样既保留统一架构，又能让用户按需安装能力和驱动。
+
+## 模块按四层划分
+
+```text
+内核层     github.com/duxweb/runa
+传输层     route / ws / jsonrpc / 未来 grpc
+能力层     cache / queue / database / storage / auth / session ...
+驱动层     redis / s3 / nats / amqp / oro ...
+```
+
+## 这些依赖方向不能破坏
+
+- 驱动可以依赖对应能力
+- 能力可以依赖内核契约包
+- 传输可以依赖内核契约包
+- 内核不能依赖传输、能力或驱动
+- route 不能写死 cache、database、session 等能力类型
+- 子包不要 import `runtime`
+
+## 嵌套模块怎么发版
+
+子目录模块使用 Go 标准 tag 规则：
+
+```text
+storage/s3/v1.2.0
+queue/redis/v1.2.0
+observe/prometheus/v1.2.0
+```
+
+根模块和子模块可以独立发版，但官方模块应尽量跟随核心最新 patch，避免版本偏斜。
+
+## 跨模块共享不要放 internal
+
+跨模块共享代码不能放在 `internal/`，否则其他 Go 模块无法 import。需要共享时应放到公开但低层的包，例如 `kernel/registry`。

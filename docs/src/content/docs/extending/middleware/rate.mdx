@@ -1,0 +1,142 @@
+---
+title: "Rate Limit Middleware"
+description: "Protect HTTP routes with named limiters and standard rate-limit headers"
+---
+
+`rate/middleware` connects the rate capability to HTTP routes. It reads `*rate.Registry` from route services and checks a named limiter before running the handler.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/rate
+```
+
+## Basic usage
+
+```go
+import (
+    "time"
+
+    "github.com/duxweb/runa/rate"
+    ratemw "github.com/duxweb/runa/rate/middleware"
+)
+
+app.Install(rate.Provider(
+    rate.RegisterLimiter("api", rate.TokenBucket(60, time.Minute)),
+))
+
+route.Default().Use(ratemw.Use("api"))
+```
+
+When limited, it returns `429 Too Many Requests` and writes:
+
+- `RateLimit-Limit`
+- `RateLimit-Remaining`
+- `RateLimit-Reset`
+- `Retry-After`
+
+## Group rate limits
+
+```go
+api := route.Default().Group("/api")
+api.Use(ratemw.Use("api"))
+
+admin := route.Default().Group("/admin")
+admin.Use(ratemw.Use("admin"))
+```
+
+## Config file
+
+`rate.Provider` reads `rate.limiters.<name>`:
+
+```toml
+# config/rate.toml
+[limiters.api]
+driver = "memory"
+algorithm = "token_bucket"
+limit = 60
+window = "1m"
+burst = 60
+key = ["ip"]
+```
+
+Code only needs to register the named limiter:
+
+```go
+app.Install(rate.Provider(
+    rate.RegisterLimiter("api"),
+))
+route.Default().Use(ratemw.Use("api"))
+```
+
+## Limit by user
+
+You can register a custom KeySource and use it in a limiter:
+
+```go
+userKey := rate.ByFunc(func(ctx any) string {
+    rctx, _ := ctx.(*route.Context)
+    if rctx == nil {
+        return ""
+    }
+    if info, _ := rctx.Locals("runa.auth").(*auth.Info); info != nil {
+        return core.Cast[string](info.Data["id"])
+    }
+    return ""
+})
+
+app.Install(rate.Provider(
+    rate.RegisterKey("user", userKey),
+    rate.RegisterLimiter("user-api",
+        rate.TokenBucket(120, time.Minute),
+        rate.Key(userKey),
+    ),
+))
+```
+
+If no key is configured, middleware defaults to `ip:<ctx.IP()>`.
+
+## Algorithms
+
+```go
+rate.RegisterLimiter("api", rate.TokenBucket(60, time.Minute))
+rate.RegisterLimiter("login", rate.FixedWindow(5, time.Minute))
+rate.RegisterLimiter("search", rate.SlidingWindow(100, time.Minute))
+```
+
+| Algorithm | Good for |
+| --- | --- |
+| `TokenBucket` | General APIs with short bursts |
+| `FixedWindow` | Login attempts, SMS verification, simple windows |
+| `SlidingWindow` | Limits that need smoother window boundaries |
+
+## Redis driver
+
+Use a shared driver such as Redis for multi-instance deployments:
+
+```bash
+go get github.com/duxweb/runa/rate/redis
+```
+
+If your business code directly creates a Redis client, your code also imports the Redis client package.
+
+```go
+import (
+    goredis "github.com/redis/go-redis/v9"
+    rateredis "github.com/duxweb/runa/rate/redis"
+)
+
+client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
+
+app.Install(rate.Provider(
+    rate.RegisterDriver("redis", rateredis.Driver(client, rate.Prefix("runa:rate:"))),
+    rate.RegisterLimiter("api", rate.Use("redis"), rate.TokenBucket(60, time.Minute)),
+))
+```
+
+## Common problems
+
+- Without `rate.Provider`, middleware returns `rate registry is not configured`.
+- `ratemw.Use("api")` must match `rate.RegisterLimiter("api")`.
+- The memory driver only limits the current process; multi-instance deployments need Redis or another shared driver.
+- To limit by logged-in user, auth middleware should run before rate middleware, or rate should be mounted on a group where authentication already happened.

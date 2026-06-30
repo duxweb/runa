@@ -1,0 +1,64 @@
+---
+title: "业务中间件索引"
+description: "session、auth、rate 和 audit 这类依赖业务能力的 HTTP 中间件"
+---
+
+业务中间件不是单纯的 HTTP 包装器。它们通常依赖对应能力已经通过 `runa.Install` 装好，再从 route service 中读取注册表。
+
+所以这类中间件要分两步：先安装能力 Provider，再把中间件挂到 route。
+
+## 列表
+
+| 中间件 | 需要安装的能力 | 文档 |
+| --- | --- | --- |
+| Session | `session.Provider(...)` | [Session](./session/) |
+| Auth | `auth.Provider()`，使用 session 时还需要 `session.Provider(...)` | [Auth](./auth/) |
+| Rate Limit | `rate.Provider(...)` | [Rate Limit](./rate/) |
+| Audit | 可直接用 `audit.Config`，推荐 `audit.Provider(...)` 管理配置 | [Audit](./audit/) |
+
+## 和基础中间件的区别
+
+基础中间件通常只处理 HTTP 请求本身，比如 CORS、日志、超时。业务中间件会读取 session、auth、rate、audit 等能力状态。
+
+## 推荐顺序
+
+后台管理接口常见顺序：
+
+```go
+admin := route.Default().Group("/admin")
+admin.Use(sessionmw.Use("web"))
+admin.Use(authmw.Use("web"))
+admin.Use(ratemw.Use("admin"))
+admin.Use(auditmw.Default())
+```
+
+顺序原因：
+
+- session 先加载 Cookie 会话
+- auth 基于 session 或 token 识别用户
+- rate 可以按用户或 IP 限流
+- audit 最后记录操作者、状态码、错误和耗时。
+
+## 安装
+
+按你使用的能力安装：
+
+```bash
+go get github.com/duxweb/runa/session github.com/duxweb/runa/auth github.com/duxweb/runa/rate github.com/duxweb/runa/audit
+```
+
+不需要的能力不用安装。比如只做 API Key 认证，可以不安装 session。
+
+## 常见错误
+
+### 只挂中间件，没有安装能力 Provider
+
+业务中间件通常需要对应能力已经安装。例如 `authmw.Use("web")` 需要 `auth.Provider()`，session 登录还需要 `session.Provider(...)`。
+
+### 顺序写反
+
+session 登录场景中，`sessionmw.Use("web")` 应该在 `authmw.Use("web")` 前面。
+
+### 全站强制登录导致公开接口不可用
+
+可以把 auth 挂到 `/admin` 或 `/api` 分组，不一定全局挂载。公开接口可以使用 `SkipAuth()` 或路由元数据跳过。

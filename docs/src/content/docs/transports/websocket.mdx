@@ -1,0 +1,146 @@
+---
+title: "WebSocket"
+description: "Hub and broadcast"
+---
+
+`ws` provides WebSocket Hub, channel subscription, event handling, and broadcast. It mounts on `route`, so `route` must also be installed.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/ws github.com/duxweb/runa/route
+```
+
+Install Redis horizontal scaling only when needed:
+
+```bash
+go get github.com/duxweb/runa/ws/redis
+```
+
+## Create a Hub
+
+```go
+hub := ws.New("default", ws.Config{
+    Origin: []string{"http://localhost:3000"},
+})
+
+hub.On("chat.message", func(ctx *ws.Context) error {
+    return ctx.Publish("room", "chat.message", ctx.Message().Data)
+})
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/route"
+    "github.com/duxweb/runa/ws"
+)
+
+func main() {
+    hub := ws.New("default", ws.Config{})
+    hub.On("echo", func(ctx *ws.Context) error {
+        return ctx.Reply(runa.Map{"data": ctx.Message().Data})
+    })
+
+    app := runa.New()
+    app.Install(route.Provider(route.Addr(":8080")), ws.Provider(hub))
+
+    route.Default().Get("/ws", hub.Serve).SkipDoc()
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+`ws.Mount(target, hub)` mounts the Hub at `/` under the target. If you want the final URL to be `/ws`, use a route group:
+
+```go
+ws.Mount(route.Default().Group("/ws"), hub)
+```
+
+## Config
+
+`ws.Config` is passed through code and can also be merged with the matching Hub config by `ws.Provider`.
+
+Common fields:
+
+| Field | Description |
+| --- | --- |
+| `Origin` | Allowed Origin list |
+| `MaxMessageSize` | Maximum message body size |
+| `ReadTimeout` | Read timeout |
+| `WriteTimeout` | Write timeout |
+| `PingInterval` | Ping interval |
+| `PongTimeout` | Pong timeout |
+| `SendBuffer` | Send buffer |
+| `Auth` | Connection authentication callback |
+| `Broker` | Cross-node broadcast |
+| `Presence` | Online presence storage |
+
+## Redis horizontal scaling
+
+```go
+import wsredis "github.com/duxweb/runa/ws/redis"
+
+hub := ws.New("default", ws.Config{
+    Broker: wsredis.Broker(client, "ws"),
+    Presence: wsredis.Presence(client, "runa:ws:"),
+})
+```
+
+## Client message format
+
+```json
+{"id":"1","event":"subscribe","channel":"room"}
+{"id":"2","event":"echo","data":{"text":"hello"}}
+```
+
+Built-in events include `subscribe`, `unsubscribe`, and `ping`.
+
+## Commands
+
+After installing `ws.Provider(...)`, these commands are registered:
+
+```bash
+go run . ws:list
+go run . ws:channels default
+go run . ws:stats default
+go run . ws:kick default <client-id>
+```
+
+## How to understand channels and events
+
+A Hub owns connections. A channel groups connections by topic such as `room:1` or `user:42`. Events are named messages sent to clients.
+
+Use stable channel and event names so frontend and backend stay aligned.
+
+## Common mistakes
+
+### ws.Mount path is not what you expected
+
+`ws.Mount(target, hub)` mounts the hub on the target group root. To use `/ws`, pass a group such as `route.Default().Group("/ws")`.
+
+### No Origin restriction in production
+
+WebSocket is browser-accessible. Configure Origin checks or put it behind protected routing when needed.
+
+### Using only memory for multi-instance broadcast
+
+Memory broadcast only reaches connections in the current process. Use `ws/redis` when multiple instances need shared broadcast and presence.
+
+## API quick reference
+
+- `ws.New(name, config)` creates a Hub.
+- `ws.Provider(hubs...)` connects to the framework lifecycle.
+- `ws.Mount(target, hub)` mounts the Hub at `/` under `target`.
+- `hub.On(event, handler)` registers an event handler.
+- `hub.Publish(channel, event, data)` publishes to a channel.
+- `hub.Broadcast(event, data)` broadcasts to all clients.
+- `ws/redis.Broker` and `ws/redis.Presence` provide cross-node capabilities.

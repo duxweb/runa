@@ -1,0 +1,62 @@
+---
+title: "Drivers and Adapters"
+description: "Optional drivers for database, cache, queue, storage, and more"
+---
+
+Drivers and adapters connect external systems to Runa capability packages. They are optional modules, so they enter your dependency graph only when installed.
+
+For beginners, think of it this way: a capability package defines what your application can do, and a driver package decides which external system provides that ability. For example, `database` defines the database capability, while `database/oro` connects SQL databases through Oro. `storage` defines the storage capability, while `storage/s3` connects S3-compatible object storage.
+
+## How drivers connect
+
+Most drivers are used in three steps:
+
+1. Install the capability package and the driver package.
+2. Create the external client or driver object.
+3. Register the driver in the capability Provider, then select it with `Use(name)`.
+
+Redis cache is a typical example:
+
+```go
+app.Install(cache.Provider(
+    cache.RegisterDriver("redis", cacheredis.Driver(client)),
+    cache.RegisterPool("default", cache.Use("redis")),
+))
+```
+
+`RegisterDriver("redis", ...)` only puts the driver into the registry. `cache.Use("redis")` makes the cache pool actually use that driver. Database, queue, lock, rate limit, and message drivers follow the same pattern.
+
+## Current key drivers
+
+| Driver | Purpose | Docs |
+| --- | --- | --- |
+| Database Oro | SQL database ORM runtime | [Database Oro](./database-oro/) |
+| CRUD Oro Store | Connect Oro models to CRUD | [CRUD Oro Store](./crud-orostore/) |
+
+## Where to read about other drivers
+
+Redis, S3, AMQP, NATS, MQTT, Prometheus, and other drivers already have basic install and setup examples in their capability pages:
+
+| What you need | Read first | Driver module |
+| --- | --- | --- |
+| Redis cache | [Cache](../capabilities/cache/) | `github.com/duxweb/runa/cache/redis` |
+| Redis queue | [Queue](../capabilities/queue/) | `github.com/duxweb/runa/queue/redis` |
+| AMQP queue | [Queue](../capabilities/queue/) | `github.com/duxweb/runa/queue/amqp` |
+| S3 object storage | [Storage](../capabilities/storage/) | `github.com/duxweb/runa/storage/s3` |
+| Redis distributed lock | [Lock](../capabilities/lock/) | `github.com/duxweb/runa/lock/redis` |
+| Redis rate limit | [Rate Limit](../capabilities/rate/) | `github.com/duxweb/runa/rate/redis` |
+| Prometheus metrics | [Observe](../ops/observe/) | `github.com/duxweb/runa/observe/prometheus` |
+
+## Common mistakes
+
+### Installing only the driver without the capability
+
+A driver usually does not provide the business API by itself. For example, `cache/redis` is only a cache driver. Business code still uses `cache.Default()` or `cache.New()`.
+
+### Registering a driver without selecting it
+
+After registering a driver, select it on the target instance with `Use(name)`. Otherwise the instance keeps using its default memory or local driver.
+
+### Installing every driver up front
+
+Do not install all drivers “just in case”. Runa's multi-module design exists so each application only imports the dependencies it actually uses.

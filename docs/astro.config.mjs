@@ -1,0 +1,247 @@
+import { defineConfig } from 'astro/config';
+import vela from '@duxweb/vela';
+
+export default defineConfig({
+  site: 'https://duxweb.github.io',
+  base: '/runa',
+  integrations: [
+    vela({
+      title: 'Runa',
+      description: 'Start with a single route and grow on demand into an enterprise full-stack Go web application.',
+      favicon: '/favicon.svg',
+      theme: {
+        accent: '#7c3aed',
+        dark: '#a78bfa',
+      },
+      meta: {
+        image: '/og.png',
+        imageAlt: 'Runa framework documentation',
+        keywords: ['go web framework', 'modular', 'micro-kernel', 'dependency injection', 'http', 'grpc'],
+        twitter: '@duxweb',
+      },
+      nav: [
+        { label: 'Docs', translations: { 'zh-CN': '文档' }, slug: 'guide' },
+        { label: 'Extensions', translations: { 'zh-CN': '扩展' }, slug: 'extending' },
+        { label: 'Reference', translations: { 'zh-CN': '参考' }, slug: 'reference' },
+        { label: 'Contributing', translations: { 'zh-CN': '贡献' }, slug: 'contributing' },
+        { label: 'GitHub', href: 'https://github.com/duxweb/runa', external: true },
+      ],
+      components: {
+        Hero: './src/components/HomeHero.astro',
+      },
+      customCss: ['./src/styles/home.css', './src/styles/runa-home.css'],
+      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/duxweb/runa' }],
+      versions: [{ label: 'v0.x', href: 'https://duxweb.github.io/runa/' }],
+      editLink: {
+        pattern: 'https://github.com/duxweb/runa/edit/main/docs/src/content/docs/:path',
+        label: 'Edit this page',
+        translations: { 'zh-CN': '编辑此页' },
+      },
+      tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 3 },
+      mermaid: true,
+      defaultLocale: 'root',
+      locales: {
+        root: { label: 'English', lang: 'en' },
+        'zh-cn': { label: '简体中文', lang: 'zh-CN' },
+      },
+      docs: {
+        main: {
+          match: '/',
+          sidebar: [
+            {
+              label: 'Guide',
+              translations: { 'zh-CN': '指南' },
+              items: [
+                { label: 'Overview', translations: { 'zh-CN': '概览' }, slug: 'guide' },
+                { label: 'Framework Comparison', translations: { 'zh-CN': '框架对比' }, slug: 'guide/comparison' },
+                { label: 'Installation', translations: { 'zh-CN': '安装' }, slug: 'guide/installation' },
+                { label: 'Quick Start: HTTP', translations: { 'zh-CN': '快速开始：HTTP' }, slug: 'guide/quick-start-http' },
+                { label: 'Quick Start: CLI', translations: { 'zh-CN': '快速开始：CLI' }, slug: 'guide/quick-start-cli' },
+                { label: 'Project Layout', translations: { 'zh-CN': '工程结构' }, slug: 'guide/project-layout' },
+              ],
+            },
+            {
+              label: 'Core',
+              translations: { 'zh-CN': '核心' },
+              items: [
+                { label: 'Overview', translations: { 'zh-CN': '四层架构总览' }, slug: 'core' },
+                { label: 'Application Entry', translations: { 'zh-CN': '应用入口' }, slug: 'core/app' },
+                { label: 'Business Modules', translations: { 'zh-CN': '业务模块' }, slug: 'core/module' },
+                { label: 'Lifecycle', translations: { 'zh-CN': '生命周期' }, slug: 'core/lifecycle' },
+                { label: 'Configuration', translations: { 'zh-CN': '配置' }, slug: 'core/config' },
+                { label: 'Time and Timezone', translations: { 'zh-CN': '时间与时区' }, slug: 'core/timezone' },
+                { label: 'Dependency Injection', translations: { 'zh-CN': '依赖注入' }, slug: 'core/di' },
+                { label: 'Commands', translations: { 'zh-CN': '命令' }, slug: 'core/command' },
+              ],
+            },
+            {
+              label: 'Routing & HTTP',
+              translations: { 'zh-CN': '路由与 HTTP' },
+              items: [
+                { label: 'Routing', translations: { 'zh-CN': '路由' }, slug: 'routing' },
+                { label: 'Context', translations: { 'zh-CN': '请求上下文' }, slug: 'routing/context' },
+                { label: 'Middleware', translations: { 'zh-CN': '中间件' }, slug: 'routing/middleware' },
+                { label: 'Request & Response', translations: { 'zh-CN': '请求与响应' }, slug: 'routing/request-response' },
+                { label: 'Validation', translations: { 'zh-CN': '数据验证' }, slug: 'routing/validation' },
+                { label: 'Error Handling', translations: { 'zh-CN': '错误处理' }, slug: 'routing/errors' },
+                { label: 'OpenAPI', translations: { 'zh-CN': 'OpenAPI' }, slug: 'routing/openapi' },
+                { label: 'REST Resources', translations: { 'zh-CN': 'REST 接口' }, slug: 'routing/rest' },
+                { label: 'CRUD APIs', translations: { 'zh-CN': 'CRUD 接口' }, slug: 'routing/crud' },
+              ],
+            },
+            {
+              label: 'Capabilities',
+              translations: { 'zh-CN': '能力' },
+              items: [
+                { label: 'Overview', translations: { 'zh-CN': '总览' }, slug: 'capabilities' },
+                { label: 'Database', translations: { 'zh-CN': '数据库 Database' }, slug: 'capabilities/database' },
+                { label: 'Cache', translations: { 'zh-CN': '缓存 Cache' }, slug: 'capabilities/cache' },
+                { label: 'Queue', translations: { 'zh-CN': '队列 Queue' }, slug: 'capabilities/queue' },
+                { label: 'Session', translations: { 'zh-CN': '会话 Session' }, slug: 'capabilities/session' },
+                { label: 'Auth', translations: { 'zh-CN': '鉴权 Auth' }, slug: 'capabilities/auth' },
+                { label: 'Storage', translations: { 'zh-CN': '存储 Storage' }, slug: 'capabilities/storage' },
+                { label: 'Log', translations: { 'zh-CN': '日志 Log' }, slug: 'capabilities/log' },
+                { label: 'Lock', translations: { 'zh-CN': '锁 Lock' }, slug: 'capabilities/lock' },
+                { label: 'Rate Limit', translations: { 'zh-CN': '限流 Rate' }, slug: 'capabilities/rate' },
+                { label: 'Event', translations: { 'zh-CN': '事件 Event' }, slug: 'capabilities/event' },
+                { label: 'Task', translations: { 'zh-CN': '任务 Task' }, slug: 'capabilities/task' },
+                { label: 'Schedule', translations: { 'zh-CN': '调度 Schedule' }, slug: 'capabilities/schedule' },
+                { label: 'Message', translations: { 'zh-CN': '消息 Message' }, slug: 'capabilities/message' },
+                { label: 'View', translations: { 'zh-CN': '视图 View' }, slug: 'capabilities/view' },
+                { label: 'Language', translations: { 'zh-CN': '语言 Lang' }, slug: 'capabilities/lang' },
+                { label: 'RHTML Templates', translations: { 'zh-CN': 'RHTML 模板' }, slug: 'capabilities/rhtml' },
+                { label: 'Asset', translations: { 'zh-CN': '资源 Asset' }, slug: 'capabilities/asset' },
+              ],
+            },
+            {
+              label: 'Drivers',
+              translations: { 'zh-CN': '驱动与适配器' },
+              items: [
+                { label: 'Overview', translations: { 'zh-CN': '总览' }, slug: 'drivers' },
+                { label: 'Database Oro', translations: { 'zh-CN': 'Database Oro' }, slug: 'drivers/database-oro' },
+                { label: 'CRUD Oro Store', translations: { 'zh-CN': 'CRUD Oro Store' }, slug: 'drivers/crud-orostore' },
+              ],
+            },
+            {
+              label: 'Operations',
+              translations: { 'zh-CN': '运维' },
+              items: [
+                { label: 'Overview', translations: { 'zh-CN': '总览' }, slug: 'ops' },
+                { label: 'Audit', translations: { 'zh-CN': '审计 Audit' }, slug: 'ops/audit' },
+                { label: 'Observe', translations: { 'zh-CN': '观测 Observe' }, slug: 'ops/observe' },
+                { label: 'Cluster', translations: { 'zh-CN': '集群 Cluster' }, slug: 'ops/cluster' },
+                { label: 'Console', translations: { 'zh-CN': '控制台 Console' }, slug: 'ops/console' },
+              ],
+            },
+            {
+              label: 'Toolkit',
+              translations: { 'zh-CN': '工具库' },
+              items: [
+                { label: 'Overview', translations: { 'zh-CN': '总览' }, slug: 'toolkit' },
+                { label: 'Errors', translations: { 'zh-CN': '错误 Errors' }, slug: 'toolkit/errors' },
+                { label: 'ID', translations: { 'zh-CN': 'ID' }, slug: 'toolkit/id' },
+                { label: 'Sanitize', translations: { 'zh-CN': '清理 Sanitize' }, slug: 'toolkit/sanitize' },
+                { label: 'Security', translations: { 'zh-CN': '安全 Security' }, slug: 'toolkit/security' },
+                { label: 'RBAC', translations: { 'zh-CN': 'RBAC' }, slug: 'toolkit/rbac' },
+                { label: 'Devtools', translations: { 'zh-CN': '开发工具 Devtools' }, slug: 'toolkit/devtools' },
+              ],
+            },
+            {
+              label: 'Beyond HTTP',
+              translations: { 'zh-CN': '其他传输' },
+              items: [
+                { label: 'Overview', translations: { 'zh-CN': '传输无关模型' }, slug: 'transports' },
+                { label: 'WebSocket', translations: { 'zh-CN': 'WebSocket' }, slug: 'transports/websocket' },
+                { label: 'JSON-RPC', translations: { 'zh-CN': 'JSON-RPC' }, slug: 'transports/jsonrpc' },
+                { label: 'gRPC (Planned)', translations: { 'zh-CN': 'gRPC（规划中）' }, slug: 'transports/grpc' },
+              ],
+            },
+          ],
+        },
+        extending: {
+          match: '/extending',
+          sidebar: [
+            {
+              label: 'Extensions',
+              translations: { 'zh-CN': '扩展' },
+              items: [
+                { label: 'Ecosystem', translations: { 'zh-CN': '扩展生态' }, slug: 'extending' },
+                { label: 'Directory', translations: { 'zh-CN': '扩展目录' }, slug: 'extending/directory' },
+              ],
+            },
+            {
+              label: 'HTTP Middleware',
+              translations: { 'zh-CN': 'HTTP 中间件' },
+              items: [
+                { label: 'Overview', translations: { 'zh-CN': '总览' }, slug: 'extending/middleware' },
+                { label: 'Built-in Index', translations: { 'zh-CN': '内置中间件索引' }, slug: 'extending/middleware/builtin' },
+                { label: 'Recover', translations: { 'zh-CN': 'Recover 恢复' }, slug: 'extending/middleware/recover' },
+                { label: 'Request ID', translations: { 'zh-CN': 'Request ID 请求 ID' }, slug: 'extending/middleware/requestid' },
+                { label: 'Real IP', translations: { 'zh-CN': 'Real IP 真实 IP' }, slug: 'extending/middleware/realip' },
+                { label: 'Logger', translations: { 'zh-CN': 'Logger 访问日志' }, slug: 'extending/middleware/logger' },
+                { label: 'CORS', translations: { 'zh-CN': 'CORS 跨域' }, slug: 'extending/middleware/cors' },
+                { label: 'Body Limit', translations: { 'zh-CN': 'Body Limit 请求体限制' }, slug: 'extending/middleware/bodylimit' },
+                { label: 'Timeout', translations: { 'zh-CN': 'Timeout 超时' }, slug: 'extending/middleware/timeout' },
+                { label: 'Helmet', translations: { 'zh-CN': 'Helmet 安全 Header' }, slug: 'extending/middleware/helmet' },
+                { label: 'Healthcheck', translations: { 'zh-CN': 'Healthcheck 健康检查' }, slug: 'extending/middleware/healthcheck' },
+                { label: 'Static', translations: { 'zh-CN': 'Static 静态文件' }, slug: 'extending/middleware/static' },
+                { label: 'CSRF', translations: { 'zh-CN': 'CSRF 防护' }, slug: 'extending/middleware/csrf' },
+                { label: 'Security Preset', translations: { 'zh-CN': 'Security 生产预设' }, slug: 'extending/middleware/security' },
+                { label: 'Business Index', translations: { 'zh-CN': '业务中间件索引' }, slug: 'extending/middleware/business' },
+                { label: 'Lang', translations: { 'zh-CN': 'Lang 语言协商' }, slug: 'extending/middleware/lang' },
+                { label: 'Session', translations: { 'zh-CN': 'Session 会话' }, slug: 'extending/middleware/session' },
+                { label: 'Auth', translations: { 'zh-CN': 'Auth 鉴权' }, slug: 'extending/middleware/auth' },
+                { label: 'Rate Limit', translations: { 'zh-CN': 'Rate Limit 限流' }, slug: 'extending/middleware/rate' },
+                { label: 'Audit', translations: { 'zh-CN': 'Audit 审计' }, slug: 'extending/middleware/audit' },
+              ],
+            },
+          ],
+        },
+        reference: {
+          match: '/reference',
+          sidebar: [
+            {
+              label: 'Reference',
+              translations: { 'zh-CN': '参考' },
+              items: [
+                { label: 'Overview', translations: { 'zh-CN': '总览' }, slug: 'reference' },
+                { label: 'CLI', translations: { 'zh-CN': '命令行' }, slug: 'reference/cli' },
+                { label: 'Config', translations: { 'zh-CN': '配置键' }, slug: 'reference/config' },
+                { label: 'Module Index', translations: { 'zh-CN': '模块索引' }, slug: 'reference/modules' },
+                { label: 'Drivers', translations: { 'zh-CN': '驱动与适配器' }, slug: 'drivers' },
+                { label: 'FAQ', translations: { 'zh-CN': '常见问题' }, slug: 'reference/faq' },
+              ],
+            },
+          ],
+        },
+        contributing: {
+          match: '/contributing',
+          sidebar: [
+            {
+              label: 'Contributing',
+              translations: { 'zh-CN': '贡献' },
+              items: [
+                { label: 'Overview', translations: { 'zh-CN': '概览' }, slug: 'contributing' },
+                { label: 'Module Map', translations: { 'zh-CN': '模块边界' }, slug: 'contributing/modules' },
+                { label: 'Dependency Model', translations: { 'zh-CN': '依赖红线' }, slug: 'contributing/dependency-model' },
+                { label: 'Naming Conventions', translations: { 'zh-CN': '命名规范' }, slug: 'contributing/naming' },
+                { label: 'Architecture Principles', translations: { 'zh-CN': '架构原则' }, slug: 'contributing/architecture' },
+                { label: 'Testing', translations: { 'zh-CN': '测试' }, slug: 'contributing/testing' },
+              ],
+            },
+            {
+              label: 'Building Extensions',
+              translations: { 'zh-CN': '扩展开发' },
+              items: [
+                { label: 'Write a Provider', translations: { 'zh-CN': '写 Provider' }, slug: 'contributing/write-provider' },
+                { label: 'Write a Capability', translations: { 'zh-CN': '写能力块' }, slug: 'contributing/write-capability' },
+                { label: 'Write a Driver', translations: { 'zh-CN': '写驱动' }, slug: 'contributing/write-driver' },
+                { label: 'Write a Transport', translations: { 'zh-CN': '写传输块' }, slug: 'contributing/write-transport' },
+              ],
+            },
+          ],
+        },
+      },
+    }),
+  ],
+});

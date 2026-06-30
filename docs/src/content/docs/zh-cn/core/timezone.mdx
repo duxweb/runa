@@ -1,0 +1,108 @@
+---
+title: "时间与时区"
+description: "应用时区、统一时钟和可测试时间"
+---
+
+Runa 在内核里维护应用时区和应用时钟。业务记录、审计时间、队列时间、缓存过期、集群心跳、调度默认时区等框架时间戳都会尽量走这套时间源。
+
+这样做的目标很简单：一个应用只有一个时区来源，测试时也可以固定当前时间。
+
+## 设置应用时区
+
+推荐在应用入口设置：
+
+```go
+app := runa.New(
+    runa.Timezone("Asia/Shanghai"),
+)
+```
+
+也可以写在 `config/app.toml`：
+
+```toml
+timezone = "Asia/Shanghai"
+```
+
+`runa.Timezone(...)` 的优先级高于配置文件。时区会在应用 `Freeze` 阶段、各 Provider `Boot` 之前生效。
+
+## 读取当前时间
+
+需要记录业务时间戳时，使用 `core.Now()`：
+
+```go
+now := core.Now()
+```
+
+`core.Now()` 返回应用时区下的当前时间。默认时区是 `time.Local`，设置 `runa.Timezone(...)` 或 `config/app.toml` 后会切换到指定时区。
+
+## 常用时间函数
+
+```go
+loc := core.Location()
+now := core.Now()
+
+createdAt := core.In(time.Now())
+startAt, err := core.Parse("2006-01-02 15:04:05", "2026-06-30 12:00:00")
+```
+
+- `core.Location()` 返回应用时区
+- `core.Now()` 返回应用时区下的当前时间
+- `core.In(t)` 把任意时间转换到应用时区
+- `core.Parse(layout, value)` 按应用时区解析时间字符串
+
+## 测试中固定时间
+
+测试时间戳逻辑时，可以覆盖应用时钟：
+
+```go
+fixed := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+core.SetClock(core.FixedClock(fixed))
+defer core.SetClock(nil)
+
+got := core.Now()
+_ = got
+```
+
+如果测试也改了时区，记得恢复：
+
+```go
+old := core.Location()
+core.SetLocation(time.UTC)
+defer core.SetLocation(old)
+```
+
+## 不要用 core.Now 测耗时
+
+`core.Now()` 会把时间转换到应用时区，转换后的时间不保留 Go 的单调时钟信息。
+
+因此要区分两类场景：
+
+| 场景 | 推荐写法 |
+| --- | --- |
+| 记录、展示、审计、过期时间 | `core.Now()` |
+| 请求耗时、超时、延迟、滑动窗口计时 | `time.Now()` + `time.Since(...)` |
+
+例如请求耗时应该这样写：
+
+```go
+started := time.Now()
+err := handle()
+latency := time.Since(started)
+```
+
+这类代码不要改成 `core.Now()`。
+
+## 哪些能力会跟随应用时区
+
+常见的框架时间戳会跟随应用时区：
+
+- `audit` 审计记录时间
+- `queue` 任务创建、运行和更新时间
+- `message` 消息创建时间
+- `cache`、`lock`、`storage` 的过期时间
+- `cluster` 实例启动和心跳时间
+- `console`、`observe` 中用于展示的检查时间
+- `schedule` 在未显式设置时区时，默认使用应用时区
+- `database/oro` 默认把应用时区传给 Oro 配置
+
+如果某个能力本身有独立时区选项，显式选项会覆盖应用默认值。

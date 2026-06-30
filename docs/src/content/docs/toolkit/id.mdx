@@ -1,0 +1,80 @@
+---
+title: "ID"
+description: "Random IDs and Snowflake IDs"
+---
+
+`id` provides random IDs, hexadecimal IDs, and numeric ID formatting. Snowflake IDs live in the separate `id/snowflake` module, so the related dependency is introduced only after installation.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/id
+```
+
+Snowflake ID:
+
+```bash
+go get github.com/duxweb/runa/id/snowflake
+```
+
+## Random IDs
+
+```go
+value, err := id.Random(16)
+hexValue, err := id.RandomHex(16)
+_ = value
+_ = hexValue
+_ = err
+```
+
+`Random(16)` returns a URL-safe string. `RandomHex(16)` returns a 32-character hexadecimal string.
+
+## MustRandom
+
+```go
+traceID := id.MustRandom(16)
+_ = traceID
+```
+
+`MustRandom` is suitable for initialization. It panics if the random source fails.
+
+## Numeric formatting
+
+```go
+text := id.Format(123456789)
+_ = text
+```
+
+## Snowflake
+
+```go
+import snow "github.com/duxweb/runa/id/snowflake"
+
+generator := snow.MustSnowflake(1)
+value, err := generator.New(context.Background())
+_ = value
+_ = err
+```
+
+## Common mistakes
+
+### Treating random IDs as ordered primary keys
+
+Random IDs are good for public identifiers. Do not expect them to be sorted like database sequences.
+
+### Reusing one Snowflake node ID on every machine
+
+Snowflake generators need unique node IDs across machines to avoid collisions.
+
+### Creating generators repeatedly on hot paths
+
+Create long-lived generators once and reuse them when generating many IDs.
+
+## API quick reference
+
+- `id.Random(size)` generates a random string.
+- `id.MustRandom(size)` generates a random string or panics.
+- `id.RandomHex(size)` generates a hexadecimal string.
+- `id.Format(value)` formats a numeric ID.
+- `snowflake.NewSnowflake(nodeID)` creates a Snowflake ID generator.
+- `snowflake.MustSnowflake(nodeID)` creates a generator or panics.

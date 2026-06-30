@@ -1,0 +1,132 @@
+---
+title: "Auth Middleware"
+description: "Add required authentication, optional authentication, and permission checks to routes"
+---
+
+`auth/middleware` connects authentication and permission checks to HTTP routes. It depends on `*auth.Registry` registered by `auth.Provider`. When using session login, install the session capability and mount session middleware first.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/auth
+```
+
+For session login:
+
+```bash
+go get github.com/duxweb/runa/session
+```
+
+## Basic usage
+
+```go
+import (
+    "github.com/duxweb/runa/auth"
+    authmw "github.com/duxweb/runa/auth/middleware"
+)
+
+app.Install(auth.Provider())
+
+auth.Default().Auth("api", auth.APIKeyAuth(func(token string) (core.Map, bool, error) {
+    if token != "secret" {
+        return nil, false, nil
+    }
+    return core.Map{"id": "1", "name": "admin", "permissions": []string{"*"}}, true, nil
+}))
+
+route.Default().Get("/profile", profile).Use(authmw.Use("api"))
+```
+
+## Session login
+
+```go
+app.Install(session.Provider(session.RegisterSession("web")))
+app.Install(auth.Provider())
+
+route.Default().Use(sessionmw.Use("web"))
+auth.Default().Auth("web", auth.SessionAuth("web"))
+
+route.Default().Get("/profile", profile).Use(authmw.Use("web"))
+```
+
+`auth.SessionAuth("web")` reads login data from the current session. If the session has an `auth` field, it is considered logged in.
+
+## JWT login
+
+```go
+secret := []byte("change-me")
+
+auth.Default().Auth("jwt", auth.JWTAuth(secret, auth.Header("Authorization")))
+
+route.Default().Get("/api/me", me).Use(authmw.Use("jwt"))
+```
+
+`Authorization: Bearer <token>` automatically strips the `Bearer ` prefix.
+
+## Optional auth
+
+```go
+route.Default().Get("/feed", feed).Use(authmw.Optional("web", "jwt"))
+```
+
+`Optional` attempts authentication. If no credential exists, the request continues. If a credential exists but is invalid, it still returns 401.
+
+## Permission check
+
+```go
+route.Default().Get("/admin/users", users).
+    Name("system.user.list").
+    Summary("User list").
+    Use(authmw.Use("web"), authmw.Permission())
+```
+
+`Permission()` uses the permission checker in the auth registry by default. The default checker reads `permissions`, `permission`, or `can` from `auth.Info.Data`.
+
+```go
+auth.Default().Auth("web", auth.APIKeyAuth(func(token string) (core.Map, bool, error) {
+    return core.Map{
+        "id":          "1",
+        "permissions": []string{"system.user.list"},
+    }, true, nil
+}))
+```
+
+## Route metadata
+
+Skip login:
+
+```go
+route.Default().Get("/public", public).Meta("auth", false)
+```
+
+Optional login:
+
+```go
+route.Default().Get("/feed", feed).Meta("auth", "optional")
+```
+
+Skip permission checks:
+
+```go
+route.Default().Get("/admin/help", help).Meta("can", false)
+```
+
+## API quick reference
+
+| API | Description |
+| --- | --- |
+| `authmw.Use(names...)` | Require any one authenticator |
+| `authmw.Optional(names...)` | Try authentication and allow missing credentials |
+| `authmw.Permission(checkers...)` | Check the current route permission ID |
+| `authmw.PermissionInfo(routes)` | Generate permission info snapshots from routes |
+| `auth.APIKeyAuth(fn, sources...)` | API key authenticator |
+| `auth.JWTAuth(secret, sources...)` | HS256 JWT authenticator |
+| `auth.SessionAuth(name)` | Session authenticator |
+| `auth.AuthMux(items...)` | Multiple authenticator mux |
+
+## Common problems
+
+- `auth.Provider()` only registers the auth registry. It does not protect routes automatically.
+- `authmw.Use()` without names uses the `default` authenticator.
+- Permission ID defaults to the route ID built from `Name(...)`.
+- If you use session login, session middleware should run before auth middleware.

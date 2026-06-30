@@ -1,0 +1,156 @@
+---
+title: "Audit Middleware"
+description: "Record business operation audits with actor, input, status, and latency"
+---
+
+`audit/middleware` records business operation audits. It fits admin systems, money-related operations, permission changes, and important data changes where you need to know who did what and when.
+
+Audit middleware can be created directly from `audit.Config`, or it can read default config from `audit.Provider` and DI.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/audit
+```
+
+Install log too if audit records should be written to Runa log channels:
+
+```bash
+go get github.com/duxweb/runa/log
+```
+
+## Basic usage
+
+```go
+import (
+    "github.com/duxweb/runa/audit"
+    auditmw "github.com/duxweb/runa/audit/middleware"
+)
+
+route.Default().Use(auditmw.New(audit.Config{
+    Writer:       audit.DefaultLogWriter(),
+    CaptureInput: true,
+}))
+```
+
+By default it records only `POST`, `PUT`, `PATCH`, and `DELETE`.
+
+## Provider-managed config
+
+```go
+app.Install(audit.Provider(audit.Config{
+    Writer: audit.DefaultLogWriter(),
+}))
+
+route.Default().Use(auditmw.Default())
+```
+
+Config file:
+
+```toml
+# config/audit.toml
+methods = ["POST", "PUT", "PATCH", "DELETE"]
+mode = "async"
+strict = false
+capture_input = true
+mask_fields = ["password", "token", "secret"]
+mask_value = "***"
+max_input_size = 16384
+write_timeout = "3s"
+```
+
+## Custom writer
+
+```go
+writer := audit.FuncWriter(func(ctx context.Context, entry audit.Entry) error {
+    // write to database, queue, file, or a third-party system
+    return nil
+})
+
+route.Default().Use(auditmw.New(audit.Config{
+    Mode:         audit.Sync,
+    Writer:       writer,
+    CaptureInput: true,
+}))
+```
+
+## Add audit fields
+
+```go
+route.Default().Use(auditmw.Default(
+    auditmw.Build(func(ctx *route.Context, entry *audit.Entry) error {
+        entry.Meta["app"] = "admin"
+        entry.Meta["tenant"] = route.Header[string](ctx, "X-Tenant")
+        return nil
+    }),
+))
+```
+
+Route `Name` and `Meta` values are included in audit records:
+
+```go
+route.Default().Post("/admin/users/{id}", updateUser).
+    Name("admin.user.update").
+    Meta("action", "update_user").
+    Meta("resource", "user")
+```
+
+## Skip requests
+
+```go
+route.Default().Use(auditmw.Default(
+    auditmw.Next(func(ctx *route.Context) bool {
+        return ctx.Request().URL.Path == "/health"
+    }),
+))
+```
+
+## Record the logged-in user
+
+If earlier auth middleware writes `runa.auth`, audit reads it automatically:
+
+- `Guard` comes from `auth.Info.Name`.
+- `ActorID` prefers `id`, then `user_id`.
+- `ActorName` prefers `name`, then `username`.
+
+Recommended order:
+
+```go
+admin := route.Default().Group("/admin")
+admin.Use(sessionmw.Use("web"))
+admin.Use(authmw.Use("web"))
+admin.Use(auditmw.Default())
+```
+
+## Strict mode
+
+```go
+route.Default().Use(auditmw.New(audit.Config{
+    Strict: true,
+    Mode:   audit.Sync,
+    Writer: writer,
+}))
+```
+
+In strict mode, if audit writing fails and the business handler did not return an error, middleware returns the write error. This fits strict compliance flows. Most business systems use async mode so audit-system jitter does not affect the main request path.
+
+## Config fields
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `Methods` | `POST,PUT,PATCH,DELETE` | HTTP methods to record |
+| `Mode` | `async` | `async` or `sync` |
+| `Strict` | `false` | Whether write failures fail the request |
+| `Writer` | `NoopWriter` | Audit writer |
+| `CaptureInput` | `false` | Capture query and body |
+| `MaskFields` | default sensitive names | Field names to mask |
+| `MaskValue` | `***` | Masked value |
+| `MaxInputSize` | `16KB` | Body capture limit |
+| `WriteTimeout` | `3s` | Write timeout |
+
+## Common problems
+
+- Audit does not mount itself. You must explicitly call `route.Use(...)`.
+- Input is not captured by default. Enable `CaptureInput` when parameters should be recorded.
+- Multipart request bodies are not captured, avoiding large upload content.
+- Without a Writer, records are discarded by default and no error is returned.

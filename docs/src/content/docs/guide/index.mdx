@@ -1,0 +1,84 @@
+---
+title: "Meet Runa"
+description: "Understand Runa's microkernel model and when to use it"
+---
+
+Runa is a Go web framework for business application development. It keeps application startup, dependency injection, configuration, commands, and lifecycle orchestration in the kernel, while routing, cache, queue, database, storage, and other capabilities are installed on demand. Business code is organized through Module.
+
+## What problem does Runa solve
+
+Many Go web projects start as a few HTTP handlers. Over time they add configuration, database access, cache, queues, scheduled jobs, CLI commands, background workers, permissions, and monitoring. The part that usually becomes messy is not a single handler, but the way every capability initializes itself, reads its own config, registers globals, and handles shutdown separately.
+
+That makes `main.go` heavier over time, causes business packages to pull each other in, makes testing hard because dependencies are difficult to replace, and leaves production shutdown order unclear: should HTTP stop first, queue workers first, database first, or background tasks first?
+
+Runa focuses on application orchestration: where the application starts, in what order capabilities enter, where business modules register themselves, how commands and workers reuse the same configuration and dependencies, and who closes resources in a predictable order.
+
+Runa also improves API development. A business API needs more than “register a handler”: structured routes, clear input/output types, explicit validation, unified errors, OpenAPI documentation, resource routes, and CRUD composition are all things business systems reuse repeatedly.
+
+## What Runa actually provides
+
+| Area | What Runa provides | Problem solved |
+| --- | --- | --- |
+| Microkernel | Application entry, DI, config, commands, lifecycle | One path for startup, registration, and shutdown |
+| On-demand capabilities | Routing, cache, queue, database, storage, auth, and more | Unused capabilities stay out of the dependency graph |
+| Business modules | `Module` organizes business domains | Business registration does not pile up in `main.go` |
+| Structured routing | Group, Domain, route names, Meta, Summary, Tags, Security | Routes carry permission, documentation, and business semantics |
+| Typed APIs | Input / Output handlers bind requests and render responses | Handler signatures are clearer and easier to maintain |
+| Explicit validation | `validate` declares field rules and callbacks in code | Validation is readable and testable, not hidden behind tags |
+| OpenAPI | Generate docs from route metadata and schema, mount UI or export by command | Documentation follows code and reduces manual API docs |
+| Resource routes | `resource` organizes list, show, create, edit, store, delete, and more | Admin, management, and REST-style APIs stay consistent |
+| CRUD composition | `crud` builds common data APIs from Resource and Store | Repeated list/detail/save/delete logic does not start from zero |
+| Operations | Audit, observe, cluster, console | Runtime capabilities needed after a business system goes online |
+
+## Which projects fit Runa
+
+Runa fits projects that:
+
+- Start as a small API but may later add database, queues, cache, permissions, and background tasks.
+- Want to install business capabilities on demand instead of carrying a full-stack bundle from day one.
+- Want framework capabilities and business modules to use the same lifecycle.
+- Want clear startup and shutdown order for enterprise-grade application orchestration.
+- Want structured API development instead of only handwritten handlers and scattered comments.
+
+Runa can start with a micro project and grow into a complex business system. A small project can install only `route` to write an HTTP service. Later, when it needs config, commands, business modules, cache, queues, database, and operations capabilities, the application skeleton does not need to be rewritten.
+
+If you only want to replace a router and care most about a framework-specific middleware ecosystem or pure HTTP benchmarks, Gin, Echo, and Fiber will be more direct.
+
+## How Runa's microkernel is organized
+
+Runa documentation uses four layers:
+
+| Layer | Role | Examples |
+| --- | --- | --- |
+| Kernel | Application skeleton, DI, config, commands, lifecycle | `runa`, `config`, `command` |
+| Transport | Application entrypoints and Host units | `route`, `ws`, `jsonrpc` |
+| Capability | Reusable business capabilities | `cache`, `queue`, `database`, `storage` |
+| Driver | Adapters for concrete external systems | `redis`, `s3`, `oro`, `nats` |
+
+Dependencies only point downward. The kernel does not depend on transports, capabilities, or drivers.
+
+## How it differs from common Go web frameworks
+
+Many Go web frameworks center on an HTTP router and are great for quickly writing APIs. Runa centers on the application entry, business Module, and lifecycle. HTTP is just one installable transport capability.
+
+This leads to three results:
+
+- Capabilities you do not install do not enter your application dependency graph.
+- Every capability starts, configures, and shuts down through the same model.
+- Business APIs can use one structured model for routes, validation, docs, resource actions, and CRUD.
+
+For a more objective comparison, see [Framework Comparison](comparison/).
+
+## What the name means
+
+Runa comes from the feeling of `Run App`: running a Go application as a whole. It can start, compose capabilities, register business modules, and shut down in order.
+
+It is not about rebuilding yet another router. It is about running business applications reliably.
+
+## Where to go next
+
+- For framework selection, read [Framework Comparison](comparison/).
+- Start with [Installation](installation/).
+- Build an HTTP service with [Quick Start: HTTP](quick-start-http/).
+- Build a command or worker with [Quick Start: CLI](quick-start-cli/).
+- Understand the architecture in [Core Overview](../core/).

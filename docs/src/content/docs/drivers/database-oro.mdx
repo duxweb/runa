@@ -1,0 +1,238 @@
+---
+title: "Database Oro"
+description: "Use Oro ORM as Runa's SQL database driver"
+---
+
+`database/oro` connects [Oro ORM](https://duxweb.github.io/oro/) to Runa's `database` capability. Runa manages lifecycle concerns such as driver registration, config loading, opening, closing, and commands. Oro handles ORM concerns such as models, queries, relations, transactions, schema sync, and SQL execution
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/database github.com/duxweb/runa/database/oro
+```
+
+SQLite examples also need a concrete SQL driver:
+
+```bash
+go get modernc.org/sqlite
+```
+
+For MySQL, PostgreSQL, DSN formats, relations, and advanced queries, read the Oro docs:
+
+- [Oro Docs](https://duxweb.github.io/oro/)
+- [Oro Chinese Docs](https://duxweb.github.io/oro/zh-cn/)
+
+## Minimal setup
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/database"
+    dboro "github.com/duxweb/runa/database/oro"
+    _ "modernc.org/sqlite"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(database.Provider(
+        database.RegisterDriver("default", dboro.Driver(
+            dboro.DSN("file:app.db"),
+            dboro.Dialect("sqlite"),
+        )),
+    ))
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    db := database.Default().MustGet("default")
+    orm := dboro.From(db)
+    _ = orm
+}
+```
+
+`database.Provider` opens connections during `Boot`, so call `database.Default().MustGet(...)` after `Freeze` or `Run`
+
+## Config file
+
+```toml
+# config/database.toml
+[connections.default]
+dsn = "file:app.db"
+dialect = "sqlite"
+max_open = 10
+max_idle = 2
+debug = true
+```
+
+Code:
+
+```go
+app.Install(database.Provider(
+    database.RegisterDriver("default", dboro.Driver()),
+))
+```
+
+Default config path is `database.connections.<connection name>`
+
+## Multiple connections
+
+```go
+app.Install(database.Provider(
+    database.RegisterDriver("default", dboro.Driver(
+        dboro.Config("database.connections.default"),
+    )),
+    database.RegisterDriver("report", dboro.Driver(
+        dboro.Config("database.connections.report"),
+    )),
+))
+```
+
+```go
+mainORM := dboro.From(database.Default().MustGet("default"))
+reportORM := dboro.From(database.Default().MustGet("report"))
+```
+
+## Define an Oro model
+
+```go
+import oro "github.com/duxweb/oro"
+
+type User struct {
+    oro.Model
+    Name   string
+    Email  string
+    Status int
+}
+
+func (User) Define(s *oro.SchemaBuilder) {
+    s.Table("users")
+    s.Field("Name").String().Size(120)
+    s.Field("Email").String().Size(180).Unique()
+    s.Field("Status").Int()
+}
+```
+
+Model fields, indexes, relations, and soft deletes are Oro ORM features. See the [Oro docs](https://duxweb.github.io/oro/) for details
+
+## Register models and sync schema
+
+```go
+orm := dboro.From(database.Default().MustGet("default"))
+
+if err := orm.Register(User{}); err != nil {
+    panic(err)
+}
+if err := orm.Sync(context.Background()); err != nil {
+    panic(err)
+}
+```
+
+`Sync` is useful for development and prototypes. In production, decide based on your migration policy
+
+## Basic queries
+
+```go
+ctx := context.Background()
+orm := dboro.From(database.Default().MustGet("default"))
+
+created, err := orm.Use[User]().Create(ctx, &User{Name: "Runa", Email: "hi@example.com"})
+if err != nil {
+    return err
+}
+
+found, err := orm.Use[User]().Where("Email", "hi@example.com").First(ctx)
+items, err := orm.Use[User]().Where("Status", 1).OrderByDesc("ID").Limit(20).Get(ctx)
+
+_ = created
+_ = found
+_ = items
+```
+
+## Use in HTTP handlers
+
+```go
+route.Default().Get("/users", func(ctx *route.Context) error {
+    orm := dboro.From(database.Default().MustGet("default"))
+    users, err := orm.Use[User]().Limit(20).Get(ctx.Context())
+    if err != nil {
+        return err
+    }
+    return ctx.JSON(users)
+})
+```
+
+In real applications, prefer injecting `orm` into services instead of reading it in every handler. The direct form keeps the example short
+
+## Standalone driver usage
+
+```go
+driver := dboro.Driver(
+    dboro.DSN(":memory:"),
+    dboro.Dialect("sqlite"),
+)
+
+runtime, err := driver.Open(context.Background(), database.Config{Name: "default"})
+if err != nil {
+    panic(err)
+}
+defer runtime.Close(context.Background())
+
+orm := dboro.From(runtime)
+```
+
+Use this for tests, scripts, or one-off jobs. Application services should usually use `database.Provider`
+
+## Commands
+
+`database.Provider` registers database commands:
+
+```bash
+go run . database:list
+go run . database:ping
+```
+
+## Options
+
+| Option | Description |
+| --- | --- |
+| `dboro.DSN(value)` | Set database DSN |
+| `dboro.Dialect(name)` | Set dialect, commonly `sqlite`, `mysql`, or `postgres` |
+| `dboro.Config(path)` | Read config from a custom path |
+| `dboro.MaxOpen(value)` | Max open connections |
+| `dboro.MaxIdle(value)` | Max idle connections |
+| `dboro.MaxLifetime(duration)` | Connection max lifetime |
+| `dboro.Debug(true)` | Enable SQL debug logs |
+| `dboro.Logger(name)` | Set Runa log channel, default `orm` |
+| `dboro.Location(loc)` | Set the timezone used by Oro, defaulting to the application timezone |
+| `dboro.Meta(key, value)` | Attach runtime metadata |
+
+## Timezone
+
+The Oro driver passes Runa's application timezone to Oro config by default. After setting `runa.Timezone("Asia/Shanghai")` or `timezone` in `config/app.toml`, the Oro driver uses the same timezone.
+
+If one connection needs a separate timezone, pass it explicitly:
+
+```go
+dboro.Driver(
+    dboro.Location(time.UTC),
+)
+```
+
+## Common mistakes
+
+- `oro database default dsn is required` means no DSN was provided by code or config
+- `database default is not open` usually means you read the registry before `Freeze`
+- `dboro.From(db)` returns nil when the database was not opened by the Oro driver
+- Runa does not replace Oro docs. Runa only connects Oro to the application lifecycle
+
+## Continue reading
+
+- [Database capability](../capabilities/database/)
+- [CRUD Oro Store](./crud-orostore/)
+- [Oro Docs](https://duxweb.github.io/oro/)
+- [Oro Chinese Docs](https://duxweb.github.io/oro/zh-cn/)

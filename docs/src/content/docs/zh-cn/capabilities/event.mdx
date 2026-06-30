@@ -1,0 +1,113 @@
+---
+title: "事件 Event"
+description: "领域事件和同步/异步监听器"
+---
+
+`event` 用于发布领域事件。默认在当前进程内执行监听器；如果同时安装 `queue` 和 `task`，队列会在启动时接管异步事件分发。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/event
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/event"
+    "github.com/duxweb/runa/provider"
+)
+
+type UserCreated struct {
+    ID string `json:"id"`
+}
+
+type appModule struct {
+    provider.ModuleBase
+}
+
+func (appModule) Name() string { return "app" }
+
+func (appModule) Register(ctx context.Context, app provider.Context) error {
+    events, err := provider.Invoke[*event.Registry](app)
+    if err != nil {
+        return err
+    }
+    events.On("user.created", func(ctx context.Context, evt *event.EventOf[UserCreated]) error {
+        fmt.Println("created", evt.Payload.ID)
+        return nil
+    })
+    return nil
+}
+
+func main() {
+    app := runa.New()
+    app.Install(event.Provider())
+    app.Module(appModule{})
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    _ = event.Default().Emit(context.Background(), "user.created", UserCreated{ID: "1"})
+}
+```
+
+## 独立 New 使用
+
+```go
+registry := event.New()
+registry.On("user.created", listener)
+_ = registry.Emit(context.Background(), "user.created", UserCreated{ID: "1"})
+```
+
+## 配置
+
+`event` 当前没有 TOML 配置。监听器顺序、异步队列和元数据通过代码声明，这样事件名、载荷类型和处理函数能放在同一处。
+
+## 监听器选项
+
+```go
+events.On("user.created", listener,
+    event.ListenerName("send-welcome"),
+    event.Priority(10),
+    event.Queue("default"),
+)
+```
+
+- `ListenerName` 设置监听器名称
+- `Priority` 控制同一事件内的执行顺序
+- `Queue` 标记监听器走队列分发，需要配合 `queue` 和 `task`
+
+## 命令
+
+安装 `event.Provider()` 后会注册：
+
+```bash
+go run . event:list
+```
+
+## 常见错误
+
+### 把事件当成可靠队列
+
+默认事件在当前进程内分发。需要可靠异步执行时，应配合 `queue` 和 `task`。
+
+### 事件名随意变化
+
+事件名建议稳定，例如 `user.created`、`order.paid`。事件名变化会影响监听器和异步分发。
+
+## API 速查
+
+- `event.New()` 创建独立注册表
+- `event.Provider()` 接入框架生命周期
+- `event.Default()` 从默认 DI 取 `*event.Registry`
+- `registry.On(name, listener, options...)` 注册监听器
+- `registry.Emit(ctx, name, payload, options...)` 发布事件

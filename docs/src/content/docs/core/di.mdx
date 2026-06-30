@@ -1,0 +1,79 @@
+---
+title: "Dependency Injection"
+description: "Access capability instances through DI"
+---
+
+Runa uses a DI container to manage installed capabilities and core objects registered by business modules. A child package's `Default()` usually reads the registered instance from the default DI container.
+
+## Register dependencies inside Module
+
+```go
+func (UserModule) Init(ctx context.Context, app provider.Context) error {
+    provider.ProvideDefault(app, func(do.Injector) (*Registry, error) {
+        return New(), nil
+    })
+    return nil
+}
+```
+
+## Read dependencies inside Module
+
+```go
+func (UserModule) Register(ctx context.Context, app provider.Context) error {
+    registry := provider.MustInvoke[*cache.Registry](app)
+    _ = registry
+    return nil
+}
+```
+
+## Read dependencies after application startup
+
+After the application has started, you can use the child package `Default()`:
+
+```go
+store := cache.Default().MustOf[string]("default")
+```
+
+You can also use the root facade directly:
+
+```go
+registry := runa.MustInvoke[*cache.Registry]()
+```
+
+## Provide and ProvideValue
+
+The root facade provides registration helpers for the default container:
+
+```go
+runa.Provide(func(app *runa.App) (*MyService, error) {
+    return NewMyService(), nil
+})
+
+runa.ProvideValue(NewStaticService())
+```
+
+## When DI is safe to read
+
+Capability packages and Modules register dependencies during `Init`, and they can usually read dependencies during `Register`. When application-level code calls `Default()` directly, make sure the app has already `Run` or `Freeze`.
+
+In tests, if you only call `Install`, lifecycle has not completed and DI objects may not exist yet. Do not call `cache.Default()` directly in that state.
+
+## Read capabilities in HTTP requests
+
+Many capabilities call `RegisterRouteService` during Register, so route context can access those services. See each capability page for the concrete access pattern.
+
+## Three rules for beginners
+
+- Register dependencies during Module or Provider lifecycle, not in package globals.
+- Read dependencies after they have been registered and the lifecycle has reached the right stage.
+- Prefer capability `Default()` helpers in application code unless you need lower-level DI access.
+
+## Common mistakes
+
+### Treating DI as a global variable replacement
+
+DI should manage application dependencies and lifecycle, not become a hidden global state bag.
+
+### Reading capabilities in init functions
+
+Go `init` runs before the Runa application lifecycle. Do not read `Default()` helpers from `init`.

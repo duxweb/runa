@@ -1,0 +1,100 @@
+---
+title: "写一个能力块"
+description: "New / Provider / Default / Registry"
+---
+
+能力块应先能独立使用，再接入 Runa 框架。不要一开始就把所有逻辑写进 Provider。
+
+这篇是给能力包作者看的。普通业务开发者如果只是组织业务代码，优先写 Module，不要把业务模块做成能力块。
+
+## 目录先保持清晰
+
+```text
+hello/
+  go.mod
+  registry.go
+  provider.go
+  default.go
+  options.go
+  types.go
+```
+
+## 先让 New 可以独立使用
+
+```go
+type Registry struct {
+    message string
+}
+
+func New(options ...Option) *Registry {
+    cfg := Config{Message: "hello"}
+    for _, option := range options {
+        option(&cfg)
+    }
+    return &Registry{message: cfg.Message}
+}
+
+func (r *Registry) Message() string { return r.message }
+```
+
+## 再提供 Default 门面
+
+```go
+func Default() *Registry {
+    return provider.MustInvokeDefault[*Registry]()
+}
+```
+
+## 最后用 Provider 接入框架
+
+```go
+func Provider(options ...Option) provider.Provider {
+    return providerImpl{options: options}
+}
+
+type providerImpl struct {
+    provider.Base
+    options []Option
+}
+
+func (providerImpl) Name() string { return "hello" }
+
+func (p providerImpl) Init(_ context.Context, ctx provider.Context) error {
+    provider.ProvideDefault(ctx, func(do.Injector) (*Registry, error) {
+        return New(p.options...), nil
+    })
+    return nil
+}
+```
+
+## 配置在 Register 阶段读取
+
+如果能力支持配置，Register 阶段读取自己的域：
+
+```go
+func (p providerImpl) Register(ctx provider.Context) error {
+    registry := provider.MustInvoke[*Registry](ctx)
+    store := provider.MustInvoke[*config.Store](ctx)
+    _ = registry
+    _ = store.Scope("hello")
+    return nil
+}
+```
+
+## 文档必须同步
+
+新增能力时，至少要补齐：
+
+- 怎么安装
+- 怎么 `app.Install(Provider(...))`
+- 配置文件怎么写
+- 独立 `New()` 怎么用
+- HTTP 或命令里的最小示例
+- 常见错误
+
+## 写完后这样验收
+
+- `hello.New()` 可独立使用
+- `hello.Provider()` 可通过 `runa.Install` 接入
+- `hello.Default()` 能在 `Freeze` 后取到同一个核心对象
+- 配置域只读取 `hello`，不要越界读取其他包配置

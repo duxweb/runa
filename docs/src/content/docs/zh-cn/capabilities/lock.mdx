@@ -1,0 +1,142 @@
+---
+title: "锁 Lock"
+description: "互斥锁和分布式锁抽象"
+---
+
+`lock` 提供命名锁实例。默认是内存锁，适合同进程互斥；需要跨进程互斥时接入 Redis 驱动。
+
+典型场景是防止同一个定时任务重复执行、防止同一个订单被多个 worker 同时处理、或者限制某段代码同一时间只运行一次。
+
+## 安装
+
+```bash
+go get github.com/duxweb/runa/lock
+```
+
+Redis 驱动按需安装：
+
+```bash
+go get github.com/duxweb/runa/lock/redis
+```
+
+## 接入应用
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/lock"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(lock.Provider(
+        lock.RegisterLocker("jobs", lock.TTL(30*time.Second), lock.Wait(5*time.Second)),
+    ))
+
+    if err := app.Freeze(context.Background()); err != nil {
+        panic(err)
+    }
+
+    locker := lock.Default().MustOf("jobs")
+    _ = locker.With(context.Background(), "daily-report", func(ctx context.Context) error {
+        return nil
+    })
+}
+```
+
+## 独立 New 使用
+
+```go
+registry := lock.New()
+locker := registry.MustOf(lock.DefaultName)
+
+lease, ok, err := locker.Try(context.Background(), "job", lock.TTL(time.Minute))
+if err != nil {
+    panic(err)
+}
+if ok {
+    defer lease.Release(context.Background())
+}
+```
+
+## Try、Wait 和 With 怎么选
+
+| 方法 | 行为 | 适合场景 |
+| --- | --- | --- |
+| `Try` | 立刻尝试拿锁，拿不到就返回 `ok=false` | 可跳过的任务 |
+| `Wait` | 等一段时间直到拿到锁或超时 | 必须执行但可以等待 |
+| `With` | 拿到锁后执行函数，结束后自动释放 | 大多数业务场景 |
+
+新手优先用 `With`，不容易忘记释放锁。
+
+## 配置
+
+`lock` 读取 `lock.lockers.<name>`，只作用到已经注册的 locker。
+
+```toml
+[lock.lockers.default]
+driver = "memory"
+prefix = "lock:"
+ttl = "30s"
+wait = "5s"
+retry_interval = "100ms"
+auto_renew = true
+```
+
+| 键 | 类型 | 说明 |
+| --- | --- | --- |
+| `driver` | string | 驱动名，默认 `memory` |
+| `prefix` | string | 锁 key 前缀 |
+| `ttl` | duration | 租约有效期 |
+| `wait` | duration | 等待获取锁的最长时间 |
+| `retry_interval` | duration | 等待时重试间隔 |
+| `auto_renew` | bool | `With` 执行期间自动续约 |
+| `meta` | table | 自定义元数据 |
+
+## 驱动
+
+内置 `memory` 驱动适合同进程互斥。跨进程或多实例部署时，安装 `lock/redis` 并通过 `RegisterDriver` 注册 Redis 驱动，再用 `lock.Use("redis")` 让指定 locker 使用它。
+
+```go
+import (
+    goredis "github.com/redis/go-redis/v9"
+    lockredis "github.com/duxweb/runa/lock/redis"
+)
+
+client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
+
+app.Install(lock.Provider(
+    lock.RegisterDriver("redis", lockredis.Driver(client, lock.DriverMeta("role", "shared"))),
+    lock.RegisterLocker("default", lock.Use("redis"), lock.Prefix("runa:lock:")),
+))
+```
+
+## 常见错误
+
+### 用 memory 锁做多实例互斥
+
+memory 锁只在当前进程内有效。多实例部署要使用 Redis 锁。
+
+### 拿到锁后忘记释放
+
+手动 `Try` / `Wait` 后要 `defer lease.Release(ctx)`。更推荐使用 `locker.With(...)`，它会自动释放。
+
+### TTL 太短
+
+任务执行时间可能超过 TTL 时，应启用自动续约或设置更合适的 TTL。
+
+## API 速查
+
+- `lock.New()` 创建独立注册表
+- `lock.Provider(...)` 接入框架生命周期
+- `lock.Default()` 从默认 DI 取 `*lock.Registry`
+- `lock.RegisterDriver(name, driver)` 注册驱动
+- `lock.RegisterLocker(name, options...)` 注册 locker
+- `locker.Try(ctx, key, options...)` 尝试获取锁
+- `locker.Wait(ctx, key, options...)` 等待获取锁
+- `locker.With(ctx, key, fn, options...)` 获取锁后执行并自动释放

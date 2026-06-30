@@ -1,0 +1,120 @@
+---
+title: "Lang Negotiation Middleware"
+description: "Create a request translator from query, cookie, and Accept-Language"
+---
+
+`middleware/lang` is the HTTP language negotiation middleware. It does not load message catalogs; `lang.Provider()` does that. The middleware only reads request language preferences and stores the current request `*lang.Translator` in `ctx.Context()`.
+
+## Install
+
+```bash
+go get github.com/duxweb/runa/lang
+go get github.com/duxweb/runa/middleware/lang
+```
+
+## Connect to an application
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/duxweb/runa"
+    "github.com/duxweb/runa/lang"
+    langmw "github.com/duxweb/runa/middleware/lang"
+    "github.com/duxweb/runa/route"
+)
+
+func main() {
+    app := runa.New()
+    app.Install(
+        route.Provider(route.Addr(":8080")),
+        lang.Provider(),
+    )
+
+    route.Default().Use(langmw.New(
+        langmw.Query("lang"),
+        langmw.Cookie("lang"),
+        langmw.Header("Accept-Language"),
+    ))
+
+    route.Default().Get("/", func(ctx *route.Context) error {
+        tr := lang.From(ctx.Context())
+        return ctx.Text(tr.T("user_welcome", "Name", "Runa"))
+    })
+
+    if err := app.Run(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+## Default sources
+
+When no sources are passed, `langmw.New()` uses:
+
+```go
+langmw.Query("lang")
+langmw.Cookie("lang")
+langmw.Header("Accept-Language")
+```
+
+So `?lang=zh-CN` wins first, then cookie, then browser `Accept-Language`.
+
+## Relationship with route.Context
+
+The middleware does two things:
+
+- `ctx.SetContext(lang.WithTranslator(ctx.Context(), translator))`
+- `ctx.SetLang(translator.Locale())`
+
+Application code can then use:
+
+```go
+tr := lang.From(ctx.Context())
+current := ctx.Lang()
+```
+
+Use `lang.From(ctx.Context())` for translation and `ctx.Lang()` when you only need the current locale string.
+
+## Use with template t
+
+When `lang/view.Provider()` is installed, `{{ t "key" }}` automatically uses the translator stored in request context by this middleware:
+
+```go
+app.Install(
+    lang.Provider(),
+    view.Provider(),
+    langview.Provider(),
+)
+route.Default().Use(langmw.New())
+```
+
+Template:
+
+```html
+<h1>{{ t "user_welcome" "Name" .Name }}</h1>
+```
+
+## Common mistakes
+
+### Mounting middleware without lang.Provider
+
+The middleware needs `lang.Default()` to create request translators. Install `lang.Provider()` first.
+
+### Using the wrong header name
+
+Browser language preferences are usually in `Accept-Language`, not `Language`.
+
+### Negotiating language inside handlers
+
+Language negotiation is cross-cutting HTTP behavior. Put it in global or group middleware, then read `lang.From(ctx.Context())` in handlers.
+
+## API quick reference
+
+- `langmw.New(sources...)` creates language negotiation middleware.
+- `langmw.Query(name)` reads language from query.
+- `langmw.Cookie(name)` reads language from cookie.
+- `langmw.Header(name)` reads language from header.
+- `lang.From(ctx.Context())` reads the current request translator.
