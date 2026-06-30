@@ -10,7 +10,7 @@ import (
 type providerItem struct {
 	provider.Base
 	registry *Registry
-	docs    []Config
+	docs     []Config
 }
 
 // Provider creates an OpenAPI provider.
