@@ -2,7 +2,7 @@
 
 English | [简体中文](CHANGELOG.zh-CN.md)
 
-## v0.1.0 - Unreleased
+## v0.1.0 - 2026-07-01
 
 ### Added
 
@@ -20,4 +20,4 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 - This is a pre-1.0 release candidate; public APIs may still change before `v1.0`.
 - The project currently requires Go `1.27rc1`.
 - gRPC transport is planned but not implemented in this release.
-- Final publishing requires the repository tags to be created after release validation.
+- The first public release uses multi-module tags so each submodule can be consumed independently.
