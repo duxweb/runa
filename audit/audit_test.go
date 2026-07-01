@@ -71,7 +71,7 @@ func TestAuditSkipsMethodsAndNext(t *testing.T) {
 				return nil
 			})},
 			auditmiddleware.Next(func(ctx *route.Context) bool {
-				return route.Query[string](ctx, "skip") == "1"
+				return ctx.Query[string]("skip") == "1"
 			}),
 		))
 		group.Get("/users", func(ctx *route.Context) error { return ctx.Text("get") })

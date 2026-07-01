@@ -35,9 +35,17 @@ fi
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
-if ! go list -m -versions github.com/duxweb/oro | grep -q " $version\b"; then
-  echo "github.com/duxweb/oro $version is not visible to go list" >&2
-  exit 1
+oro_version=$(rg -o 'github\.com/duxweb/oro\s+v[0-9]+\.[0-9]+\.[0-9]+' --glob 'go.mod' --glob '!docs/**' . | awk '{print $2}' | sort -u)
+if [[ -n "$oro_version" ]]; then
+  if [[ "$(echo "$oro_version" | wc -l | tr -d ' ')" != "1" ]]; then
+    echo "multiple github.com/duxweb/oro versions found:" >&2
+    echo "$oro_version" >&2
+    exit 1
+  fi
+  if ! go list -m -versions github.com/duxweb/oro | grep -q " $oro_version\b"; then
+    echo "github.com/duxweb/oro $oro_version is not visible to go list" >&2
+    exit 1
+  fi
 fi
 
 modules=$(go list -m -f '{{.Dir}} {{.Path}}')

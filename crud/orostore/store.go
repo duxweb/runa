@@ -11,7 +11,6 @@ import (
 	"github.com/duxweb/runa/core"
 	"github.com/duxweb/runa/crud"
 	"github.com/duxweb/runa/crud/filter"
-	"github.com/duxweb/runa/route"
 )
 
 const txDBKey = "__orostore_tx_db"
@@ -238,7 +237,7 @@ func (store *OroStore[Model]) one(ctx *crud.Context[Model], query *oro.ModelQuer
 }
 
 func (store *OroStore[Model]) queryByKey(ctx *crud.Context[Model], query *oro.ModelQuery[Model]) (*oro.ModelQuery[Model], error) {
-	key, value, ok := store.keyValue(ctx, route.Param[string](ctx.Context, ctx.Key()))
+	key, value, ok := store.keyValue(ctx, ctx.Param[string](ctx.Key()))
 	if !ok {
 		return nil, fmt.Errorf("crud key %s is required", ctx.Key())
 	}

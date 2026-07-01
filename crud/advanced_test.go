@@ -12,7 +12,6 @@ import (
 	"github.com/duxweb/runa/core"
 	"github.com/duxweb/runa/resource"
 	"github.com/duxweb/runa/route"
-	"github.com/xuri/excelize/v2"
 )
 
 type advancedStore struct {
@@ -149,40 +148,22 @@ func TestCrudCSVExportEscapesFormulaValues(t *testing.T) {
 	}
 }
 
-func TestCrudXLSXExport(t *testing.T) {
+func TestCrudExportRejectsUnregisteredFormat(t *testing.T) {
 	registry := route.New()
 	group := route.NewGroup(registry, "")
-	store := newAdvancedStore()
-	New[userModel, fakeQuery](resource.New(group, "/users").Name("user"), store).
+	New[userModel, fakeQuery](resource.New(group, "/users").Name("user"), newAdvancedStore()).
 		Actions(ListAction).
 		Export[exportRow](func(c *Context[userModel], model *userModel) (exportRow, error) {
 		return exportRow{ID: model.ID, Name: model.Name}, nil
 	}, func(e *Exporter[userModel, exportRow]) error {
-		e.Name("users").Formats("xlsx", "csv")
-		e.Field("id").Title("ID")
-		e.Field("name").Title("名称")
+		e.Name("users").Formats("csv")
 		return nil
 	})
 
 	response := httptest.NewRecorder()
 	registry.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/users/export?format=xlsx", nil))
-	if response.Code != http.StatusOK || !store.exported {
-		t.Fatalf("export code=%d size=%d exported=%v", response.Code, response.Body.Len(), store.exported)
-	}
-	if !strings.Contains(response.Header().Get("Content-Type"), "spreadsheetml") {
-		t.Fatalf("content-type = %q", response.Header().Get("Content-Type"))
-	}
-	file, err := excelize.OpenReader(bytes.NewReader(response.Body.Bytes()))
-	if err != nil {
-		t.Fatalf("open xlsx: %v", err)
-	}
-	defer file.Close()
-	rows, err := file.GetRows(file.GetSheetName(0))
-	if err != nil {
-		t.Fatalf("rows: %v", err)
-	}
-	if rows[0][0] != "ID" || rows[1][1] != "old" {
-		t.Fatalf("rows = %#v", rows)
+	if response.Code == http.StatusOK {
+		t.Fatalf("expected unsupported format error, body=%q", response.Body.String())
 	}
 }
 
@@ -309,46 +290,25 @@ func TestCrudCSVImportRejectsInvalidColumnType(t *testing.T) {
 	}
 }
 
-func TestCrudXLSXImport(t *testing.T) {
+func TestCrudImportRejectsUnregisteredFormat(t *testing.T) {
 	registry := route.New()
 	group := route.NewGroup(registry, "")
-	store := newAdvancedStore()
-	New[userModel, fakeQuery](resource.New(group, "/users").Name("user"), store).
+	New[userModel, fakeQuery](resource.New(group, "/users").Name("user"), newAdvancedStore()).
 		Actions(ListAction).
 		Import(func(c *Context[userModel], importer *Importer[userModel]) error {
 			importer.Column("名称").To(&importer.Model.Name)
-			importer.Column("状态").To(&importer.Model.Status).Set[string](func(c *Context[userModel], value string, row ImportRow) (int, error) {
-				if value == "启用" {
-					return 1, nil
-				}
-				return 0, nil
-			})
 			return nil
-		}, nil)
+		}, func(config *ImportConfig[userModel]) error {
+			config.Formats("csv")
+			return nil
+		})
 
-	file := excelize.NewFile()
-	sheet := file.GetSheetName(0)
-	_ = file.SetCellValue(sheet, "A1", "名称")
-	_ = file.SetCellValue(sheet, "B1", "状态")
-	_ = file.SetCellValue(sheet, "A2", "王五")
-	_ = file.SetCellValue(sheet, "B2", "启用")
-	var body bytes.Buffer
-	if err := file.Write(&body); err != nil {
-		t.Fatalf("write xlsx: %v", err)
-	}
-	request := httptest.NewRequest(http.MethodPost, "/users/import?format=xlsx", &body)
+	request := httptest.NewRequest(http.MethodPost, "/users/import?format=xlsx", bytes.NewBufferString("bad"))
 	request.Header.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	response := httptest.NewRecorder()
 	registry.Handler().ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("import code=%d body=%q", response.Code, response.Body.String())
-	}
-	var result ImportResult
-	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if result.Total != 1 || result.Success != 1 || store.items["3"].Name != "王五" || store.items["3"].Status != 1 {
-		t.Fatalf("result=%#v item=%#v", result, store.items["3"])
+	if response.Code == http.StatusOK {
+		t.Fatalf("expected unsupported format error, body=%q", response.Body.String())
 	}
 }
 

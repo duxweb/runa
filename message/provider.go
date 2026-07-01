@@ -11,12 +11,12 @@ import (
 
 type provider struct {
 	runaprovider.Base
-	drivers map[string]BrokerDriver
+	drivers map[string]Driver
 	brokers map[string][]BrokerOption
 }
 
 func Provider(options ...ProviderOption) runaprovider.Provider {
-	item := &provider{drivers: make(map[string]BrokerDriver), brokers: make(map[string][]BrokerOption)}
+	item := &provider{drivers: make(map[string]Driver), brokers: make(map[string][]BrokerOption)}
 	for _, option := range options {
 		if option != nil {
 			option(item)
@@ -61,7 +61,7 @@ func (provider *provider) Boot(ctx context.Context, app runaprovider.Context) er
 
 type ProviderOption func(*provider)
 
-func RegisterDriver(name string, driver BrokerDriver) ProviderOption {
+func RegisterDriver(name string, driver Driver) ProviderOption {
 	return func(provider *provider) {
 		if name != "" && driver != nil {
 			provider.drivers[name] = driver

@@ -1,5 +1,7 @@
 package rate
 
+import "github.com/duxweb/runa/route"
+
 type ipContext interface {
 	IP() string
 }
@@ -20,20 +22,8 @@ type routeContext interface {
 	Route() routeInfo
 }
 
-type headerContext interface {
-	HeaderString(string) string
-}
-
 type cookieContext interface {
 	CookieValue(string) (string, bool)
-}
-
-type paramContext interface {
-	ParamString(string) string
-}
-
-type queryContext interface {
-	QueryString(string) string
 }
 
 // ByIP uses ctx.IP() as a rate key source.
@@ -85,8 +75,8 @@ func ByRoute() KeySource {
 // ByHeader uses a request header as a rate key source.
 func ByHeader(name string) KeySource {
 	return KeySourceFunc{SourceName: "header:" + name, Resolve: func(ctx any) string {
-		if value, ok := ctx.(headerContext); ok {
-			return value.HeaderString(name)
+		if value, ok := ctx.(*route.Context); ok {
+			return value.Header[string](name)
 		}
 		return ""
 	}}
@@ -106,8 +96,8 @@ func ByCookie(name string) KeySource {
 // ByParam uses a route param as a rate key source.
 func ByParam(name string) KeySource {
 	return KeySourceFunc{SourceName: "param:" + name, Resolve: func(ctx any) string {
-		if value, ok := ctx.(paramContext); ok {
-			return value.ParamString(name)
+		if value, ok := ctx.(*route.Context); ok {
+			return value.Param[string](name)
 		}
 		return ""
 	}}
@@ -116,8 +106,8 @@ func ByParam(name string) KeySource {
 // ByQuery uses a query value as a rate key source.
 func ByQuery(name string) KeySource {
 	return KeySourceFunc{SourceName: "query:" + name, Resolve: func(ctx any) string {
-		if value, ok := ctx.(queryContext); ok {
-			return value.QueryString(name)
+		if value, ok := ctx.(*route.Context); ok {
+			return value.Query[string](name)
 		}
 		return ""
 	}}

@@ -12,6 +12,7 @@ import (
 
 	runacommand "github.com/duxweb/runa/command"
 	"github.com/duxweb/runa/config"
+	"github.com/duxweb/runa/core"
 	"github.com/duxweb/runa/host"
 	runaprovider "github.com/duxweb/runa/provider"
 	"github.com/samber/do/v2"
@@ -489,7 +490,7 @@ func printServeHosts(writer io.Writer, items []host.Info) {
 	if writer == nil || len(items) == 0 {
 		return
 	}
-	palette := servePalette{enabled: supportsServeColor(writer)}
+	palette := servePalette{enabled: core.ColorEnabled(writer)}
 	labelWidth := 0
 	for _, item := range items {
 		labelWidth = max(labelWidth, len(item.Name))
@@ -578,19 +579,4 @@ func (palette servePalette) status(status host.Status) string {
 	default:
 		return "\x1b[37m"
 	}
-}
-
-func supportsServeColor(writer io.Writer) bool {
-	file, ok := writer.(*os.File)
-	if !ok {
-		return false
-	}
-	info, err := file.Stat()
-	if err != nil {
-		return false
-	}
-	if info.Mode()&os.ModeCharDevice == 0 {
-		return false
-	}
-	return os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
 }

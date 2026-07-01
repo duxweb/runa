@@ -249,7 +249,7 @@ func (builder *Builder[Model, Query]) SoftDelete() *Builder[Model, Query] {
 
 // Import registers a CSV import action.
 func (builder *Builder[Model, Query]) Import(fn ImportFunc[Model], configure func(*ImportConfig[Model]) error) *Builder[Model, Query] {
-	config := &ImportConfig[Model]{config: importConfig[Model]{formats: []string{"csv", "xlsx"}, batch: 100, fn: fn}}
+	config := &ImportConfig[Model]{config: importConfig[Model]{formats: defaultImportFormats(), batch: 100, fn: fn}}
 	if configure != nil {
 		_ = configure(config)
 	}
@@ -265,7 +265,7 @@ func (builder *Builder[Model, Query]) Import(fn ImportFunc[Model], configure fun
 
 // Export registers a CSV export action.
 func (builder *Builder[Model, Query]) Export[Output any](fn ExportFunc[Model, Output], configure func(*Exporter[Model, Output]) error) *Builder[Model, Query] {
-	exporter := &Exporter[Model, Output]{config: exportConfig[Model, Output]{formats: []string{"csv", "xlsx"}, batch: 500, fn: fn}}
+	exporter := &Exporter[Model, Output]{config: exportConfig[Model, Output]{formats: defaultExportFormats(), batch: 500, fn: fn}}
 	if configure != nil {
 		_ = configure(exporter)
 	}

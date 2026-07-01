@@ -48,7 +48,7 @@ func newFakeStore() *fakeStore {
 }
 
 func (store *fakeStore) Query(ctx *Context[userModel]) (fakeQuery, error) {
-	return fakeQuery{ID: route.Param[string](ctx.Context, "id")}, nil
+	return fakeQuery{ID: ctx.Param[string]("id")}, nil
 }
 
 func (store *fakeStore) List(ctx *Context[userModel], query fakeQuery) ([]*userModel, core.ListMeta, error) {
@@ -121,7 +121,7 @@ func TestCrudDefaultFlowWithFakeStore(t *testing.T) {
 		}).
 		Validate(func(c *Context[userModel], v *validate.Validator) {
 			if c.Action == CreateAction {
-				v.Field("name").Value(route.Form[string](c.Context, "name")).Required("请输入名称")
+				v.Field("name").Value(c.Form[string]("name")).Required("请输入名称")
 			}
 		}).
 		Format(func(c *Context[userModel], f *Formatter[userModel]) {
@@ -232,7 +232,7 @@ func TestCrudCreateValidation(t *testing.T) {
 	New[userModel, fakeQuery](users, newFakeStore()).
 		Actions(CreateAction).
 		Validate(func(c *Context[userModel], v *validate.Validator) {
-			v.Field("name").Value(route.Form[string](c.Context, "name")).Required("请输入名称")
+			v.Field("name").Value(c.Form[string]("name")).Required("请输入名称")
 		})
 
 	response := request(registry, http.MethodPost, "/users", bytes.NewBufferString(""))

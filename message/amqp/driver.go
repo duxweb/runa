@@ -10,7 +10,7 @@ import (
 	amqp091 "github.com/rabbitmq/amqp091-go"
 )
 
-func Driver(conn *amqp091.Connection, options ...Option) message.BrokerDriver {
+func Driver(conn *amqp091.Connection, options ...Option) message.Driver {
 	opts := defaultOptions()
 	for _, option := range options {
 		if option != nil {

@@ -2,6 +2,24 @@
 
 [English](CHANGELOG.md) | 简体中文
 
+## v0.1.1 - 2026-07-01
+
+### 变更
+
+- 统一 `route.Context` 泛型访问器为 Go 1.27 泛型方法，包括 `Param`、`Query`、`Header`、`Cookie`、`Form`、`Meta`、`Input`、`Service`。
+- 将路由元数据读取改为 `*route.Route` 上的 `route.MetaAs[T](...)` 方法。
+- 将可选 XLSX CRUD 导入导出拆到 `crud/excelize`，基础 `crud` 模块不再携带 Excel 依赖。
+- 将 message broker 接口统一命名为 `message.Driver`，并同步官方消息驱动。
+- 通过 `core.ColorEnabled` 统一终端颜色检测。
+- 抽取 `view` 与 `view/rhtml` 共享的模板函数辅助逻辑。
+
+### 修复
+
+- 删除陈旧的 `internal/registry` 副本，统一使用 `kernel/registry`。
+- 移除冗余 helper 变体和重复的 `contains` 实现。
+- 更新 route、CRUD、audit、middleware、resource、console 和代码生成模板，适配新的泛型方法风格。
+- 更新中英文文档，覆盖 route context helper、CRUD Excelize、模块安装和注入 route service 的用法。
+
 ## v0.1.0 - 2026-07-01
 
 ### 新增

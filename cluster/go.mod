@@ -3,8 +3,8 @@ module github.com/duxweb/runa/cluster
 go 1.27rc1
 
 require (
-	github.com/duxweb/runa v0.1.0
-	github.com/duxweb/runa/id v0.1.0
+	github.com/duxweb/runa v0.1.1
+	github.com/duxweb/runa/id v0.1.1
 )
 
 require (

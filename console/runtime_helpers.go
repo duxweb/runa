@@ -14,7 +14,6 @@ import (
 	runaprovider "github.com/duxweb/runa/provider"
 	"github.com/duxweb/runa/queue"
 	"github.com/duxweb/runa/rate"
-	"github.com/duxweb/runa/route"
 	"github.com/duxweb/runa/schedule"
 	"github.com/duxweb/runa/session"
 	"github.com/duxweb/runa/storage"
@@ -181,7 +180,7 @@ func permissionInfos(app AppContext) []auth.PermissionInfo {
 		return items
 	}
 	for _, item := range appRoutes(app) {
-		if item == nil || route.MetaAs[bool](item, "can") == false && item.MetaData != nil && item.MetaData["can"] != nil {
+		if item == nil || item.MetaAs[bool]("can") == false && item.MetaData != nil && item.MetaData["can"] != nil {
 			continue
 		}
 		id := item.RouteID()

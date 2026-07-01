@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/duxweb/runa/core"
-	"github.com/duxweb/runa/route"
 	"github.com/duxweb/runa/validate"
 )
 
@@ -155,21 +154,21 @@ func (source *Source[Model]) value() (any, bool) {
 	ctx := source.formatter.ctx
 	switch source.kind {
 	case "field":
-		if value := route.Form[string](ctx.Context, source.name); value != "" {
+		if value := ctx.Form[string](source.name); value != "" {
 			return value, true
 		}
 		return jsonField(ctx, source.name)
 	case "query":
-		value := route.Query[string](ctx.Context, source.name)
+		value := ctx.Query[string](source.name)
 		return value, value != ""
 	case "param":
-		value := route.Param[string](ctx.Context, source.name)
+		value := ctx.Param[string](source.name)
 		return value, value != ""
 	case "header":
-		value := route.Header[string](ctx.Context, source.name)
+		value := ctx.Header[string](source.name)
 		return value, value != ""
 	case "cookie":
-		value := route.Cookie[string](ctx.Context, source.name)
+		value := ctx.Cookie[string](source.name)
 		return value, value != ""
 	case "file":
 		value, ok := ctx.File(source.name)

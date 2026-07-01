@@ -30,7 +30,7 @@ func TestContextInputBindsAndValidates(t *testing.T) {
 	registry := New()
 	group := NewGroup(registry, "")
 	group.Post("/users/{id}", func(ctx *Context) error {
-		input, err := Input[bindInput](ctx)
+		input, err := ctx.Input[bindInput]()
 		if err != nil {
 			return err
 		}
@@ -55,7 +55,7 @@ func TestContextInputValidationError(t *testing.T) {
 	registry := New()
 	group := NewGroup(registry, "")
 	group.Get("/users/{id}", func(ctx *Context) error {
-		_, err := Input[bindInput](ctx)
+		_, err := ctx.Input[bindInput]()
 		return err
 	})
 
@@ -104,7 +104,7 @@ func TestContextInputRejectsOverflowAndBindsTimeScalars(t *testing.T) {
 	registry := New()
 	group := NewGroup(registry, "")
 	group.Get("/scalar", func(ctx *Context) error {
-		input, err := Input[scalarBindInput](ctx)
+		input, err := ctx.Input[scalarBindInput]()
 		if err != nil {
 			return err
 		}
@@ -136,7 +136,7 @@ func TestContextInputBindsJSON(t *testing.T) {
 	registry := New()
 	group := NewGroup(registry, "")
 	group.Post("/json", func(ctx *Context) error {
-		input, err := Input[jsonInput](ctx)
+		input, err := ctx.Input[jsonInput]()
 		if err != nil {
 			return err
 		}
@@ -165,7 +165,7 @@ func TestContextInputBindsBodyField(t *testing.T) {
 	registry := New()
 	group := NewGroup(registry, "")
 	group.Post("/body", func(ctx *Context) error {
-		input, err := Input[bodyInput](ctx)
+		input, err := ctx.Input[bodyInput]()
 		if err != nil {
 			return err
 		}
@@ -192,7 +192,7 @@ func TestContextInputBindsRawBody(t *testing.T) {
 	registry := New()
 	group := NewGroup(registry, "")
 	group.Post("/raw", func(ctx *Context) error {
-		input, err := Input[rawBodyInput](ctx)
+		input, err := ctx.Input[rawBodyInput]()
 		if err != nil {
 			return err
 		}
@@ -217,7 +217,7 @@ func TestContextInputBindsStreamBody(t *testing.T) {
 	registry := New()
 	group := NewGroup(registry, "")
 	group.Post("/stream", func(ctx *Context) error {
-		input, err := Input[streamInput](ctx)
+		input, err := ctx.Input[streamInput]()
 		if err != nil {
 			return err
 		}
@@ -252,7 +252,7 @@ func TestContextInputBindsFile(t *testing.T) {
 	registry := New()
 	group := NewGroup(registry, "")
 	group.Post("/upload", func(ctx *Context) error {
-		input, err := Input[fileInput](ctx)
+		input, err := ctx.Input[fileInput]()
 		if err != nil {
 			return err
 		}
@@ -284,7 +284,7 @@ func TestContextInputBindsFileSlice(t *testing.T) {
 	registry := New()
 	group := NewGroup(registry, "")
 	group.Post("/uploads", func(ctx *Context) error {
-		input, err := Input[fileSliceInput](ctx)
+		input, err := ctx.Input[fileSliceInput]()
 		if err != nil {
 			return err
 		}

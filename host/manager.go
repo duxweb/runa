@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 )
 
@@ -162,7 +163,7 @@ func (manager *Manager) markStarted(names []string) {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	for _, name := range names {
-		if !contains(manager.started, name) {
+		if !slices.Contains(manager.started, name) {
 			manager.started = append(manager.started, name)
 		}
 	}
@@ -171,13 +172,4 @@ func (manager *Manager) markStarted(names []string) {
 type namedUnit struct {
 	name string
 	unit Unit
-}
-
-func contains(items []string, value string) bool {
-	for _, item := range items {
-		if item == value {
-			return true
-		}
-	}
-	return false
 }

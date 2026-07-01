@@ -15,7 +15,7 @@ import (
 
 type Registry struct {
 	mu                 sync.RWMutex
-	drivers            map[string]BrokerDriver
+	drivers            map[string]Driver
 	brokers            map[string]brokerEntry
 	subscriptions      []subscriptionEntry
 	active             []Subscription
@@ -28,7 +28,7 @@ type Registry struct {
 // New creates a registry.
 func New() *Registry {
 	registry := &Registry{
-		drivers: make(map[string]BrokerDriver),
+		drivers: make(map[string]Driver),
 		brokers: make(map[string]brokerEntry),
 	}
 	registry.RegisterDriver(DefaultDriver, MemoryDriver())
@@ -36,7 +36,7 @@ func New() *Registry {
 	return registry
 }
 
-func (registry *Registry) RegisterDriver(name string, driver BrokerDriver) {
+func (registry *Registry) RegisterDriver(name string, driver Driver) {
 	if name == "" || driver == nil {
 		return
 	}
@@ -262,7 +262,7 @@ func (registry *Registry) PublishMessage(ctx context.Context, broker string, top
 	return registry.publishMessage(ctx, entry.name, entry.options, driver, topic, payload, options)
 }
 
-func (registry *Registry) publishMessage(ctx context.Context, broker string, brokerOptions BrokerOptions, driver BrokerDriver, topic string, payload []byte, options PublishOptions) error {
+func (registry *Registry) publishMessage(ctx context.Context, broker string, brokerOptions BrokerOptions, driver Driver, topic string, payload []byte, options PublishOptions) error {
 	headers := core.CloneMap(options.Headers)
 	if headers == nil {
 		headers = make(core.Map)
@@ -348,13 +348,13 @@ func (registry *Registry) Close(ctx context.Context) error {
 	registry.mu.Lock()
 	active := append([]Subscription(nil), registry.active...)
 	registry.active = nil
-	drivers := make(map[string]BrokerDriver, len(registry.drivers))
+	drivers := make(map[string]Driver, len(registry.drivers))
 	for name, driver := range registry.drivers {
 		drivers[name] = driver
 	}
 	registry.mu.Unlock()
 	err := closeSubscriptions(ctx, active)
-	seen := map[BrokerDriver]struct{}{}
+	seen := map[Driver]struct{}{}
 	for _, driver := range drivers {
 		if driver == nil {
 			continue
@@ -442,7 +442,7 @@ func (registry *Registry) wrap(entry subscriptionEntry, options BrokerOptions, c
 	}
 }
 
-func (registry *Registry) broker(name string) (brokerEntry, BrokerDriver, error) {
+func (registry *Registry) broker(name string) (brokerEntry, Driver, error) {
 	registry.mu.RLock()
 	defer registry.mu.RUnlock()
 	entry, ok := registry.brokers[name]

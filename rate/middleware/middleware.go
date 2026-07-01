@@ -14,7 +14,7 @@ import (
 func Use(name string) route.Middleware {
 	return func(next route.Handler) route.Handler {
 		return func(ctx *route.Context) error {
-			registry := route.Service[*rate.Registry](ctx)
+			registry := ctx.Service[*rate.Registry]()
 			if registry == nil {
 				return ctx.Error(http.StatusTooManyRequests, "rate registry is not configured")
 			}
@@ -38,7 +38,7 @@ func Use(name string) route.Middleware {
 
 func rateKeys(ctx *route.Context, name string) []string {
 	keys := []string{}
-	if registry := route.Service[*rate.Registry](ctx); registry != nil {
+	if registry := ctx.Service[*rate.Registry](); registry != nil {
 		rule, ok := registry.Rule(name)
 		if ok {
 			for _, source := range rule.Key {

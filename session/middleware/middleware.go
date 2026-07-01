@@ -16,7 +16,7 @@ func Use(name ...string) route.Middleware {
 	}
 	return func(next route.Handler) route.Handler {
 		return func(ctx *route.Context) error {
-			registry := route.Service[*session.Registry](ctx)
+			registry := ctx.Service[*session.Registry]()
 			if registry == nil {
 				return errors.New("session is not configured")
 			}

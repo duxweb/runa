@@ -35,7 +35,7 @@ func (service *httpCollectorService) Boot(_ context.Context, app runaprovider.Co
 	}
 	middleware := httpMiddleware(service.metrics)
 	for _, item := range routes.Routes() {
-		if item == nil || route.MetaAs[bool](item, "observe") {
+		if item == nil || item.MetaAs[bool]("observe") {
 			continue
 		}
 		item.Use(middleware)

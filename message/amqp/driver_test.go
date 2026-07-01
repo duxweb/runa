@@ -6,8 +6,8 @@ import (
 	"github.com/duxweb/runa/message"
 )
 
-func TestDriverImplementsBrokerDriver(t *testing.T) {
-	if _, ok := Driver(nil).(message.BrokerDriver); !ok {
-		t.Fatal("driver does not implement message.BrokerDriver")
+func TestDriverImplementsDriver(t *testing.T) {
+	if _, ok := Driver(nil).(message.Driver); !ok {
+		t.Fatal("driver does not implement message.Driver")
 	}
 }

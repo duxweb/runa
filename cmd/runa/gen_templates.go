@@ -180,7 +180,7 @@ func New{{.Type}}Store() *{{.Var}}Store {
 }
 
 func (store *{{.Var}}Store) Query(ctx *crud.Context[{{.Type}}Model]) ({{.Type}}Query, error) {
-	return {{.Type}}Query{ID: route.Param[string](ctx.Context, "id")}, nil
+	return {{.Type}}Query{ID: ctx.Param[string]("id")}, nil
 }
 
 func (store *{{.Var}}Store) List(ctx *crud.Context[{{.Type}}Model], query {{.Type}}Query) ([]*{{.Type}}Model, core.ListMeta, error) {

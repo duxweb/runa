@@ -12,7 +12,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
-func Driver(client *goredis.Client, options ...Option) message.BrokerDriver {
+func Driver(client *goredis.Client, options ...Option) message.Driver {
 	opts := defaultOptions()
 	for _, option := range options {
 		if option != nil {

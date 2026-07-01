@@ -10,7 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
+
+	"github.com/duxweb/runa/view/internal/renderutil"
 )
 
 // Context is the minimal route context used by renderers.
@@ -96,7 +97,7 @@ func (renderer *HTMLRenderer) Load(ctx context.Context, set *Set) error {
 		tpl = tpl.Funcs(template.FuncMap(renderer.set.Funcs))
 	}
 	if len(renderer.set.ContextFuncs) > 0 {
-		tpl = tpl.Funcs(buildPlaceholderFuncMap(renderer.set.ContextFuncs))
+		tpl = tpl.Funcs(renderutil.BuildPlaceholderFuncMap(renderer.set.ContextFuncs))
 	}
 	if len(renderer.funcs) > 0 {
 		tpl = tpl.Funcs(renderer.funcs)
@@ -146,8 +147,8 @@ func (renderer *HTMLRenderer) Render(ctx Context, writer io.Writer, name string,
 	renderer.mu.RLock()
 	tpl := renderer.tpl
 	aliases := renderer.aliases
-	contextFuncs := cloneContextFuncs(renderer.set.ContextFuncs)
-	templateName := aliases[normalizeName(name)]
+	contextFuncs := renderutil.CloneContextFuncs(renderer.set.ContextFuncs)
+	templateName := aliases[renderutil.NormalizeName(name)]
 	renderer.mu.RUnlock()
 	if templateName == "" {
 		return fmt.Errorf("template %s is not found", name)
@@ -157,7 +158,7 @@ func (renderer *HTMLRenderer) Render(ctx Context, writer io.Writer, name string,
 		if err != nil {
 			return err
 		}
-		tpl = clone.Funcs(buildContextFuncMap(ctx.Context(), contextFuncs))
+		tpl = clone.Funcs(renderutil.BuildContextFuncMap(ctx.Context(), contextFuncs))
 	}
 	var buffer bytes.Buffer
 	if err := tpl.ExecuteTemplate(&buffer, templateName, data); err != nil {
@@ -201,7 +202,7 @@ func (renderer *HTMLRenderer) reloadIfChanged(ctx context.Context) error {
 		}
 		for _, item := range items {
 			old := files[item.Name]
-			if old.Size != item.Size || !sameModTime(old.ModTime, item.ModTime) {
+			if old.Size != item.Size || !renderutil.SameModTime(old.ModTime, item.ModTime) {
 				return renderer.Load(ctx, &renderer.set)
 			}
 		}
@@ -217,54 +218,4 @@ func countSourceFiles(files map[string]File, source Source) int {
 		}
 	}
 	return count
-}
-
-func sameModTime(a time.Time, b time.Time) bool {
-	return a.Equal(b) || a.Truncate(time.Second).Equal(b.Truncate(time.Second))
-}
-
-func cloneFuncs(funcs map[string]any) map[string]any {
-	if len(funcs) == 0 {
-		return nil
-	}
-	output := make(map[string]any, len(funcs))
-	for name, fn := range funcs {
-		output[name] = fn
-	}
-	return output
-}
-
-func cloneContextFuncs(funcs map[string]func(context.Context) any) map[string]func(context.Context) any {
-	if len(funcs) == 0 {
-		return nil
-	}
-	output := make(map[string]func(context.Context) any, len(funcs))
-	for name, fn := range funcs {
-		output[name] = fn
-	}
-	return output
-}
-
-func buildContextFuncMap(ctx context.Context, funcs map[string]func(context.Context) any) template.FuncMap {
-	output := make(template.FuncMap, len(funcs))
-	for name, build := range funcs {
-		if build == nil {
-			continue
-		}
-		output[name] = build(ctx)
-	}
-	return output
-}
-
-func buildPlaceholderFuncMap(funcs map[string]func(context.Context) any) template.FuncMap {
-	output := make(template.FuncMap, len(funcs))
-	for name := range funcs {
-		output[name] = func(...any) any { return "" }
-	}
-	return output
-}
-
-func normalizeName(name string) string {
-	name = filepath.ToSlash(strings.TrimPrefix(name, "./"))
-	return strings.TrimPrefix(name, "/")
 }

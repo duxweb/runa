@@ -66,7 +66,7 @@ func New(configs ...Config) route.Middleware {
 					return logErr
 				}
 			}
-			if logs := route.Service[*runlog.Registry](ctx); logs != nil {
+			if logs := ctx.Service[*runlog.Registry](); logs != nil {
 				logs.Get(config.Channel).LogAttrs(ctx.Request().Context(), level(entry), "http request", attrs(config, entry)...)
 			}
 			return err

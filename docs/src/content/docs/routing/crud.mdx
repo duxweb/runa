@@ -110,7 +110,27 @@ The optional action arguments limit validation to selected actions.
 
 ## Import and export
 
-CRUD supports CSV/XLSX import and export. These features depend on the `crud` module's own external dependencies, which enter your project only when you import `crud`.
+CRUD includes CSV import and export by default. XLSX support is optional and lives in the `crud/excelize` module, so projects that only use CRUD do not pull in Excel dependencies.
+
+```bash
+go get github.com/duxweb/runa/crud/excelize
+```
+
+Register the XLSX format with a blank import in your application:
+
+```go
+import _ "github.com/duxweb/runa/crud/excelize"
+```
+
+Then allow the format on import/export actions:
+
+```go
+crud.New[User, UserQuery](users, userStore).
+    Export[UserOutput](exportUser, func(e *crud.Exporter[User, UserOutput]) error {
+        e.Name("users").Formats("xlsx", "csv")
+        return nil
+    })
+```
 
 Import and export are advanced features. First get list, show, create, edit, and delete working.
 

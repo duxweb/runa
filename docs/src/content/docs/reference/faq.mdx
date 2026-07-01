@@ -46,7 +46,7 @@ By default, config files live in `config/`. You can change this with `runa.Confi
 
 Runa route is a transport block. It does not hardcode concrete capabilities into `route.Context`. This lets route avoid importing cache, database, storage, and other capability packages, so applications only pay dependency cost for the capabilities they install.
 
-In HTTP handlers, use the capability package `Default()` helper or `route.Service[T](ctx)` to read injected services.
+In HTTP handlers, use the capability package `Default()` helper or `ctx.Service[T]()` to read injected services.
 
 ## Does go test ./... test all child modules
 

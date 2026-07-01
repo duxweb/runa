@@ -11,7 +11,7 @@ description: "读取请求、响应内容和访问应用能力"
 
 ```go
 route.Default().Get("/users/{id}", func(ctx *route.Context) error {
-    id := ctx.ParamString("id")
+    id := ctx.Param[string]("id")
     return ctx.JSON(runa.Map{"id": id})
 })
 ```
@@ -22,13 +22,15 @@ route.Default().Get("/users/{id}", func(ctx *route.Context) error {
 
 ```go
 route.Default().Get("/search/{category}", func(ctx *route.Context) error {
-    category := ctx.ParamString("category")
-    keyword := ctx.QueryString("keyword")
+    category := ctx.Param[string]("category")
+    keyword := ctx.Query[string]("keyword")
+    page := ctx.Query[int]("page", 1)
     userAgent := ctx.Request().UserAgent()
 
     return ctx.JSON(runa.Map{
         "category": category,
         "keyword": keyword,
+        "page": page,
         "ua": userAgent,
     })
 })
@@ -38,8 +40,14 @@ route.Default().Get("/search/{category}", func(ctx *route.Context) error {
 
 | 方法 | 说明 |
 | --- | --- |
-| `ParamString(name)` | 读取路径参数 |
-| `QueryString(name)` | 读取查询参数 |
+| `Param[T](name, fallback...)` | 读取并转换路径参数 |
+| `Query[T](name, fallback...)` | 读取并转换查询参数 |
+| `Header[T](name, fallback...)` | 读取并转换请求头 |
+| `Cookie[T](name, fallback...)` | 读取并转换 Cookie |
+| `Form[T](name, fallback...)` | 读取并转换表单值 |
+| `Meta[T](key, fallback...)` | 读取并转换当前路由元数据 |
+| `Input[T]()` | 绑定并验证请求输入到 `T` |
+| `Service[T](name...)` | 读取注入到 route context 的服务 |
 | `Request()` | 取得原始 `*http.Request` |
 | `Response()` | 取得原始 `http.ResponseWriter` |
 | `Context()` | 取得请求的 `context.Context` |

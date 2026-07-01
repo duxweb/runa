@@ -48,7 +48,7 @@ type startupBannerService struct{ Value string }
 func TestServerUsesServicesBoundAfterServerCreation(t *testing.T) {
 	registry := New()
 	registry.Get("/", func(ctx *Context) error {
-		service := Service[*startupBannerService](ctx)
+		service := ctx.Service[*startupBannerService]()
 		if service == nil {
 			return ctx.Text("missing")
 		}

@@ -7,8 +7,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.24
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.104.0
 	github.com/aws/smithy-go v1.27.1
-	github.com/duxweb/runa v0.1.0
-	github.com/duxweb/runa/storage v0.1.0
+	github.com/duxweb/runa v0.1.1
+	github.com/duxweb/runa/storage v0.1.1
 )
 
 require (

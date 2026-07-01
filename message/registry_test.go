@@ -34,7 +34,7 @@ func TestRegistryMemoryPublishSubscribe(t *testing.T) {
 	}
 }
 
-func TestRegistryValidatesBrokerDriver(t *testing.T) {
+func TestRegistryValidatesDriver(t *testing.T) {
 	registry := New()
 	registry.Broker("bad", Use("missing"))
 	if err := registry.Freeze(context.Background()); err == nil {

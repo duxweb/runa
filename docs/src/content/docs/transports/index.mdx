@@ -77,7 +77,7 @@ route.Default().Get("/cache", func(ctx *route.Context) error {
 
 `ctx.Context()` is the standard library context for the current request. Pass it to databases, caches, queues, and external HTTP clients so downstream work can stop when the request is canceled.
 
-`route.Service[T](ctx)` is a lower-level escape hatch for services injected into the route context. Most application code can start with capability `Default()`.
+`ctx.Service[T]()` is a lower-level escape hatch for services injected into the route context. Most application code can start with capability `Default()`.
 
 ## How to choose a transport
 

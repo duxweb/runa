@@ -75,11 +75,11 @@ func (c *Context[Model]) Pagination() PaginationMode { return c.options.paginati
 
 // Page returns current page request.
 func (c *Context[Model]) Page() core.PageRequest {
-	page := route.Query[int](c.Context, c.options.pageFields.Page, 1)
+	page := c.Query[int](c.options.pageFields.Page, 1)
 	if page <= 0 {
 		page = 1
 	}
-	size := route.Query[int](c.Context, c.options.pageFields.PageSize, c.options.pageSize)
+	size := c.Query[int](c.options.pageFields.PageSize, c.options.pageSize)
 	if size <= 0 {
 		size = c.options.pageSize
 	}
@@ -100,7 +100,7 @@ func (c *Context[Model]) Page() core.PageRequest {
 
 // Scroll returns current scroll request.
 func (c *Context[Model]) Scroll() core.ScrollRequest {
-	limit := route.Query[int](c.Context, c.options.scrollFields.Limit, c.options.scrollLimit)
+	limit := c.Query[int](c.options.scrollFields.Limit, c.options.scrollLimit)
 	if limit <= 0 {
 		limit = c.options.scrollLimit
 	}
@@ -113,7 +113,7 @@ func (c *Context[Model]) Scroll() core.ScrollRequest {
 	if c.options.scrollMax <= 0 && limit > 100 {
 		limit = 100
 	}
-	return core.ScrollRequest{Cursor: route.Query[string](c.Context, c.options.scrollFields.Cursor), Limit: limit}
+	return core.ScrollRequest{Cursor: c.Query[string](c.options.scrollFields.Cursor), Limit: limit}
 }
 
 // Sort returns parsed sort orders.
@@ -124,7 +124,7 @@ func (c *Context[Model]) Sort() []SortOrder {
 		if target == "" {
 			target = field.Name
 		}
-		direction := strings.ToLower(route.Query[string](c.Context, field.Name+"_sort"))
+		direction := strings.ToLower(c.Query[string](field.Name + "_sort"))
 		if direction != "asc" && direction != "desc" {
 			continue
 		}
@@ -140,7 +140,7 @@ func (c *Context[Model]) Filters() []filter.Value {
 	}
 	items := make([]filter.Value, 0, len(c.options.filters))
 	for _, item := range c.options.filters {
-		value := route.Query[string](c.Context, item.Name)
+		value := c.Query[string](item.Name)
 		if value == "" {
 			continue
 		}

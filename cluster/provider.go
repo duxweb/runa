@@ -3,8 +3,6 @@ package cluster
 import (
 	"context"
 	"fmt"
-	"os"
-	"sync"
 	"time"
 
 	runaconfig "github.com/duxweb/runa/config"
@@ -12,15 +10,6 @@ import (
 	"github.com/duxweb/runa/id"
 	runaprovider "github.com/duxweb/runa/provider"
 )
-
-// Registry stores cluster state for one app instance.
-type Registry struct {
-	options  options
-	instance Instance
-	cancel   context.CancelFunc
-	done     chan struct{}
-	mu       sync.RWMutex
-}
 
 // Provider registers optional cluster heartbeat support.
 func Provider(items ...Option) runaprovider.Provider {
@@ -95,36 +84,6 @@ func applyFileConfig(opts *options, cfg fileConfig) {
 	}
 }
 
-// NewRegistry creates a cluster runtime.
-func NewRegistry(ctx runaprovider.Context, opts options) (*Registry, error) {
-	if opts.driver == nil {
-		return nil, fmt.Errorf("cluster driver is required")
-	}
-	hostname, _ := os.Hostname()
-	instanceID := opts.id
-	if instanceID == "" {
-		instanceID = defaultInstanceID(hostname)
-	}
-	service := opts.service
-	if service == "" {
-		service = DefaultService
-	}
-	instance := Instance{
-		ID:        instanceID,
-		Service:   service,
-		Env:       pick(opts.env, appEnv(ctx)),
-		Version:   opts.version,
-		Hostname:  hostname,
-		PID:       os.Getpid(),
-		Addr:      opts.addr,
-		Status:    StatusStarting,
-		StartedAt: core.Now(),
-		TTL:       opts.ttl,
-		Meta:      core.CloneMap(opts.meta),
-	}
-	return &Registry{options: opts, instance: instance}, nil
-}
-
 func (runtime *Registry) Name() string { return "cluster" }
 
 func (runtime *Registry) Init(context.Context, runaprovider.Context) error { return nil }
@@ -132,7 +91,7 @@ func (runtime *Registry) Init(context.Context, runaprovider.Context) error { ret
 func (runtime *Registry) Register(context.Context, runaprovider.Context) error { return nil }
 
 func (runtime *Registry) Boot(ctx context.Context, app runaprovider.Context) error {
-	ctx = normalizeContext(ctx)
+	ctx = core.NormalizeContext(ctx)
 	if err := runtime.resolveDriver(app); err != nil {
 		return err
 	}
@@ -175,7 +134,7 @@ func (runtime *Registry) resolveDriver(app runaprovider.Context) error {
 
 func (runtime *Registry) Shutdown(ctx context.Context, app runaprovider.Context) error {
 	_ = app
-	ctx = normalizeContext(ctx)
+	ctx = core.NormalizeContext(ctx)
 	runtime.mu.Lock()
 	cancel := runtime.cancel
 	done := runtime.done
@@ -220,7 +179,7 @@ func (runtime *Registry) Instances(ctx context.Context, service ...string) ([]In
 	if len(service) > 0 {
 		name = service[0]
 	}
-	return runtime.options.driver.Instances(normalizeContext(ctx), name)
+	return runtime.options.driver.Instances(core.NormalizeContext(ctx), name)
 }
 
 func (runtime *Registry) loop(ctx context.Context, done chan struct{}) {
@@ -258,11 +217,4 @@ func pick(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func normalizeContext(ctx context.Context) context.Context {
-	if ctx == nil {
-		return context.Background()
-	}
-	return ctx
 }

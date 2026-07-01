@@ -95,11 +95,11 @@ Code options have higher priority than file config and fit runtime requirements 
 
 ## Access capabilities in HTTP requests
 
-`route.Context` does not directly bind concrete capabilities. In HTTP handlers, prefer capability package `Default()` or `route.Service[T](ctx)` to read services injected into the route context.
+`route.Context` does not directly bind concrete capabilities. In HTTP handlers, prefer capability package `Default()` or `ctx.Service[T]()` to read services injected into the route context.
 
 ```go
 route.Default().Get("/cache", func(ctx *route.Context) error {
-    registry := route.Service[*cache.Registry](ctx)
+    registry := ctx.Service[*cache.Registry]()
     pool := registry.MustOf[string]("default")
     value, _, err := pool.Get(ctx.Context(), "hello")
     if err != nil {

@@ -110,7 +110,27 @@ crud.New[User, UserQuery](users, userStore).
 
 ## 导入导出
 
-CRUD 支持 CSV/XLSX 导入导出。相关功能依赖 `crud` 模块自己的外部依赖，只有 import `crud` 时才进入项目。
+CRUD 默认内置 CSV 导入导出。XLSX 支持是可选能力，放在 `crud/excelize` 子模块里；只使用 CRUD 的项目不会被迫引入 Excel 依赖。
+
+```bash
+go get github.com/duxweb/runa/crud/excelize
+```
+
+在应用里用空白 import 注册 XLSX 格式：
+
+```go
+import _ "github.com/duxweb/runa/crud/excelize"
+```
+
+然后在导入/导出动作里允许该格式：
+
+```go
+crud.New[User, UserQuery](users, userStore).
+    Export[UserOutput](exportUser, func(e *crud.Exporter[User, UserOutput]) error {
+        e.Name("users").Formats("xlsx", "csv")
+        return nil
+    })
+```
 
 导入导出属于进阶功能，建议先把 list、show、create、edit、delete 跑通后再接。
 

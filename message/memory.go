@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-func MemoryDriver() BrokerDriver {
+func MemoryDriver() Driver {
 	return &memoryDriver{subscribers: make(map[string]map[uint64]HandlerFunc)}
 }
 

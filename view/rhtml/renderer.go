@@ -10,12 +10,13 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/duxweb/runa/view"
+	"github.com/duxweb/runa/view/internal/renderutil"
 )
 
 // New creates an enhanced HTML renderer that can also be used directly.
@@ -192,7 +193,7 @@ func (renderer *Renderer) Load(ctx context.Context, set *view.Set) error {
 		tpl = tpl.Funcs(template.FuncMap(renderer.set.Funcs))
 	}
 	if len(renderer.set.ContextFuncs) > 0 {
-		tpl = tpl.Funcs(buildPlaceholderFuncMap(renderer.set.ContextFuncs))
+		tpl = tpl.Funcs(renderutil.BuildPlaceholderFuncMap(renderer.set.ContextFuncs))
 	}
 	if len(renderer.funcs) > 0 {
 		tpl = tpl.Funcs(renderer.funcs)
@@ -280,8 +281,8 @@ func (renderer *Renderer) Render(ctx view.Context, writer io.Writer, name string
 	}
 	renderer.mu.RLock()
 	tpl := renderer.tpl
-	contextFuncs := cloneContextFuncs(renderer.set.ContextFuncs)
-	templateName := renderer.aliases[normalizeName(name)]
+	contextFuncs := renderutil.CloneContextFuncs(renderer.set.ContextFuncs)
+	templateName := renderer.aliases[renderutil.NormalizeName(name)]
 	renderer.mu.RUnlock()
 	if templateName == "" {
 		return fmt.Errorf("template %s is not found", name)
@@ -291,7 +292,7 @@ func (renderer *Renderer) Render(ctx view.Context, writer io.Writer, name string
 		if err != nil {
 			return err
 		}
-		tpl = clone.Funcs(buildContextFuncMap(ctx.Context(), contextFuncs))
+		tpl = clone.Funcs(renderutil.BuildContextFuncMap(ctx.Context(), contextFuncs))
 	}
 	var buffer bytes.Buffer
 	if err := tpl.ExecuteTemplate(&buffer, templateName, renderData(ctx.Context(), data)); err != nil {
@@ -335,12 +336,22 @@ func (renderer *Renderer) reloadIfChanged(ctx context.Context) error {
 		}
 		for _, item := range items {
 			old := files[item.Name]
-			if old.Size != item.Size || !sameModTime(old.ModTime, item.ModTime) {
+			if old.Size != item.Size || !renderutil.SameModTime(old.ModTime, item.ModTime) {
 				return renderer.Load(ctx, &renderer.set)
 			}
 		}
 	}
 	return nil
+}
+
+func countSourceFiles(files map[string]view.File, source view.Source) int {
+	count := 0
+	for _, file := range files {
+		if file.Source.Root == source.Root {
+			count++
+		}
+	}
+	return count
 }
 
 func readFiles(sources []view.Source) ([]view.File, map[string]string, map[string]string, error) {
@@ -373,55 +384,6 @@ func fileMap(files []view.File) map[string]view.File {
 		items[file.Name] = file
 	}
 	return items
-}
-
-func countSourceFiles(files map[string]view.File, source view.Source) int {
-	count := 0
-	for _, file := range files {
-		if file.Source.Root == source.Root {
-			count++
-		}
-	}
-	return count
-}
-
-func sameModTime(a time.Time, b time.Time) bool {
-	return a.Equal(b) || a.Truncate(time.Second).Equal(b.Truncate(time.Second))
-}
-
-func cloneContextFuncs(funcs map[string]func(context.Context) any) map[string]func(context.Context) any {
-	if len(funcs) == 0 {
-		return nil
-	}
-	output := make(map[string]func(context.Context) any, len(funcs))
-	for name, fn := range funcs {
-		output[name] = fn
-	}
-	return output
-}
-
-func buildContextFuncMap(ctx context.Context, funcs map[string]func(context.Context) any) template.FuncMap {
-	output := make(template.FuncMap, len(funcs))
-	for name, build := range funcs {
-		if build == nil {
-			continue
-		}
-		output[name] = build(ctx)
-	}
-	return output
-}
-
-func buildPlaceholderFuncMap(funcs map[string]func(context.Context) any) template.FuncMap {
-	output := make(template.FuncMap, len(funcs))
-	for name := range funcs {
-		output[name] = func(...any) any { return "" }
-	}
-	return output
-}
-
-func normalizeName(name string) string {
-	name = filepath.ToSlash(strings.TrimPrefix(name, "./"))
-	return strings.TrimPrefix(name, "/")
 }
 
 type compiler struct {
@@ -457,7 +419,7 @@ func (compiler compiler) compilePage(name string, body string, sections map[stri
 	if layoutFile == "" {
 		return "", fmt.Errorf("template %s layout %s is not found", name, layoutName)
 	}
-	if contains(compiler.stack, layoutFile) {
+	if slices.Contains(compiler.stack, layoutFile) {
 		return "", fmt.Errorf("template %s layout cycle: %s", name, layoutFile)
 	}
 	collected, err := compiler.collectSections(name, layoutBody, sections)
@@ -640,7 +602,7 @@ func (compiler compiler) compileCustomTags(name string, body string, sections ma
 }
 
 func (compiler compiler) resolve(name string) string {
-	name = normalizeName(name)
+	name = renderutil.NormalizeName(name)
 	if value := compiler.aliases[name]; value != "" {
 		return value
 	}
@@ -1160,15 +1122,6 @@ func cloneData(data any) map[string]any {
 		}
 	}
 	return output
-}
-
-func contains(items []string, value string) bool {
-	for _, item := range items {
-		if item == value {
-			return true
-		}
-	}
-	return false
 }
 
 func reservedTag(name string) bool {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/duxweb/runa/core"
 	"github.com/duxweb/runa/host"
 )
 
@@ -89,7 +90,7 @@ func (item *startupBannerHost) print() {
 	if env == "" {
 		env = "local"
 	}
-	palette := bannerPalette{enabled: supportsColor(writer)}
+	palette := bannerPalette{enabled: core.ColorEnabled(writer)}
 	tools := startupTools(item.registry, baseURL)
 	entries := []startupEntry{
 		{Label: "URL", Value: baseURL, ValueColor: palette.link()},
@@ -167,7 +168,7 @@ func startupTools(registry *Registry, baseURL string) []startupTool {
 			add("OpenAPI", path)
 		case path == "/docs" || strings.HasSuffix(path, "/docs"):
 			add("Docs", path)
-		case MetaAs[bool](item, "observe") || path == "/debug/health" || path == "/debug/ready" || strings.HasPrefix(path, "/debug/"):
+		case item.MetaAs[bool]("observe") || path == "/debug/health" || path == "/debug/ready" || strings.HasPrefix(path, "/debug/"):
 			add("Observe", observeMountPath(path))
 		}
 	}
@@ -308,21 +309,6 @@ func (palette bannerPalette) ready() string {
 		return ""
 	}
 	return "\x1b[90m"
-}
-
-func supportsColor(writer io.Writer) bool {
-	file, ok := writer.(*os.File)
-	if !ok {
-		return false
-	}
-	info, err := file.Stat()
-	if err != nil {
-		return false
-	}
-	if info.Mode()&os.ModeCharDevice == 0 {
-		return false
-	}
-	return os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
 }
 
 func startupReadyText() string {

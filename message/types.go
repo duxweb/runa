@@ -72,7 +72,7 @@ type Codec interface {
 	Unmarshal(data []byte, output any) error
 }
 
-type BrokerDriver interface {
+type Driver interface {
 	Publish(ctx context.Context, topic string, message Envelope) error
 	Subscribe(ctx context.Context, topic string, consumer string, handler HandlerFunc) (Subscription, error)
 	Close(ctx context.Context) error

@@ -216,7 +216,7 @@ crud.New[User](users, orostore.Store[User](orm)).
 
 ```go
 store := orostore.StoreFrom[User](func(ctx *crud.Context[User]) *oro.DB {
-    tenant := route.Header[string](ctx.Context, "X-Tenant")
+    tenant := ctx.Header[string]("X-Tenant")
     _ = tenant
     return dboro.From(database.Default().MustGet("default"))
 })

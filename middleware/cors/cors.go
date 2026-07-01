@@ -2,6 +2,7 @@ package cors
 
 import (
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -27,14 +28,14 @@ func New(configs ...Config) route.Middleware {
 			if config.Next != nil && config.Next(ctx) {
 				return next(ctx)
 			}
-			origin := route.Header[string](ctx, "Origin")
+			origin := ctx.Header[string]("Origin")
 			if origin == "" {
 				return next(ctx)
 			}
 			if allowedOrigin(origin, config.AllowOrigins) {
 				applyHeaders(ctx, origin, config)
 			}
-			if ctx.Request().Method == http.MethodOptions && route.Header[string](ctx, "Access-Control-Request-Method") != "" {
+			if ctx.Request().Method == http.MethodOptions && ctx.Header[string]("Access-Control-Request-Method") != "" {
 				ctx.Response().WriteHeader(http.StatusNoContent)
 				return nil
 			}
@@ -83,7 +84,7 @@ func allowedOrigin(origin string, allowed []string) bool {
 
 func applyHeaders(ctx *route.Context, origin string, config Config) {
 	header := ctx.Response().Header()
-	wildcard := contains(config.AllowOrigins, "*")
+	wildcard := slices.Contains(config.AllowOrigins, "*")
 	if wildcard && !config.Credentials {
 		header.Set("Access-Control-Allow-Origin", "*")
 	} else if !wildcard {
@@ -105,13 +106,4 @@ func applyHeaders(ctx *route.Context, origin string, config Config) {
 	if config.MaxAge > 0 {
 		header.Set("Access-Control-Max-Age", strconv.Itoa(config.MaxAge))
 	}
-}
-
-func contains(items []string, value string) bool {
-	for _, item := range items {
-		if item == value {
-			return true
-		}
-	}
-	return false
 }

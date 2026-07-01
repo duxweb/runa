@@ -46,7 +46,7 @@ pool := registry.MustOf[string]("default")
 
 Runa 的 route 是传输块，不把具体能力写死到 `route.Context`。这样 route 不需要 import cache、database、storage 等能力包，应用只为实际安装的能力付依赖成本。
 
-HTTP handler 中优先用能力包 `Default()`。`route.Service[T](ctx)` 是更底层的取服务方式，只有你明确知道服务已经注入 route context 时再用。
+HTTP handler 中优先用能力包 `Default()`。`ctx.Service[T]()` 是更底层的取服务方式，只有你明确知道服务已经注入 route context 时再用。
 
 ## go test ./... 会测试所有子模块吗
 

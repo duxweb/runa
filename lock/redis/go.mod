@@ -4,8 +4,8 @@ go 1.27rc1
 
 require (
 	github.com/alicebob/miniredis/v2 v2.38.0
-	github.com/duxweb/runa v0.1.0
-	github.com/duxweb/runa/lock v0.1.0
+	github.com/duxweb/runa v0.1.1
+	github.com/duxweb/runa/lock v0.1.1
 	github.com/redis/go-redis/v9 v9.21.0
 )
 

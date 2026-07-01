@@ -9,6 +9,7 @@ import (
 
 	"github.com/duxweb/runa/core"
 	iregistry "github.com/duxweb/runa/kernel/registry"
+	"github.com/duxweb/runa/view/internal/renderutil"
 )
 
 // Registry stores named view domains.
@@ -35,8 +36,8 @@ func (registry *Registry) Register(ctx context.Context, name string, renderer Re
 	if withSet, ok := renderer.(interface{ ViewSet() Set }); ok {
 		value := withSet.ViewSet()
 		set.Sources = append([]Source(nil), value.Sources...)
-		set.Funcs = cloneFuncs(value.Funcs)
-		set.ContextFuncs = cloneContextFuncs(value.ContextFuncs)
+		set.Funcs = renderutil.CloneFuncs(value.Funcs)
+		set.ContextFuncs = renderutil.CloneContextFuncs(value.ContextFuncs)
 	}
 	mergeFuncs(set, registry.funcs, registry.contextFuncs)
 	if err := renderer.Load(core.NormalizeContext(ctx), set); err != nil {

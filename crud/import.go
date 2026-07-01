@@ -1,16 +1,12 @@
 package crud
 
 import (
-	"encoding/csv"
 	"fmt"
-	"io"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/duxweb/runa/core"
-	"github.com/duxweb/runa/route"
-	"github.com/xuri/excelize/v2"
 )
 
 // ImportConfig configures import behavior.
@@ -31,7 +27,7 @@ func (config *ImportConfig[Model]) Batch(size int) *ImportConfig[Model] {
 }
 
 func (config *ImportConfig[Model]) runImport[Query any](builder *Builder[Model, Query], c *Context[Model]) error {
-	rows, err := readCSVRows(c)
+	rows, err := config.readRows(c)
 	if err != nil {
 		return err
 	}
@@ -177,78 +173,63 @@ func (assign *ImportAssign[Model, Target]) callSet(raw string) error {
 	return nil
 }
 
-func readCSVRows[Model any](c *Context[Model]) ([]*ImportRow, error) {
+func (config *ImportConfig[Model]) readRows(c *Context[Model]) ([]*ImportRow, error) {
 	reader := c.Request().Body
+	format := importFormat(c)
 	if file, ok := c.File("file"); ok {
 		opened, err := file.Open()
 		if err != nil {
 			return nil, err
 		}
 		defer opened.Close()
-		if strings.HasSuffix(strings.ToLower(file.Filename), ".xlsx") || route.Query[string](c.Context, "format") == "xlsx" {
-			return readXLSXRows(opened)
+		if format == "" {
+			format = formatFromFilename(file.Filename)
 		}
 		reader = opened
 	}
 	if reader == nil {
 		return nil, c.Error(400, "import file is required")
 	}
-	if strings.Contains(c.Request().Header.Get("Content-Type"), "spreadsheet") || route.Query[string](c.Context, "format") == "xlsx" {
-		return readXLSXRows(reader)
+	if format == "" {
+		format = formatFromContentType(c.Request().Header.Get("Content-Type"))
 	}
-	csvReader := csv.NewReader(reader)
-	headers, err := csvReader.Read()
-	if err != nil {
-		return nil, err
+	if format == "" {
+		format = "csv"
 	}
-	rows := make([]*ImportRow, 0)
-	index := 1
-	for {
-		record, err := csvReader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		index++
-		data := make(core.Map)
-		for i, header := range headers {
-			if i < len(record) {
-				data[strings.TrimSpace(header)] = record[i]
-			}
-		}
-		rows = append(rows, &ImportRow{index: index, data: data})
+	if !formatAllowed(config.config.formats, format) {
+		return nil, unsupportedImportFormat(format)
 	}
-	return rows, nil
+	decoder, ok := importDecoder(format)
+	if !ok {
+		return nil, unsupportedImportFormat(format)
+	}
+	return decoder(reader)
 }
 
-func readXLSXRows(reader io.Reader) ([]*ImportRow, error) {
-	file, err := excelize.OpenReader(reader)
-	if err != nil {
-		return nil, err
+func importFormat[Model any](c *Context[Model]) string {
+	if c == nil || c.Context == nil {
+		return ""
 	}
-	defer file.Close()
-	sheet := file.GetSheetName(0)
-	rawRows, err := file.GetRows(sheet)
-	if err != nil {
-		return nil, err
+	return normalizeFormat(c.Query[string]("format"))
+}
+
+func formatFromFilename(name string) string {
+	parts := strings.Split(name, ".")
+	if len(parts) < 2 {
+		return ""
 	}
-	if len(rawRows) == 0 {
-		return nil, nil
+	return normalizeFormat(parts[len(parts)-1])
+}
+
+func formatFromContentType(value string) string {
+	value = strings.ToLower(value)
+	if strings.Contains(value, "spreadsheet") || strings.Contains(value, "excel") {
+		return "xlsx"
 	}
-	headers := rawRows[0]
-	rows := make([]*ImportRow, 0, len(rawRows)-1)
-	for rowIndex, record := range rawRows[1:] {
-		data := make(core.Map)
-		for i, header := range headers {
-			if i < len(record) {
-				data[strings.TrimSpace(header)] = record[i]
-			}
-		}
-		rows = append(rows, &ImportRow{index: rowIndex + 2, data: data})
+	if strings.Contains(value, "csv") {
+		return "csv"
 	}
-	return rows, nil
+	return ""
 }
 
 func castReflect(raw string, target reflect.Type) (reflect.Value, bool) {

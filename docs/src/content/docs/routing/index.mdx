@@ -76,7 +76,7 @@ route.Default().Delete("/users/{id}", deleteUser)
 
 ```go
 func showUser(ctx *route.Context) error {
-    id := ctx.ParamString("id")
+    id := ctx.Param[string]("id")
     return ctx.JSON(runa.Map{"id": id})
 }
 ```

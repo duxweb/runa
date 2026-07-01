@@ -49,7 +49,7 @@ func (route *Route) Meta(key string, value any) *Route {
 }
 
 // MetaAs reads route metadata cast to T.
-func MetaAs[T any](route *Route, key string, fallback ...T) T {
+func (route *Route) MetaAs[T any](key string, fallback ...T) T {
 	if route == nil {
 		return core.Cast[T](nil, fallback...)
 	}

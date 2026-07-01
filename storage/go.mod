@@ -3,7 +3,7 @@ module github.com/duxweb/runa/storage
 go 1.27rc1
 
 require (
-	github.com/duxweb/runa v0.1.0
+	github.com/duxweb/runa v0.1.1
 	github.com/samber/do/v2 v2.0.0
 )
 

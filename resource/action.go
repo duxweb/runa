@@ -59,7 +59,7 @@ func (res *Resource) DeleteAction[Input any, Output any](name string, path strin
 
 func (res *Resource) typed[Input any, Output any](method string, name string, path string, handler route.TypedHandler[Input, Output]) *route.Route {
 	item := res.route(method, name, path, func(ctx *route.Context) error {
-		input, err := route.Input[Input](ctx)
+		input, err := ctx.Input[Input]()
 		if err != nil {
 			return err
 		}

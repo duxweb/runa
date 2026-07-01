@@ -31,7 +31,7 @@ func New(configs ...Config) route.Middleware {
 			if config.Next != nil && config.Next(ctx) {
 				return next(ctx)
 			}
-			id := cleanID(route.Header[string](ctx, config.Header))
+			id := cleanID(ctx.Header[string](config.Header))
 			if id == "" {
 				id = cleanID(config.Generator())
 			}

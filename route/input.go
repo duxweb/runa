@@ -20,7 +20,10 @@ type InputValidator interface {
 }
 
 // Input binds and validates request data into T.
-func Input[T any](ctx *Context) (*T, error) {
+func (ctx *Context) Input[T any]() (*T, error) {
+	if ctx == nil {
+		return nil, validate.Invalid(validate.FieldError{Code: "bind", Message: "context is nil"})
+	}
 	var input T
 	if err := ctx.Bind(&input); err != nil {
 		return nil, err

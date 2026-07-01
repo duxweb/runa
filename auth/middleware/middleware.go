@@ -149,7 +149,7 @@ type authContext struct {
 }
 
 func (ctx authContext) Session(name ...string) *session.Session {
-	registry := route.Service[*session.Registry](ctx.Context)
+	registry := ctx.Context.Service[*session.Registry]()
 	if registry == nil {
 		return nil
 	}
@@ -197,7 +197,7 @@ func writeCookie(ctx *route.Context, name string, value string, options session.
 }
 
 func registry(ctx *route.Context) *auth.Registry {
-	return route.Service[*auth.Registry](ctx)
+	return ctx.Service[*auth.Registry]()
 }
 
 func authenticator(ctx *route.Context, name string) auth.Authenticator {
@@ -236,11 +236,11 @@ func routeAuthMode(item *route.Route) string {
 	if item == nil {
 		return ""
 	}
-	return route.MetaAs[string](item, "auth")
+	return item.MetaAs[string]("auth")
 }
 
 func routeSkipPermission(item *route.Route) bool {
-	return item != nil && route.MetaAs[bool](item, "can") == false && item.MetaData != nil && item.MetaData["can"] != nil
+	return item != nil && item.MetaAs[bool]("can") == false && item.MetaData != nil && item.MetaData["can"] != nil
 }
 
 func routeID(item *route.Route) string {

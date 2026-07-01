@@ -42,7 +42,7 @@ func Any[In any, Out any](target Target, path string, handler TypedHandler[In, O
 
 func typed[In any, Out any](target Target, method string, path string, handler TypedHandler[In, Out]) *Route {
 	route := target.RouteGroup().Handle(method, path, func(ctx *Context) error {
-		input, err := Input[In](ctx)
+		input, err := ctx.Input[In]()
 		if err != nil {
 			return err
 		}

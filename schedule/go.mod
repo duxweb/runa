@@ -3,9 +3,9 @@ module github.com/duxweb/runa/schedule
 go 1.27rc1
 
 require (
-	github.com/duxweb/runa v0.1.0
-	github.com/duxweb/runa/log v0.1.0
-	github.com/duxweb/runa/task v0.1.0
+	github.com/duxweb/runa v0.1.1
+	github.com/duxweb/runa/log v0.1.1
+	github.com/duxweb/runa/task v0.1.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/samber/do/v2 v2.0.0
 )

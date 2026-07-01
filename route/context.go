@@ -94,20 +94,12 @@ func (ctx *Context) Response() http.ResponseWriter { return ctx.writer }
 // Route returns the matched route metadata.
 func (ctx *Context) Route() *Route { return ctx.route }
 
-// Meta reads current route metadata as any.
-func (ctx *Context) Meta(key string) any {
-	if ctx.route == nil || ctx.route.MetaData == nil {
-		return nil
-	}
-	return ctx.route.MetaData[key]
-}
-
 // Meta reads current route metadata cast to T.
-func Meta[T any](ctx *Context, key string, fallback ...T) T {
+func (ctx *Context) Meta[T any](key string, fallback ...T) T {
 	if ctx == nil || ctx.route == nil {
 		return core.Cast[T](nil, fallback...)
 	}
-	return MetaAs[T](ctx.route, key, fallback...)
+	return ctx.route.MetaAs[T](key, fallback...)
 }
 
 // Scope returns the request scope.
@@ -132,33 +124,24 @@ func (ctx *Context) AddSaver(save func(context.Context) error) {
 	ctx.savers = append(ctx.savers, save)
 }
 
-// ParamString returns a path parameter as string.
-func (ctx *Context) ParamString(name string) string { return Param[string](ctx, name) }
-
 // Param returns a path parameter cast to T.
-func Param[T any](ctx *Context, name string, fallback ...T) T {
+func (ctx *Context) Param[T any](name string, fallback ...T) T {
 	if ctx == nil {
 		return core.Cast[T](nil, fallback...)
 	}
 	return core.Cast[T](ctx.params[name], fallback...)
 }
 
-// QueryString returns a query value as string.
-func (ctx *Context) QueryString(name string) string { return Query[string](ctx, name) }
-
 // Query returns a query value cast to T.
-func Query[T any](ctx *Context, name string, fallback ...T) T {
+func (ctx *Context) Query[T any](name string, fallback ...T) T {
 	if ctx == nil || ctx.request == nil {
 		return core.Cast[T](nil, fallback...)
 	}
 	return core.Cast[T](ctx.request.URL.Query().Get(name), fallback...)
 }
 
-// HeaderString returns a request header as string.
-func (ctx *Context) HeaderString(name string) string { return Header[string](ctx, name) }
-
 // Header returns a request header cast to T.
-func Header[T any](ctx *Context, name string, fallback ...T) T {
+func (ctx *Context) Header[T any](name string, fallback ...T) T {
 	if ctx == nil || ctx.request == nil {
 		return core.Cast[T](nil, fallback...)
 	}
@@ -166,7 +149,7 @@ func Header[T any](ctx *Context, name string, fallback ...T) T {
 }
 
 // Cookie returns a cookie value cast to T.
-func Cookie[T any](ctx *Context, name string, fallback ...T) T {
+func (ctx *Context) Cookie[T any](name string, fallback ...T) T {
 	if ctx == nil || ctx.request == nil {
 		return core.Cast[T](nil, fallback...)
 	}
@@ -190,7 +173,7 @@ func (ctx *Context) CookieValue(name string) (string, bool) {
 }
 
 // Form returns a form value cast to T.
-func Form[T any](ctx *Context, name string, fallback ...T) T {
+func (ctx *Context) Form[T any](name string, fallback ...T) T {
 	if ctx == nil || ctx.request == nil {
 		return core.Cast[T](nil, fallback...)
 	}
@@ -338,7 +321,7 @@ func (ctx *Context) HTML(body string) error {
 
 // Render renders a template response.
 func (ctx *Context) Render(name string, data any, views ...string) error {
-	renderer := Service[Renderer](ctx)
+	renderer := ctx.Service[Renderer]()
 	if renderer == nil {
 		return fmt.Errorf("route renderer is not configured")
 	}
@@ -359,7 +342,7 @@ func (ctx *Context) Render(name string, data any, views ...string) error {
 
 // Asset returns a public asset URL.
 func (ctx *Context) Asset(path string, domains ...string) string {
-	assets := Service[AssetResolver](ctx)
+	assets := ctx.Service[AssetResolver]()
 	if assets == nil {
 		return path
 	}

@@ -23,7 +23,7 @@ type AssetResolver interface {
 }
 
 // Service returns an app-scoped service injected by the route registry.
-func Service[T any](ctx *Context, name ...string) T {
+func (ctx *Context) Service[T any](name ...string) T {
 	var zero T
 	if ctx == nil || ctx.services == nil {
 		return zero

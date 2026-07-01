@@ -2,6 +2,24 @@
 
 English | [简体中文](CHANGELOG.zh-CN.md)
 
+## v0.1.1 - 2026-07-01
+
+### Changed
+
+- Unified `route.Context` generic accessors as Go 1.27 generic methods, including `Param`, `Query`, `Header`, `Cookie`, `Form`, `Meta`, `Input`, and `Service`.
+- Changed route metadata reads to `route.MetaAs[T](...)` as a method on `*route.Route`.
+- Split optional XLSX CRUD import/export support into `crud/excelize`, keeping Excel dependencies out of the base `crud` module.
+- Renamed the message broker interface to `message.Driver` and updated official message drivers accordingly.
+- Centralized terminal color detection through `core.ColorEnabled`.
+- Shared view template helper utilities between `view` and `view/rhtml`.
+
+### Fixed
+
+- Removed the stale `internal/registry` copy in favor of `kernel/registry`.
+- Removed redundant helper variants and duplicate `contains` implementations.
+- Updated route, CRUD, audit, middleware, resource, console, and generated-code examples for the new generic method style.
+- Updated English and Chinese documentation for route context helpers, CRUD Excelize, module installation, and injected route services.
+
 ## v0.1.0 - 2026-07-01
 
 ### Added

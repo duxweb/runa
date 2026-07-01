@@ -1,9 +1,7 @@
 package crud
 
 import (
-	"bytes"
 	"context"
-	"encoding/csv"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,7 +13,6 @@ import (
 	"github.com/duxweb/runa/core"
 	"github.com/duxweb/runa/route"
 	"github.com/duxweb/runa/storage"
-	"github.com/xuri/excelize/v2"
 )
 
 // Exporter configures export behavior.
@@ -130,7 +127,7 @@ func (exporter *Exporter[Model, Output]) runExport[Query any](builder *Builder[M
 		if err != nil {
 			return err
 		}
-		return exporter.writeCSV(c, models)
+		return exporter.write(c, models)
 	}
 	models := make([]*Model, 0)
 	batch := exporter.config.batch
@@ -143,14 +140,15 @@ func (exporter *Exporter[Model, Output]) runExport[Query any](builder *Builder[M
 	}); err != nil {
 		return err
 	}
-	if exporter.format(c) == "xlsx" {
-		return exporter.writeXLSX(c, models)
-	}
-	return exporter.writeCSV(c, models)
+	return exporter.write(c, models)
 }
 
-func (exporter *Exporter[Model, Output]) writeCSV(c *Context[Model], models []*Model) error {
-	data, err := exporter.csvBytes(c, models)
+func (exporter *Exporter[Model, Output]) write(c *Context[Model], models []*Model) error {
+	format := exporter.format(c)
+	if !formatAllowed(exporter.config.formats, format) {
+		return unsupportedExportFormat(format)
+	}
+	data, contentType, err := exporter.encode(c, format, models)
 	if err != nil {
 		return err
 	}
@@ -158,110 +156,59 @@ func (exporter *Exporter[Model, Output]) writeCSV(c *Context[Model], models []*M
 	if name == "" {
 		name = "export"
 	}
-	c.Set("Content-Disposition", `attachment; filename="`+name+`.csv"`)
-	return c.Status(http.StatusOK).Blob("text/csv; charset=utf-8", data)
+	c.Set("Content-Disposition", `attachment; filename="`+name+`.`+format+`"`)
+	return c.Status(http.StatusOK).Blob(contentType, data)
 }
 
-func (exporter *Exporter[Model, Output]) writeXLSX(c *Context[Model], models []*Model) error {
-	data, err := exporter.xlsxBytes(c, models)
+func (exporter *Exporter[Model, Output]) encode(c *Context[Model], format string, models []*Model) ([]byte, string, error) {
+	encoder, ok := exportEncoder(format)
+	if !ok {
+		return nil, "", unsupportedExportFormat(format)
+	}
+	table, err := exporter.table(c, models)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
-	name := exporter.config.name
-	if name == "" {
-		name = "export"
-	}
-	c.Set("Content-Disposition", `attachment; filename="`+name+`.xlsx"`)
-	return c.Status(http.StatusOK).Blob("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", data)
+	return encoder(table)
 }
 
-func (exporter *Exporter[Model, Output]) csvBytes(c *Context[Model], models []*Model) ([]byte, error) {
-	var buf bytes.Buffer
-	writer := csv.NewWriter(&buf)
+func (exporter *Exporter[Model, Output]) table(c *Context[Model], models []*Model) (ExportTable, error) {
 	fields := exporter.fields()
 	headers := make([]string, 0, len(fields))
 	for _, field := range fields {
 		headers = append(headers, field.title)
 	}
-	if err := writer.Write(headers); err != nil {
-		return nil, err
-	}
+	rows := make([][]any, 0, len(models))
 	for _, model := range models {
 		output, err := exporter.config.fn(c, model)
 		if err != nil {
-			return nil, err
+			return ExportTable{}, err
 		}
-		record := make([]string, 0, len(fields))
+		row := make([]any, 0, len(fields))
 		for _, field := range fields {
 			value, err := field.value(c, output)
 			if err != nil {
-				return nil, err
+				return ExportTable{}, err
 			}
-			record = append(record, safeExportText(value))
+			row = append(row, value)
 		}
-		if err := writer.Write(record); err != nil {
-			return nil, err
-		}
+		rows = append(rows, row)
 	}
-	writer.Flush()
-	if err := writer.Error(); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return ExportTable{Headers: headers, Rows: rows}, nil
 }
 
-func (exporter *Exporter[Model, Output]) xlsxBytes(c *Context[Model], models []*Model) ([]byte, error) {
-	file := excelize.NewFile()
-	defer file.Close()
-	sheet := file.GetSheetName(0)
-	fields := exporter.fields()
-	for index, field := range fields {
-		cell, err := excelize.CoordinatesToCellName(index+1, 1)
-		if err != nil {
-			return nil, err
-		}
-		if err := file.SetCellValue(sheet, cell, field.title); err != nil {
-			return nil, err
-		}
-	}
-	for rowIndex, model := range models {
-		output, err := exporter.config.fn(c, model)
-		if err != nil {
-			return nil, err
-		}
-		for colIndex, field := range fields {
-			cell, err := excelize.CoordinatesToCellName(colIndex+1, rowIndex+2)
-			if err != nil {
-				return nil, err
-			}
-			value, err := field.value(c, output)
-			if err != nil {
-				return nil, err
-			}
-			if err := file.SetCellValue(sheet, cell, safeExportValue(value)); err != nil {
-				return nil, err
-			}
-		}
-	}
-	var buf bytes.Buffer
-	if err := file.Write(&buf); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-func safeExportValue(value any) any {
+func SafeExportValue(value any) any {
 	switch typed := value.(type) {
 	case string:
-		return safeExportText(typed)
+		return SafeExportText(typed)
 	case fmt.Stringer:
-		return safeExportText(typed.String())
+		return SafeExportText(typed.String())
 	default:
 		return value
 	}
 }
 
-func safeExportText(value any) string {
+func SafeExportText(value any) string {
 	text := fmt.Sprint(value)
 	if text == "" {
 		return text
@@ -283,7 +230,7 @@ func (exporter *Exporter[Model, Output]) fields() []*ExportField[Model, Output] 
 }
 
 func (exporter *Exporter[Model, Output]) format(c *Context[Model]) string {
-	format := strings.ToLower(route.Query[string](c.Context, "format"))
+	format := strings.ToLower(c.Query[string]("format"))
 	if format != "" {
 		return format
 	}
@@ -312,6 +259,9 @@ func (exporter *Exporter[Model, Output]) dispatch(ctx context.Context, routeID s
 func (exporter *Exporter[Model, Output]) Run[Query any](ctx context.Context, builder *Builder[Model, Query], request ExportRequest) (file *ExportFile, err error) {
 	if request.Format == "" {
 		request.Format = "csv"
+	}
+	if !formatAllowed(exporter.config.formats, request.Format) {
+		return nil, unsupportedExportFormat(request.Format)
 	}
 	if request.Meta == nil {
 		request.Meta = make(core.Map)
@@ -343,16 +293,10 @@ func (exporter *Exporter[Model, Output]) Run[Query any](ctx context.Context, bui
 	}); err != nil {
 		return nil, err
 	}
-	var data []byte
-	contentType := "text/csv; charset=utf-8"
-	switch strings.ToLower(request.Format) {
-	case "xlsx":
-		data, err = exporter.xlsxBytes(c, models)
-		contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-	default:
-		data, err = exporter.csvBytes(c, models)
+	if strings.TrimSpace(request.Format) == "" {
 		request.Format = "csv"
 	}
+	data, contentType, err := exporter.encode(c, request.Format, models)
 	if err != nil {
 		return nil, err
 	}

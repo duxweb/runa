@@ -15,7 +15,7 @@ import (
 const defaultMessageTopic = "runa.ws"
 
 // MessageBroker adapts a message broker driver for distributed websocket packets.
-func MessageBroker(driver message.BrokerDriver, topics ...string) Broker {
+func MessageBroker(driver message.Driver, topics ...string) Broker {
 	topic := defaultMessageTopic
 	if len(topics) > 0 && topics[0] != "" {
 		topic = topics[0]
@@ -24,7 +24,7 @@ func MessageBroker(driver message.BrokerDriver, topics ...string) Broker {
 }
 
 type messageBroker struct {
-	driver        message.BrokerDriver
+	driver        message.Driver
 	topic         string
 	ids           atomic.Uint64
 	mu            sync.Mutex

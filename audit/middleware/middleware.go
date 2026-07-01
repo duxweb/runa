@@ -113,7 +113,7 @@ func buildEntry(ctx *route.Context, recorder *route.StatusRecorder, err error, i
 	meta := core.Map(nil)
 	if current := ctx.Route(); current != nil {
 		routeName = current.RouteID()
-		action = route.MetaAs[string](current, "action")
+		action = current.MetaAs[string]("action")
 		if action == "" {
 			action = routeName
 		}
@@ -138,9 +138,9 @@ func buildEntry(ctx *route.Context, recorder *route.StatusRecorder, err error, i
 		Success:   err == nil && status < http.StatusBadRequest,
 		Duration:  time.Since(started),
 		IP:        ctx.IP(),
-		UserAgent: route.Header[string](ctx, "User-Agent"),
+		UserAgent: ctx.Header[string]("User-Agent"),
 		RequestID: ctx.RequestID(),
-		TraceID:   route.Header[string](ctx, "Traceparent"),
+		TraceID:   ctx.Header[string]("Traceparent"),
 		Input:     input,
 		Meta:      meta,
 	}

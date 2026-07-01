@@ -13,7 +13,7 @@ func TestGroupRegisterAndMetadata(t *testing.T) {
 	group := NewGroup(registry, "/api")
 
 	route := group.Get("/users/{id}", func(ctx *Context) error {
-		return ctx.Status(http.StatusOK).Text(Param[string](ctx, "id"))
+		return ctx.Status(http.StatusOK).Text(ctx.Param[string]("id"))
 	}).Name("user.show").Meta("permission", "system.user").Summary("用户详情").Tags("User")
 
 	if route.Path != "/api/users/{id}" {
@@ -22,7 +22,7 @@ func TestGroupRegisterAndMetadata(t *testing.T) {
 	if route.RouteName != "user.show" {
 		t.Fatalf("name = %q", route.RouteName)
 	}
-	if got := MetaAs[string](route, "permission"); got != "system.user" {
+	if got := route.MetaAs[string]("permission"); got != "system.user" {
 		t.Fatalf("permission = %q", got)
 	}
 	if route.SummaryText != "用户详情" {
@@ -38,8 +38,8 @@ func TestChiHandlerParamAndQuery(t *testing.T) {
 	group := NewGroup(registry, "")
 	group.Get("/users/{id}", func(ctx *Context) error {
 		return ctx.Status(http.StatusOK).JSON(map[string]any{
-			"id":   Param[int](ctx, "id"),
-			"name": Query[string](ctx, "name"),
+			"id":   ctx.Param[int]("id"),
+			"name": ctx.Query[string]("name"),
 		})
 	})
 
@@ -145,8 +145,8 @@ func TestContextMetaUsesCast(t *testing.T) {
 	group := NewGroup(registry, "")
 	group.Get("/meta", func(ctx *Context) error {
 		return ctx.JSON(map[string]any{
-			"enabled": Meta[bool](ctx, "enabled"),
-			"items":   Meta[[]int](ctx, "items"),
+			"enabled": ctx.Meta[bool]("enabled"),
+			"items":   ctx.Meta[[]int]("items"),
 		})
 	}).Meta("enabled", "on").Meta("items", "1,2,3")
 
@@ -164,7 +164,7 @@ func TestServeMuxCatchAllParam(t *testing.T) {
 	registry := New()
 	group := NewGroup(registry, "")
 	group.Get("/files/{path...}", func(ctx *Context) error {
-		return ctx.Text(Param[string](ctx, "path"))
+		return ctx.Text(ctx.Param[string]("path"))
 	})
 
 	response := httptest.NewRecorder()

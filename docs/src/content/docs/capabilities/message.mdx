@@ -110,7 +110,7 @@ app.Install(message.Provider(
 ))
 ```
 
-NATS, AMQP, and MQTT drivers all connect through `message.RegisterDriver(name, driver)`. Driver package factories are consistently named `Driver(...)`.
+NATS, AMQP, and MQTT drivers all connect through `message.RegisterDriver(name, driver)`. Driver package factories are consistently named `Driver(...)` and return the `message.Driver` interface.
 
 ## Topic matching
 

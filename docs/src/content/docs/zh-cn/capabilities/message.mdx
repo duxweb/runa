@@ -112,7 +112,7 @@ app.Install(message.Provider(
 ))
 ```
 
-NATS、AMQP、MQTT 驱动也都通过 `message.RegisterDriver(name, driver)` 接入，驱动包的工厂统一叫 `Driver(...)`。
+NATS、AMQP、MQTT 驱动也都通过 `message.RegisterDriver(name, driver)` 接入，驱动包的工厂统一叫 `Driver(...)`，返回 `message.Driver` 接口。
 
 ## 什么时候用 message
 

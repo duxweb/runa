@@ -66,10 +66,10 @@ func Token(ctx *route.Context) string {
 }
 
 func submittedToken(ctx *route.Context, config Config) string {
-	if token := route.Header[string](ctx, config.HeaderName); token != "" {
+	if token := ctx.Header[string](config.HeaderName); token != "" {
 		return token
 	}
-	return route.Form[string](ctx, config.FormField)
+	return ctx.Form[string](config.FormField)
 }
 
 func safeMethod(method string) bool {

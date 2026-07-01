@@ -12,7 +12,7 @@ import (
 	paho "github.com/eclipse/paho.mqtt.golang"
 )
 
-func Driver(client paho.Client, options ...Option) message.BrokerDriver {
+func Driver(client paho.Client, options ...Option) message.Driver {
 	opts := defaultOptions()
 	for _, option := range options {
 		if option != nil {

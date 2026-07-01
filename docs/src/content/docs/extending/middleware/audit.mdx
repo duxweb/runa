@@ -80,7 +80,7 @@ route.Default().Use(auditmw.New(audit.Config{
 route.Default().Use(auditmw.Default(
     auditmw.Build(func(ctx *route.Context, entry *audit.Entry) error {
         entry.Meta["app"] = "admin"
-        entry.Meta["tenant"] = route.Header[string](ctx, "X-Tenant")
+        entry.Meta["tenant"] = ctx.Header[string]("X-Tenant")
         return nil
     }),
 ))

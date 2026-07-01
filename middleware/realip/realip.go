@@ -110,7 +110,7 @@ func trustedIP(value string, matchers []netipMatcher) bool {
 
 func forwardedIP(ctx *route.Context, headers []string, trusted []netipMatcher) string {
 	for _, header := range headers {
-		value := route.Header[string](ctx, header)
+		value := ctx.Header[string](header)
 		if value == "" {
 			continue
 		}
@@ -127,7 +127,7 @@ func forwardedIP(ctx *route.Context, headers []string, trusted []netipMatcher) s
 
 func firstHeader(ctx *route.Context, headers []string) string {
 	for _, header := range headers {
-		value := route.Header[string](ctx, header)
+		value := ctx.Header[string](header)
 		if value != "" {
 			return value
 		}

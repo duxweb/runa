@@ -11,7 +11,7 @@ Every HTTP request gets a new `route.Context`. Do not store it in a global varia
 
 ```go
 route.Default().Get("/users/{id}", func(ctx *route.Context) error {
-    id := ctx.ParamString("id")
+    id := ctx.Param[string]("id")
     return ctx.JSON(runa.Map{"id": id})
 })
 ```
@@ -22,13 +22,15 @@ This reads `id` from `/users/{id}` and returns JSON.
 
 ```go
 route.Default().Get("/search/{category}", func(ctx *route.Context) error {
-    category := ctx.ParamString("category")
-    keyword := ctx.QueryString("keyword")
+    category := ctx.Param[string]("category")
+    keyword := ctx.Query[string]("keyword")
+    page := ctx.Query[int]("page", 1)
     userAgent := ctx.Request().UserAgent()
 
     return ctx.JSON(runa.Map{
         "category": category,
         "keyword": keyword,
+        "page": page,
         "ua": userAgent,
     })
 })
@@ -38,8 +40,14 @@ Common methods:
 
 | Method | Description |
 | --- | --- |
-| `ParamString(name)` | Reads a path parameter |
-| `QueryString(name)` | Reads a query parameter |
+| `Param[T](name, fallback...)` | Reads and casts a path parameter |
+| `Query[T](name, fallback...)` | Reads and casts a query parameter |
+| `Header[T](name, fallback...)` | Reads and casts a request header |
+| `Cookie[T](name, fallback...)` | Reads and casts a cookie |
+| `Form[T](name, fallback...)` | Reads and casts a form value |
+| `Meta[T](key, fallback...)` | Reads and casts current route metadata |
+| `Input[T]()` | Binds and validates request input into `T` |
+| `Service[T](name...)` | Reads a service injected into the route context |
 | `Request()` | Returns the raw `*http.Request` |
 | `Response()` | Returns the raw `http.ResponseWriter` |
 | `Context()` | Returns the request `context.Context` |

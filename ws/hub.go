@@ -152,7 +152,7 @@ func (hub *Hub) Serve(ctx *route.Context) error {
 		return err
 	}
 	conn.SetReadLimit(hub.config.MaxMessageSize)
-	client := newClient(hub, conn, *identity, ctx.IP(), route.Header[string](ctx, "User-Agent"))
+	client := newClient(hub, conn, *identity, ctx.IP(), ctx.Header[string]("User-Agent"))
 	hub.register(client)
 	go client.writeLoop()
 	hub.readLoop(client)

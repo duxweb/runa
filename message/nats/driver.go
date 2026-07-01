@@ -12,7 +12,7 @@ import (
 	natsgo "github.com/nats-io/nats.go"
 )
 
-func Driver(conn *natsgo.Conn, options ...Option) message.BrokerDriver {
+func Driver(conn *natsgo.Conn, options ...Option) message.Driver {
 	opts := defaultOptions()
 	for _, option := range options {
 		if option != nil {

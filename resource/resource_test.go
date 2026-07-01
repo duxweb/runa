@@ -42,7 +42,7 @@ func TestResourceRegistersNamedActions(t *testing.T) {
 	if len(routes[0].DocNames) != 1 || routes[0].DocNames[0] != "admin" {
 		t.Fatalf("doc names = %#v", routes[0].DocNames)
 	}
-	if route.MetaAs[string](routes[0], "permission") != "system.user" {
+	if routes[0].MetaAs[string]("permission") != "system.user" {
 		t.Fatalf("meta = %#v", routes[0].MetaData)
 	}
 	if routes[1].Path != "/admin/users/import" || routes[1].RouteName != "admin.system.user.import" {
@@ -54,7 +54,7 @@ func TestResourceRegistersNamedActions(t *testing.T) {
 	if routes[0].SchemaDef == nil || routes[0].SchemaDef.Response.Type != "object" {
 		t.Fatalf("schema = %#v", routes[0].SchemaDef)
 	}
-	if route.MetaAs[string](users.Route("list"), "action") != "list" {
+	if users.Route("list").MetaAs[string]("action") != "list" {
 		t.Fatalf("route meta = %#v", users.Route("list").MetaData)
 	}
 }

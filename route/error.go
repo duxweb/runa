@@ -161,7 +161,7 @@ func logServerError(ctx *Context, err error) {
 	if errorStatus(err) < http.StatusInternalServerError || ctx == nil {
 		return
 	}
-	loggers := Service[LoggerProvider](ctx)
+	loggers := ctx.Service[LoggerProvider]()
 	if loggers == nil {
 		return
 	}
@@ -290,7 +290,7 @@ type NegotiatedErrorRenderer struct{}
 
 // RenderError renders an error based on Accept header.
 func (NegotiatedErrorRenderer) RenderError(ctx *Context, err error) error {
-	accept := Header[string](ctx, "Accept")
+	accept := ctx.Header[string]("Accept")
 	switch {
 	case strings.Contains(accept, "application/json"):
 		return JSONErrorRenderer{}.RenderError(ctx, err)
