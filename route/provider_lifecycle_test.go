@@ -1,14 +1,19 @@
 package route
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	runacommand "github.com/duxweb/runa/command"
+	"github.com/duxweb/runa/host"
 	"github.com/duxweb/runa/provider"
 	"github.com/duxweb/runa/runtime"
+	"github.com/samber/do/v2"
 )
 
 type routeDomainModule struct{ runtime.ModuleBase }
@@ -131,5 +136,78 @@ func TestProviderMountMissingRouteGroupFailsFreeze(t *testing.T) {
 	app.Module(missingRouteGroupModule{})
 	if err := app.Freeze(context.Background()); err == nil || !strings.Contains(err.Error(), "route group admin.missing is not registered") {
 		t.Fatalf("freeze err = %v", err)
+	}
+}
+
+type routeProviderContext struct {
+	app      any
+	injector do.Injector
+	hosts    []host.Unit
+	commands []runacommand.Command
+}
+
+func (ctx *routeProviderContext) App() any              { return ctx.app }
+func (ctx *routeProviderContext) Injector() do.Injector { return ctx.injector }
+func (ctx *routeProviderContext) RegisterCommand(commands ...runacommand.Command) error {
+	ctx.commands = append(ctx.commands, commands...)
+	return nil
+}
+func (ctx *routeProviderContext) RegisterService(...any) error { return nil }
+func (ctx *routeProviderContext) RegisterModule(...any) error  { return nil }
+func (ctx *routeProviderContext) RegisterHost(units ...host.Unit) error {
+	ctx.hosts = append(ctx.hosts, units...)
+	return nil
+}
+func (ctx *routeProviderContext) RegisterRouteService(...any) error { return nil }
+
+type routeProviderApp struct {
+	writer *bytes.Buffer
+	env    string
+}
+
+func (app routeProviderApp) Writer() io.Writer { return app.writer }
+func (app routeProviderApp) Env() string       { return app.env }
+
+func TestProviderRegistersStartupBannerHost(t *testing.T) {
+	var out bytes.Buffer
+	ctx := &routeProviderContext{app: routeProviderApp{writer: &out, env: "testing"}, injector: do.New()}
+	item := Provider(Addr(":0"))
+	if err := item.Init(context.Background(), ctx); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if err := item.Register(ctx); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if len(ctx.hosts) != 1 {
+		t.Fatalf("hosts = %#v", ctx.hosts)
+	}
+	if err := ctx.hosts[0].Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer ctx.hosts[0].Stop(context.Background())
+	if !strings.Contains(out.String(), "Runa HTTP") || !strings.Contains(out.String(), "Env") || !strings.Contains(out.String(), "testing") {
+		t.Fatalf("banner output = %q", out.String())
+	}
+}
+
+func TestProviderCanDisableStartupBanner(t *testing.T) {
+	var out bytes.Buffer
+	ctx := &routeProviderContext{app: routeProviderApp{writer: &out, env: "testing"}, injector: do.New()}
+	item := Provider(Addr(":0"), Banner(false))
+	if err := item.Init(context.Background(), ctx); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if err := item.Register(ctx); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if len(ctx.hosts) != 1 {
+		t.Fatalf("hosts = %#v", ctx.hosts)
+	}
+	if err := ctx.hosts[0].Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer ctx.hosts[0].Stop(context.Background())
+	if out.Len() != 0 {
+		t.Fatalf("banner output = %q", out.String())
 	}
 }

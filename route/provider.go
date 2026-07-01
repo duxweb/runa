@@ -2,6 +2,7 @@ package route
 
 import (
 	"context"
+	"io"
 
 	"github.com/duxweb/runa/provider"
 )
@@ -10,6 +11,7 @@ type routeProvider struct {
 	provider.Base
 	registry *Registry
 	server   ServerConfig
+	banner   BannerConfig
 	listen   bool
 }
 
@@ -39,7 +41,19 @@ func (item *routeProvider) Register(ctx provider.Context) error {
 		return err
 	}
 	if item.listen {
-		return ctx.RegisterHost(item.registry.Server(item.server))
+		server := item.server
+		banner := item.banner
+		if banner.Writer == nil {
+			if app, ok := ctx.App().(interface{ Writer() io.Writer }); ok {
+				banner.Writer = app.Writer()
+			}
+		}
+		if banner.Env == "" {
+			if app, ok := ctx.App().(interface{ Env() string }); ok {
+				banner.Env = app.Env()
+			}
+		}
+		return ctx.RegisterHost(withStartupBanner(item.registry.Server(server), item.registry, banner))
 	}
 	return nil
 }
@@ -78,4 +92,11 @@ func Server(config ServerConfig) ProviderOption {
 // Addr registers an HTTP host bound to addr.
 func Addr(addr string) ProviderOption {
 	return Server(ServerConfig{Addr: addr})
+}
+
+// Banner enables or disables route startup output for the HTTP host.
+func Banner(enabled bool) ProviderOption {
+	return func(provider *routeProvider) {
+		provider.banner.Enabled = &enabled
+	}
 }

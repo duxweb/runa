@@ -47,6 +47,21 @@ func main() {
 
 `route.Provider` 会注册默认路由表、HTTP Host 和 `route:list` 命令。
 
+## 启动输出
+
+HTTP Host 启动成功后，`route` 会在控制台输出 Runa 标识、URL、绑定地址、环境、Host 单元名、PID、路由数量，以及自动识别到的 Console、OpenAPI、Docs、Observe 等工具入口。
+
+`serve` 启动 Host 单元后，Runa 还会输出 `Hosts` 区块，用来查看 HTTP、WebSocket、队列 worker 等长期运行单元是否已经启动。
+
+如果你的进程管理器不希望看到启动界面，可以关闭：
+
+```go
+app.Install(route.Provider(
+    route.Addr(":8080"),
+    route.Banner(false),
+))
+```
+
 ## 注册路由
 
 ```go

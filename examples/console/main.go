@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"math/rand/v2"
 	"os"
 	goruntime "runtime"
@@ -71,9 +70,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fmt.Println("Runa example listening on http://localhost" + addr)
-	fmt.Println("Console: http://localhost" + addr + "/__runa")
-	fmt.Println("OpenAPI: http://localhost" + addr + "/docs")
 	if err := app.Run(ctx); err != nil {
 		panic(err)
 	}

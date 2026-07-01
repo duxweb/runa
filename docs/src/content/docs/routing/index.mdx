@@ -47,6 +47,21 @@ func main() {
 
 `route.Provider` registers the default route registry, HTTP Host, and `route:list` command.
 
+## Startup output
+
+After the HTTP Host starts, `route` prints the Runa mark, URL, bind address, environment, Host unit name, PID, route count, and automatically detected tool links such as Console, OpenAPI, Docs, and Observe.
+
+When `serve` starts Host units, Runa also prints a `Hosts` section so you can see which long-running units are running, such as HTTP, WebSocket hubs, or queue workers.
+
+Disable it when a process manager should keep startup output quiet:
+
+```go
+app.Install(route.Provider(
+    route.Addr(":8080"),
+    route.Banner(false),
+))
+```
+
 ## Register routes
 
 ```go

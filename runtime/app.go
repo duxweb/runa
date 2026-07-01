@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"sort"
 	"sync"
@@ -95,6 +96,9 @@ func (app *App) pendingError() error {
 
 // Env returns the application environment.
 func (app *App) Env() string { return app.env }
+
+// Writer returns the application output writer.
+func (app *App) Writer() io.Writer { return app.writer }
 
 // Install installs providers.
 func (app *App) Install(providers ...runaprovider.Provider) *App {
@@ -476,6 +480,116 @@ func (serveCommand) Run(ctx context.Context, command *runacommand.Context) error
 	if err := hosts.Start(ctx); err != nil {
 		return err
 	}
+	printServeHosts(app.writer, hosts.Info())
 	<-ctx.Done()
 	return nil
+}
+
+func printServeHosts(writer io.Writer, items []host.Info) {
+	if writer == nil || len(items) == 0 {
+		return
+	}
+	palette := servePalette{enabled: supportsServeColor(writer)}
+	labelWidth := 0
+	for _, item := range items {
+		labelWidth = max(labelWidth, len(item.Name))
+	}
+	labelWidth = max(labelWidth, serveHostLabelMinWidth)
+	fmt.Fprintf(writer, "%sHosts%s\n", palette.title(), palette.reset())
+	for _, item := range items {
+		status := string(item.Status)
+		if item.Addr != "" {
+			fmt.Fprintf(writer, "%s➜%s %s%-*s%s  %s%s%s   %s%s%s\n",
+				palette.arrow(), palette.reset(),
+				palette.label(), labelWidth, item.Name, palette.reset(),
+				palette.status(item.Status), status, palette.reset(),
+				palette.value(), displayHostAddr(item.Addr), palette.reset(),
+			)
+			continue
+		}
+		fmt.Fprintf(writer, "%s➜%s %s%-*s%s  %s%s%s\n",
+			palette.arrow(), palette.reset(),
+			palette.label(), labelWidth, item.Name, palette.reset(),
+			palette.status(item.Status), status, palette.reset(),
+		)
+	}
+}
+
+func displayHostAddr(addr string) string {
+	hostName, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	if hostName == "" || hostName == "::" || hostName == "[::]" || hostName == "0.0.0.0" {
+		hostName = "*"
+	}
+	return net.JoinHostPort(hostName, port)
+}
+
+type servePalette struct{ enabled bool }
+
+const serveHostLabelMinWidth = 7
+
+func (palette servePalette) reset() string {
+	if !palette.enabled {
+		return ""
+	}
+	return "\x1b[0m"
+}
+
+func (palette servePalette) arrow() string {
+	if !palette.enabled {
+		return ""
+	}
+	return "\x1b[36;1m"
+}
+
+func (palette servePalette) title() string {
+	if !palette.enabled {
+		return ""
+	}
+	return "\x1b[36m"
+}
+
+func (palette servePalette) label() string {
+	if !palette.enabled {
+		return ""
+	}
+	return "\x1b[32;1m"
+}
+
+func (palette servePalette) value() string {
+	if !palette.enabled {
+		return ""
+	}
+	return "\x1b[37m"
+}
+
+func (palette servePalette) status(status host.Status) string {
+	if !palette.enabled {
+		return ""
+	}
+	switch status {
+	case host.Running:
+		return "\x1b[32;1m"
+	case host.Failed, host.Unhealthy:
+		return "\x1b[31;1m"
+	default:
+		return "\x1b[37m"
+	}
+}
+
+func supportsServeColor(writer io.Writer) bool {
+	file, ok := writer.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	if info.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	return os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
 }

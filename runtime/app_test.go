@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"reflect"
@@ -475,6 +476,7 @@ func TestCommandDefaultServe(t *testing.T) {
 
 type appHostRecorder struct {
 	name    string
+	addr    string
 	status  host.Status
 	started chan struct{}
 	calls   []string
@@ -509,6 +511,9 @@ func (recorder *appHostRecorder) Status() host.Status {
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
 	return recorder.status
+}
+func (recorder *appHostRecorder) Check(context.Context) host.Health {
+	return host.Health{Status: recorder.Status(), Details: map[string]any{"addr": recorder.addr}}
 }
 func (recorder *appHostRecorder) Calls() []string {
 	recorder.mu.Lock()
@@ -546,6 +551,93 @@ func TestServeStartsRegisteredHost(t *testing.T) {
 	expected := []string{"start", "stop"}
 	if !reflect.DeepEqual(recorder.Calls(), expected) {
 		t.Fatalf("calls = %#v, want %#v", recorder.Calls(), expected)
+	}
+}
+
+func TestServePrintsStartedHosts(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var out bytes.Buffer
+	httpHost := newAppHostRecorder("http")
+	httpHost.addr = "127.0.0.1:18080"
+	queueHost := newAppHostRecorder("queue:default")
+	app := newRuntimeApp(Writer(&out))
+	app.Host(httpHost, queueHost)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Execute(ctx, []string{"serve"})
+	}()
+
+	select {
+	case <-queueHost.started:
+	case <-time.After(time.Second):
+		t.Fatal("queue host was not started")
+	}
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("serve did not stop")
+	}
+	body := out.String()
+	for _, expected := range []string{"Hosts", "➜ http", "running", "127.0.0.1:18080", "➜ queue:default"} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("output missing %q in:\n%s", expected, body)
+		}
+	}
+}
+
+func TestServePrintsSingleStartedHost(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var out bytes.Buffer
+	httpHost := newAppHostRecorder("http")
+	httpHost.addr = "[::]:8080"
+	app := newRuntimeApp(Writer(&out))
+	app.Host(httpHost)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Execute(ctx, []string{"serve"})
+	}()
+
+	select {
+	case <-httpHost.started:
+	case <-time.After(time.Second):
+		t.Fatal("http host was not started")
+	}
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("execute: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("serve did not stop")
+	}
+	body := out.String()
+	for _, expected := range []string{"Hosts", "➜ http", "running", "*:8080"} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("output missing %q in:\n%s", expected, body)
+		}
+	}
+}
+
+func TestDisplayHostAddr(t *testing.T) {
+	cases := map[string]string{
+		"[::]:18080":      "*:18080",
+		"0.0.0.0:18080":   "*:18080",
+		"127.0.0.1:18080": "127.0.0.1:18080",
+		"queue":           "queue",
+	}
+	for input, expected := range cases {
+		if actual := displayHostAddr(input); actual != expected {
+			t.Fatalf("displayHostAddr(%q) = %q, want %q", input, actual, expected)
+		}
 	}
 }
 
