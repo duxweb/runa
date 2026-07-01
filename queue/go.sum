@@ -2,6 +2,14 @@ github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/duxweb/runa v0.1.0 h1:Y4sAtykE5AvDJshH9lXZfP+mYIpVLmP4Ijn3g7AnEPg=
+github.com/duxweb/runa v0.1.0/go.mod h1:BgDBC7oZIRCfVZGLnELdF8TIxyqzqHAq3FLMSCfeeyU=
+github.com/duxweb/runa/event v0.1.0 h1:oIiHXYEJW7FwHYw2y41or+TzSlTPKFG8d5jR3cLehqw=
+github.com/duxweb/runa/event v0.1.0/go.mod h1:dtzax0Opho+oX0jYqBqOVSskL8HjSAd9kMX2CWFXKn4=
+github.com/duxweb/runa/log v0.1.0 h1:1+WOSp293NDDLvDzEs7PgL8qtvhQy7YW38O7ik2QnGs=
+github.com/duxweb/runa/log v0.1.0/go.mod h1:Hri5/132xT4IcqxUQ7hTpxBoYGmwf2vKSJlBff37Mzw=
+github.com/duxweb/runa/task v0.1.0 h1:ts/ttuQRUjLVQwB57lCV91J/DfVXlU9YJhcaQoF1meg=
+github.com/duxweb/runa/task v0.1.0/go.mod h1:SKhcwn74xojYi7G5R5A+veaK8HCPQeCaD5N5+2aYw9I=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/samber/do/v2 v2.0.0 h1:tnunwWaoqSfJ9hxVIaJawIo7JXHQlqT9d9YBXlE9Keg=

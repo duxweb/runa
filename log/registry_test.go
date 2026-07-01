@@ -42,6 +42,9 @@ func TestPrettyOutputUsesShortLevels(t *testing.T) {
 	if !strings.Contains(body, "WRN") || !strings.Contains(body, "slow request") || !strings.Contains(body, "method") || !strings.Contains(body, "GET") {
 		t.Fatalf("body = %q", body)
 	}
+	if !strings.Contains(body, "20") || !strings.Contains(body, ":") {
+		t.Fatalf("pretty time should include date and time: %q", body)
+	}
 }
 
 func TestPrettyOutputCanDisableColor(t *testing.T) {
@@ -51,6 +54,17 @@ func TestPrettyOutputCanDisableColor(t *testing.T) {
 	registry.Get(DefaultName).Error("failed", "err", "broken")
 	body := buffer.String()
 	if !strings.Contains(body, "ERR") || strings.Contains(body, "\x1b[") {
+		t.Fatalf("body = %q", body)
+	}
+}
+
+func TestPrettyOutputColorsErrorAttributes(t *testing.T) {
+	var buffer bytes.Buffer
+	registry := New()
+	registry.Set(DefaultName, Writer(&buffer, Pretty()))
+	registry.Get(DefaultName).Error("failed", "err", fmt.Errorf("broken"))
+	body := buffer.String()
+	if !strings.Contains(body, "\x1b[2;91merr=") || !strings.Contains(body, "broken") {
 		t.Fatalf("body = %q", body)
 	}
 }

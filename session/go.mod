@@ -12,7 +12,6 @@ require (
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
-	github.com/duxweb/runa/lang v0.1.0 // indirect
 	github.com/duxweb/runa/scope v0.1.0 // indirect
 	github.com/duxweb/runa/validate v0.1.0 // indirect
 	github.com/samber/go-type-to-string v1.8.0 // indirect

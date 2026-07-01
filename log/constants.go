@@ -4,6 +4,7 @@ const (
 	DefaultName = "default"
 	HTTP        = "http"
 	Error       = "error"
+	Audit       = "audit"
 	Queue       = "queue"
 	Schedule    = "schedule"
 	Task        = "task"

@@ -14,7 +14,6 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/duxweb/runa/cache v0.1.0 // indirect
 	github.com/duxweb/runa/event v0.1.0 // indirect
-	github.com/duxweb/runa/lang v0.1.0 // indirect
 	github.com/duxweb/runa/scope v0.1.0 // indirect
 	github.com/duxweb/runa/session v0.1.0 // indirect
 	github.com/duxweb/runa/task v0.1.0 // indirect

@@ -2,6 +2,7 @@ package log
 
 import (
 	"context"
+	"log/slog"
 
 	runaprovider "github.com/duxweb/runa/provider"
 	"github.com/samber/do/v2"
@@ -38,6 +39,15 @@ func (provider *provider) Register(ctx runaprovider.Context) error {
 		registry.Set(name, outputs...)
 	}
 	return ctx.RegisterRouteService(registry)
+}
+
+func (provider *provider) Boot(_ context.Context, ctx runaprovider.Context) error {
+	registry, err := runaprovider.Invoke[*Registry](ctx)
+	if err != nil {
+		return err
+	}
+	slog.SetDefault(registry.Get(DefaultName))
+	return nil
 }
 
 type ProviderOption func(*provider)

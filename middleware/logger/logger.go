@@ -2,6 +2,7 @@ package logger
 
 import (
 	"log/slog"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -89,7 +90,7 @@ func level(entry Entry) slog.Level {
 func attrs(config Config, entry Entry) []slog.Attr {
 	fields := config.Fields
 	if fields == nil {
-		fields = []string{"component", "request_id", "method", "path", "status", "ip", "latency_ms", "slow", "error"}
+		fields = []string{"component", "request_id", "method", "path", "status", "ip", "latency_ms", "slow", "err"}
 	}
 	items := make([]slog.Attr, 0, len(fields))
 	add := func(name string, attr slog.Attr) {
@@ -103,18 +104,22 @@ func attrs(config Config, entry Entry) []slog.Attr {
 	add("path", slog.String("path", entry.Path))
 	add("status", slog.Int("status", entry.Status))
 	add("ip", slog.String("ip", entry.IP))
-	add("latency_ms", slog.Int64("latency_ms", entry.Latency.Milliseconds()))
+	add("latency_ms", slog.Float64("latency_ms", latencyMillis(entry.Latency)))
 	if entry.Slow {
 		add("slow", slog.Bool("slow", true))
 	}
 	if entry.Error != nil {
-		add("error", slog.String("error", entry.Error.Error()))
+		add("err", slog.Any("err", entry.Error))
 	}
 	return items
 }
 
+func latencyMillis(duration time.Duration) float64 {
+	return math.Round(float64(duration)/float64(time.Microsecond)) / 1000
+}
+
 func firstConfig(configs ...Config) Config {
-	config := Config{Channel: "http"}
+	config := Config{Channel: runlog.HTTP}
 	if len(configs) > 0 {
 		provided := configs[0]
 		if provided.Next != nil {

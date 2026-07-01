@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"runtime/debug"
 	"sort"
 	"time"
 
 	"github.com/duxweb/runa/core"
+	runlog "github.com/duxweb/runa/log"
 )
 
 // MarshalPayload serializes a typed payload for task messages.
@@ -202,6 +204,7 @@ func (registry *Registry) DispatchMessage(ctx context.Context, message Message) 
 		defer cancel()
 	}
 	if err := executeTask(ctx, entry, message); err != nil {
+		taskLogger().ErrorContext(ctx, "task failed", "task", message.Name, "id", message.ID, "attempt", message.Attempt, "err", err)
 		return "", err
 	}
 	return message.ID, nil
@@ -214,6 +217,10 @@ func executeTask(ctx context.Context, entry entry, message Message) (err error) 
 		}
 	}()
 	return entry.call(ctx, message)
+}
+
+func taskLogger() *slog.Logger {
+	return runlog.Channel(nil, runlog.Task)
 }
 
 // DispatchRaw dispatches a serialized task message.

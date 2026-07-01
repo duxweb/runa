@@ -3,7 +3,6 @@ package schedule
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"reflect"
 	"runtime/debug"
 	"sort"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/duxweb/runa/core"
 	"github.com/duxweb/runa/host"
+	runlog "github.com/duxweb/runa/log"
 	"github.com/duxweb/runa/task"
 	"github.com/robfig/cron/v3"
 )
@@ -255,7 +255,7 @@ func (unit *Unit) run(ctx context.Context, item entry) {
 	state.mu.Unlock()
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			slog.Default().ErrorContext(ctx, "schedule panic", slog.String("name", item.name), slog.String("task", item.task), slog.Any("panic", recovered), slog.String("stack", string(debug.Stack())))
+			runlog.Channel(nil, runlog.Schedule).ErrorContext(ctx, "schedule panic", "name", item.name, "task", item.task, "panic", recovered, "stack", string(debug.Stack()))
 			state.mu.Lock()
 			state.running = false
 			state.pending = false
@@ -269,7 +269,7 @@ func (unit *Unit) run(ctx context.Context, item entry) {
 			message.Queue = item.queue
 		}
 		if _, err := unit.tasks.DispatchMessage(ctx, message); err != nil {
-			slog.Default().ErrorContext(ctx, "schedule task failed", slog.String("name", item.name), slog.String("task", item.task), slog.Any("error", err))
+			runlog.Channel(nil, runlog.Schedule).ErrorContext(ctx, "schedule task failed", "name", item.name, "task", item.task, "err", err)
 		}
 
 		state.mu.Lock()

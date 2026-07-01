@@ -117,11 +117,8 @@ func applyOptions(opts *options, items ...Option) {
 }
 
 func logger(app any, channel string, name string, dialect string) orodb.Logger {
-	loggers := logRegistry(app)
-	if loggers == nil {
-		return nil
-	}
 	recorder, _ := app.(interface{ SQLRecorder() database.SQLRecorder })
+	logger := runlog.Channel(app, channel)
 	return orodb.LoggerFunc(func(ctx context.Context, event orodb.LogEvent) {
 		recordSQL(recorder, name, dialect, event)
 		level := slog.LevelInfo
@@ -132,29 +129,15 @@ func logger(app any, channel string, name string, dialect string) orodb.Logger {
 		} else if event.Level >= orodb.LogLevelDebug {
 			level = slog.LevelDebug
 		}
-		loggers.Get(channel).LogAttrs(ctx, level, "sql",
+		logger.LogAttrs(ctx, level, "sql",
 			slog.String("db", name),
 			slog.String("dialect", dialect),
 			slog.String("sql", event.SQL),
 			slog.Int64("rows", event.Rows),
 			slog.Int64("duration_ms", event.Duration.Milliseconds()),
-			slog.Any("error", event.Err),
+			slog.Any("err", event.Err),
 		)
 	})
-}
-
-func logRegistry(app any) *runlog.Registry {
-	if registry, ok := app.(*runlog.Registry); ok {
-		return registry
-	}
-	if withInjector, ok := app.(interface{ Injector() do.Injector }); ok {
-		registry, _ := do.Invoke[*runlog.Registry](withInjector.Injector())
-		return registry
-	}
-	if value, ok := app.(interface{ Log() *runlog.Registry }); ok {
-		return value.Log()
-	}
-	return nil
 }
 
 func recordSQL(recorder interface{ SQLRecorder() database.SQLRecorder }, name string, dialect string, event orodb.LogEvent) {

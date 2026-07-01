@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/duxweb/runa/core"
 	"github.com/duxweb/runa/host"
+	runlog "github.com/duxweb/runa/log"
 )
 
 // Work starts a worker and blocks until ctx is canceled.
@@ -212,6 +214,7 @@ func (unit *Unit) run(ctx context.Context, worker workerEntry, message *JobMessa
 	if err == nil {
 		if ackErr := driver.Ack(context.Background(), message.Queue, message.ID); ackErr != nil {
 			stats.failed.Add(1)
+			queueLogger().ErrorContext(ctx, "queue job ack failed", "worker", worker.name, "queue", message.Queue, "job", message.Name, "id", message.ID, "attempt", message.Attempt, "err", ackErr)
 		} else {
 			stats.succeeded.Add(1)
 		}
@@ -224,16 +227,20 @@ func (unit *Unit) run(ctx context.Context, worker workerEntry, message *JobMessa
 		}
 		if releaseErr := driver.Release(context.Background(), message.Queue, message.ID, delay, err.Error()); releaseErr != nil {
 			stats.failed.Add(1)
+			queueLogger().ErrorContext(ctx, "queue job retry failed", "worker", worker.name, "queue", message.Queue, "job", message.Name, "id", message.ID, "attempt", message.Attempt, "err", releaseErr)
 			return
 		}
 		stats.retried.Add(1)
+		queueLogger().WarnContext(ctx, "queue job failed; retry scheduled", "worker", worker.name, "queue", message.Queue, "job", message.Name, "id", message.ID, "attempt", message.Attempt, "max_attempt", message.MaxAttempt, "retry_delay", delay, "err", err)
 		return
 	}
 	if failErr := driver.Fail(context.Background(), message.Queue, message.ID, err.Error()); failErr != nil {
 		stats.failed.Add(1)
+		queueLogger().ErrorContext(ctx, "queue job fail mark failed", "worker", worker.name, "queue", message.Queue, "job", message.Name, "id", message.ID, "attempt", message.Attempt, "err", failErr)
 		return
 	}
 	stats.failed.Add(1)
+	queueLogger().ErrorContext(ctx, "queue job failed", "worker", worker.name, "queue", message.Queue, "job", message.Name, "id", message.ID, "attempt", message.Attempt, "max_attempt", message.MaxAttempt, "err", err)
 }
 
 func (unit *Unit) execute(ctx context.Context, worker workerEntry, message *JobMessage, driver Driver) (err error) {
@@ -326,6 +333,10 @@ func (unit *Unit) setStatus(status host.Status) {
 	unit.mu.Lock()
 	defer unit.mu.Unlock()
 	unit.status = status
+}
+
+func queueLogger() *slog.Logger {
+	return runlog.Channel(nil, runlog.Queue)
 }
 
 func renewLease(ctx context.Context, done <-chan struct{}, driver Driver, queueName string, id string, lease time.Duration) {

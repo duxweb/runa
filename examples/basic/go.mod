@@ -4,12 +4,13 @@ go 1.27rc1
 
 require (
 	github.com/duxweb/runa v0.1.0
+	github.com/duxweb/runa/log v0.1.0
+	github.com/duxweb/runa/middleware v0.1.0
 	github.com/duxweb/runa/route v0.1.0
 )
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
-	github.com/duxweb/runa/lang v0.1.0 // indirect
 	github.com/duxweb/runa/scope v0.1.0 // indirect
 	github.com/duxweb/runa/validate v0.1.0 // indirect
 	github.com/samber/do/v2 v2.0.0 // indirect

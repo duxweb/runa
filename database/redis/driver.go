@@ -68,12 +68,10 @@ func (driver driver) Open(ctx context.Context, config database.Config) (database
 		_ = db.Close(ctx)
 		return nil, err
 	}
-	if loggers := logRegistry(config.App); loggers != nil {
-		loggers.Get(opts.logger).LogAttrs(ctx, slog.LevelDebug, "redis connected",
-			slog.String("db", config.Name),
-			slog.String("addr", opts.addr),
-		)
-	}
+	runlog.Channel(config.App, opts.logger).LogAttrs(ctx, slog.LevelDebug, "redis connected",
+		slog.String("db", config.Name),
+		slog.String("addr", opts.addr),
+	)
 	return db, nil
 }
 
@@ -89,20 +87,6 @@ func configStore(app any) *runaconfig.Store {
 		Config(...string) *runaconfig.Store
 	}); ok {
 		return value.Config()
-	}
-	return nil
-}
-
-func logRegistry(app any) *runlog.Registry {
-	if registry, ok := app.(*runlog.Registry); ok {
-		return registry
-	}
-	if withInjector, ok := app.(interface{ Injector() do.Injector }); ok {
-		registry, _ := do.Invoke[*runlog.Registry](withInjector.Injector())
-		return registry
-	}
-	if value, ok := app.(interface{ Log() *runlog.Registry }); ok {
-		return value.Log()
 	}
 	return nil
 }

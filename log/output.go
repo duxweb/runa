@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/duxweb/runa/core"
+	"github.com/lmittmann/tint"
 )
 
 // Output builds a slog handler for a channel.
@@ -112,7 +113,7 @@ func buildHandler(writer io.Writer, options Options) slog.Handler {
 	case "json":
 		handler = slog.NewJSONHandler(writer, handlerOptions(options))
 	case "pretty":
-		handler = slog.NewTextHandler(writer, handlerOptions(options))
+		handler = tint.NewHandler(writer, tintOptions(options))
 	default:
 		handler = slog.NewTextHandler(writer, handlerOptions(options))
 	}
@@ -123,35 +124,20 @@ func buildHandler(writer io.Writer, options Options) slog.Handler {
 }
 
 func prettyAttr(groups []string, attr slog.Attr) slog.Attr {
-	if len(groups) > 0 {
-		return attr
-	}
-	switch attr.Key {
-	case slog.TimeKey:
+	if len(groups) == 0 && attr.Key == slog.TimeKey {
 		if attr.Value.Kind() == slog.KindTime {
-			return slog.String(attr.Key, core.In(attr.Value.Time()).Format("03:04PM"))
+			return slog.Time(attr.Key, core.In(attr.Value.Time()))
 		}
-	case slog.LevelKey:
-		if level, ok := attr.Value.Any().(slog.Level); ok {
-			return slog.String(attr.Key, levelName(level))
+	}
+	if attr.Key == "err" {
+		return tint.Attr(9, attr)
+	}
+	if attr.Value.Kind() == slog.KindAny {
+		if _, ok := attr.Value.Any().(error); ok {
+			return tint.Attr(9, attr)
 		}
-	case slog.MessageKey:
-		return attr
 	}
 	return attr
-}
-
-func levelName(level slog.Level) string {
-	switch {
-	case level >= slog.LevelError:
-		return "ERR"
-	case level >= slog.LevelWarn:
-		return "WRN"
-	case level <= slog.LevelDebug:
-		return "DBG"
-	default:
-		return "INF"
-	}
 }
 
 func fanout(handlers ...slog.Handler) slog.Handler {

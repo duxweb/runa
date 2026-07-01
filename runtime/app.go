@@ -513,6 +513,7 @@ func printServeHosts(writer io.Writer, items []host.Info) {
 			palette.status(item.Status), status, palette.reset(),
 		)
 	}
+	fmt.Fprintln(writer)
 }
 
 func displayHostAddr(addr string) string {

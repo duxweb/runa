@@ -47,7 +47,11 @@ func TestLoggerOnLogged(t *testing.T) {
 }
 
 func TestLoggerCapturesError(t *testing.T) {
+	var buffer bytes.Buffer
 	registry := route.New()
+	loggers := runlog.New()
+	loggers.Set(runlog.HTTP, runlog.Writer(&buffer, runlog.JSON()))
+	registry.Service(loggers)
 	group := route.NewGroup(registry, "")
 	expected := errors.New("boom")
 	var entry Entry
@@ -68,6 +72,13 @@ func TestLoggerCapturesError(t *testing.T) {
 	}
 	if entry.Status != http.StatusInternalServerError {
 		t.Fatalf("status = %d", entry.Status)
+	}
+	var line map[string]any
+	if err := json.Unmarshal(buffer.Bytes(), &line); err != nil {
+		t.Fatalf("decode log: %v body=%q", err, buffer.String())
+	}
+	if line["level"] != "ERROR" || line["err"] != "boom" {
+		t.Fatalf("line = %#v", line)
 	}
 }
 
@@ -154,5 +165,14 @@ func TestLoggerFieldsAndSlow(t *testing.T) {
 	}
 	if _, ok := line["path"]; ok {
 		t.Fatalf("path should be excluded: %#v", line)
+	}
+}
+
+func TestLatencyMillisKeepsSubMillisecondPrecision(t *testing.T) {
+	if got := latencyMillis(500 * time.Microsecond); got != 0.5 {
+		t.Fatalf("latency = %v", got)
+	}
+	if got := latencyMillis(1500 * time.Microsecond); got != 1.5 {
+		t.Fatalf("latency = %v", got)
 	}
 }

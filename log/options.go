@@ -2,8 +2,10 @@ package log
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/duxweb/runa/core"
+	"github.com/lmittmann/tint"
 )
 
 // Options configures a slog handler.
@@ -74,6 +76,16 @@ func handlerOptions(options Options) *slog.HandlerOptions {
 		handler.ReplaceAttr = prettyAttr
 	}
 	return handler
+}
+
+func tintOptions(options Options) *tint.Options {
+	return &tint.Options{
+		AddSource:   options.Source,
+		Level:       options.Level,
+		NoColor:     options.NoColor,
+		TimeFormat:  time.DateTime,
+		ReplaceAttr: prettyAttr,
+	}
 }
 
 func timeAttr(groups []string, attr slog.Attr) slog.Attr {

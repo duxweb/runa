@@ -3,12 +3,12 @@ package route
 import (
 	"bytes"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	runlog "github.com/duxweb/runa/log"
 	"github.com/duxweb/runa/runtime"
 )
 
@@ -84,6 +84,15 @@ func TestContextErrorLogsSourceAndStack(t *testing.T) {
 func newLoggedRouteApp(logs *bytes.Buffer) (*runtime.App, *Registry) {
 	app := runtime.New()
 	routes := New()
-	app.Install(Provider(UseRegistry(routes)), runlog.Provider(runlog.Register(runlog.Error, runlog.Writer(logs, runlog.JSON()))))
+	routes.Service(testLoggerProvider{logger: slog.New(slog.NewJSONHandler(logs, nil))})
+	app.Install(Provider(UseRegistry(routes)))
 	return app, routes
+}
+
+type testLoggerProvider struct {
+	logger *slog.Logger
+}
+
+func (provider testLoggerProvider) Get(string) *slog.Logger {
+	return provider.logger
 }

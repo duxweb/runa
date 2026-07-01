@@ -110,12 +110,10 @@ func securityCookieOptions(ctx runaprovider.Context, store *config.Store) []Cook
 			EncryptKey(deriveKey(secret, "session.encrypt")),
 		)
 	} else if !isLocalEnv(appEnv(ctx)) {
-		if loggers, err := runaprovider.Invoke[*runlog.Registry](ctx); err == nil && loggers != nil {
-			loggers.Get(runlog.Error).Warn(
-				"app secret is not configured; session keys are process-local and will change after restart",
-				slog.String("env", appEnv(ctx)),
-			)
-		}
+		runlog.Channel(ctx, runlog.Error).Warn(
+			"app secret is not configured; session keys are process-local and will change after restart",
+			slog.String("env", appEnv(ctx)),
+		)
 	}
 	return options
 }

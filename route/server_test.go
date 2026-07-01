@@ -3,6 +3,8 @@ package route
 import (
 	"bytes"
 	"context"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +40,38 @@ func TestStartupBannerCanBeDisabled(t *testing.T) {
 	defer unit.Stop(context.Background())
 	if out.Len() != 0 {
 		t.Fatalf("banner output = %q", out.String())
+	}
+}
+
+type startupBannerService struct{ Value string }
+
+func TestServerUsesServicesBoundAfterServerCreation(t *testing.T) {
+	registry := New()
+	registry.Get("/", func(ctx *Context) error {
+		service := Service[*startupBannerService](ctx)
+		if service == nil {
+			return ctx.Text("missing")
+		}
+		return ctx.Text(service.Value)
+	})
+	server := registry.Server(ServerConfig{Addr: ":0", ShutdownTimeout: time.Second})
+	registry.Service(&startupBannerService{Value: "bound"})
+	if err := server.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer server.Stop(context.Background())
+
+	response, err := http.Get("http://" + server.Addr())
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if string(body) != "bound" {
+		t.Fatalf("body = %q, want bound", body)
 	}
 }
 

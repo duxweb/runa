@@ -11,6 +11,8 @@ import (
 	"github.com/duxweb/runa/core"
 )
 
+const errorLogChannel = "error"
+
 // ErrorHandler normalizes route errors.
 type ErrorHandler func(*Context, error) error
 
@@ -174,7 +176,7 @@ func logServerError(ctx *Context, err error) {
 		)
 	}
 	attrs = appendErrorTrace(attrs, err)
-	loggers.Get("error").LogAttrs(ctx.Context(), slog.LevelError, err.Error(), attrs...)
+	loggers.Get(errorLogChannel).LogAttrs(ctx.Context(), slog.LevelError, err.Error(), attrs...)
 }
 
 func appendErrorTrace(attrs []slog.Attr, err error) []slog.Attr {

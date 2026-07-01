@@ -51,15 +51,12 @@ func (writer multiWriter) Write(ctx context.Context, entry Entry) error {
 
 // LogWriter writes audit records to a Runa logger registry.
 func LogWriter(registry *runlog.Registry, channels ...string) Writer {
-	channel := "audit"
+	channel := runlog.Audit
 	if len(channels) > 0 && channels[0] != "" {
 		channel = channels[0]
 	}
 	return FuncWriter(func(ctx context.Context, entry Entry) error {
-		logger := slog.Default()
-		if registry != nil {
-			logger = registry.Get(channel)
-		}
+		logger := runlog.Channel(registry, channel)
 		logger.InfoContext(ctx, "audit",
 			slog.String("route", entry.Route),
 			slog.String("action", entry.Action),
@@ -77,6 +74,6 @@ func LogWriter(registry *runlog.Registry, channels ...string) Writer {
 // DefaultLogWriter writes audit records to the default Runa logger registry.
 func DefaultLogWriter(channels ...string) Writer {
 	return FuncWriter(func(ctx context.Context, entry Entry) error {
-		return LogWriter(runlog.Default(), channels...).Write(ctx, entry)
+		return LogWriter(nil, channels...).Write(ctx, entry)
 	})
 }

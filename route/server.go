@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"runtime/debug"
 	"strconv"
@@ -36,11 +37,23 @@ func (registry *Registry) Server(config ServerConfig) *host.HTTPServer {
 	return host.NewHTTP(host.HTTPConfig{
 		Name:            config.Name,
 		Addr:            config.Addr,
-		Handler:         registry.Handler(),
+		Handler:         lazyHandler(func() http.Handler { return registry.Handler() }),
 		ReadTimeout:     config.ReadTimeout,
 		WriteTimeout:    config.WriteTimeout,
 		IdleTimeout:     config.IdleTimeout,
 		ShutdownTimeout: config.ShutdownTimeout,
+	})
+}
+
+func lazyHandler(resolve func() http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		handler := http.NotFoundHandler()
+		if resolve != nil {
+			if resolved := resolve(); resolved != nil {
+				handler = resolved
+			}
+		}
+		handler.ServeHTTP(writer, request)
 	})
 }
 
