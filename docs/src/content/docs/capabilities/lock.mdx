@@ -100,21 +100,20 @@ auto_renew = true
 
 ## Drivers
 
-The built-in `memory` driver is suitable for same-process mutual exclusion. For cross-process or multi-instance deployments, install `lock/redis`, register the Redis driver with `RegisterDriver`, then use `lock.Use("redis")` for the target locker.
+The built-in `memory` driver is suitable for same-process mutual exclusion. For cross-process or multi-instance deployments, install `lock/redis`, then use `lock.Use("redis")` for the target locker.
 
 ```go
 import (
-    goredis "github.com/redis/go-redis/v9"
     lockredis "github.com/duxweb/runa/lock/redis"
 )
 
-client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
-
-app.Install(lock.Provider(
-    lock.RegisterDriver("redis", lockredis.Driver(client, lock.DriverMeta("role", "shared"))),
-    lock.RegisterLocker("default", lock.Use("redis"), lock.Prefix("runa:lock:")),
-))
+app.Install(
+    lock.Provider(lock.RegisterLocker("default", lock.Use("redis"), lock.Prefix("runa:lock:"))),
+    lockredis.Provider(lockredis.Addr("127.0.0.1:6379")),
+)
 ```
+
+`lock/redis` also accepts `Client(client)` for a shared Redis client. Injected clients are not closed; provider-created clients are closed with the app lifecycle.
 
 ## Common mistakes
 

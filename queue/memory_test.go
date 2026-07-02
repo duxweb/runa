@@ -6,6 +6,12 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/duxweb/runa"
+	"github.com/duxweb/runa/core"
+	"github.com/duxweb/runa/event"
+	runaprovider "github.com/duxweb/runa/provider"
+	"github.com/duxweb/runa/task"
 )
 
 type memoryPayload struct {
@@ -106,6 +112,118 @@ func TestMemoryDriverDelayRetryUniqueRenewAndFail(t *testing.T) {
 	}
 }
 
+func TestMemoryDriverUniqueUntilDoneReleasesOnFail(t *testing.T) {
+	ctx := context.Background()
+	driver := MemoryDriver()
+	id, err := driver.Push(ctx, "jobs", &JobMessage{ID: "job-1", Queue: "jobs", Name: "sync", Unique: "user:1", UniqueStrategy: string(UniqueStrategyUntilDone), MaxAttempt: 0})
+	if err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	items, err := driver.Reserve(ctx, "jobs", 1, time.Second)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("reserve = %#v err=%v", items, err)
+	}
+	if err := driver.Fail(ctx, "jobs", id, "failed"); err != nil {
+		t.Fatalf("fail: %v", err)
+	}
+	again, err := driver.Push(ctx, "jobs", &JobMessage{ID: "job-2", Queue: "jobs", Name: "sync", Unique: "user:1", UniqueStrategy: string(UniqueStrategyUntilDone)})
+	if err != nil {
+		t.Fatalf("push again: %v", err)
+	}
+	if again != "job-2" {
+		t.Fatalf("unique was not released after fail: got %q", again)
+	}
+}
+
+func TestMemoryDriverUniqueUntilStartReleasesOnReserve(t *testing.T) {
+	ctx := context.Background()
+	driver := MemoryDriver()
+	id, err := driver.Push(ctx, "jobs", &JobMessage{ID: "job-1", Queue: "jobs", Name: "sync", Unique: "user:1", UniqueStrategy: string(UniqueStrategyUntilStart)})
+	if err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	items, err := driver.Reserve(ctx, "jobs", 1, time.Second)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("reserve = %#v err=%v", items, err)
+	}
+	again, err := driver.Push(ctx, "jobs", &JobMessage{ID: "job-2", Queue: "jobs", Name: "sync", Unique: "user:1", UniqueStrategy: string(UniqueStrategyUntilStart)})
+	if err != nil {
+		t.Fatalf("push again: %v", err)
+	}
+	if again == id {
+		t.Fatalf("unique was not released on reserve: got %q", again)
+	}
+}
+
+func TestMemoryDriverUniqueTTLExpires(t *testing.T) {
+	ctx := context.Background()
+	driver := MemoryDriver()
+	id, err := driver.Push(ctx, "jobs", &JobMessage{ID: "job-1", Queue: "jobs", Name: "sync", Unique: "user:1", UniqueStrategy: string(UniqueStrategyUntilDone), UniqueTTL: 20 * time.Millisecond})
+	if err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	again, err := driver.Push(ctx, "jobs", &JobMessage{ID: "job-2", Queue: "jobs", Name: "sync", Unique: "user:1", UniqueStrategy: string(UniqueStrategyUntilDone), UniqueTTL: 20 * time.Millisecond})
+	if err != nil || again != id {
+		t.Fatalf("unique before ttl = %q err=%v", again, err)
+	}
+	time.Sleep(30 * time.Millisecond)
+	after, err := driver.Push(ctx, "jobs", &JobMessage{ID: "job-3", Queue: "jobs", Name: "sync", Unique: "user:1", UniqueStrategy: string(UniqueStrategyUntilDone), UniqueTTL: 20 * time.Millisecond})
+	if err != nil {
+		t.Fatalf("push after ttl: %v", err)
+	}
+	if after != "job-3" {
+		t.Fatalf("unique ttl did not expire: got %q", after)
+	}
+}
+
+func TestMemoryDriverUniqueTTLReleasesOnFail(t *testing.T) {
+	ctx := context.Background()
+	driver := MemoryDriver()
+	id, err := driver.Push(ctx, "jobs", &JobMessage{ID: "job-1", Queue: "jobs", Name: "sync", Unique: "ttl-fail", UniqueStrategy: string(UniqueStrategyUntilDone), UniqueTTL: 30 * time.Millisecond})
+	if err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	if _, err := driver.Reserve(ctx, "jobs", 1, time.Second); err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	if err := driver.Fail(ctx, "jobs", id, "failed"); err != nil {
+		t.Fatalf("fail: %v", err)
+	}
+	again, err := driver.Push(ctx, "jobs", &JobMessage{ID: "job-2", Queue: "jobs", Name: "sync", Unique: "ttl-fail", UniqueStrategy: string(UniqueStrategyUntilDone), UniqueTTL: 30 * time.Millisecond})
+	if err != nil {
+		t.Fatalf("push after fail: %v", err)
+	}
+	if again != "job-2" {
+		t.Fatalf("ttl unique was not released after fail: got %q", again)
+	}
+}
+
+func TestMemoryDriverPurgeFailedJobs(t *testing.T) {
+	ctx := context.Background()
+	driver := MemoryDriver()
+	id, err := driver.Push(ctx, "jobs", &JobMessage{ID: "job-1", Queue: "jobs", Name: "sync", Unique: "user:1", UniqueStrategy: string(UniqueStrategyUntilDone)})
+	if err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	if _, err := driver.Reserve(ctx, "jobs", 1, time.Second); err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	if err := driver.Fail(ctx, "jobs", id, "failed"); err != nil {
+		t.Fatalf("fail: %v", err)
+	}
+	count, err := driver.Purge(ctx, "jobs", StateFailed, core.Now().Add(time.Second))
+	if err != nil {
+		t.Fatalf("purge: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("purged = %d", count)
+	}
+	failed, _ := driver.Count(ctx, "jobs", StateFailed)
+	if failed != 0 {
+		t.Fatalf("failed after purge = %d", failed)
+	}
+}
+
 func TestRegistryWorkerRunsJobsAndRetries(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -198,6 +316,109 @@ func TestRegistryWorkerFailsAfterRetries(t *testing.T) {
 	}
 }
 
+func TestWorkerPurgesFailedJobsByRetention(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	registry := New()
+	registry.Queue("jobs", Retention(20*time.Millisecond), Workers("jobs"))
+	registry.Worker("jobs", PollInterval(time.Millisecond), Lease(50*time.Millisecond))
+	done := make(chan struct{})
+	registry.Job[memoryPayload]("always-fail", func(ctx context.Context, job *Job[memoryPayload]) error {
+		close(done)
+		return errors.New("failed")
+	})
+	if err := registry.Freeze(); err != nil {
+		t.Fatalf("freeze: %v", err)
+	}
+	if _, err := registry.Push(ctx, "jobs", "always-fail", memoryPayload{ID: 7}); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	unit := NewUnit(registry, "jobs")
+	if err := unit.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer unit.Stop(context.Background())
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("job not executed")
+	}
+	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); {
+		failed, _ := registry.driver(DefaultDriver).Count(ctx, "jobs", StateFailed)
+		if failed == 0 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	failed, _ := registry.driver(DefaultDriver).Count(ctx, "jobs", StateFailed)
+	t.Fatalf("failed after retention = %d", failed)
+}
+
+func TestWorkerDoesNotPurgeFailedJobsWithoutRetention(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	registry := New()
+	registry.Queue("jobs", Workers("jobs"))
+	registry.Worker("jobs", PollInterval(time.Millisecond), Lease(50*time.Millisecond))
+	done := make(chan struct{})
+	registry.Job[memoryPayload]("always-fail", func(ctx context.Context, job *Job[memoryPayload]) error {
+		close(done)
+		return errors.New("failed")
+	})
+	if err := registry.Freeze(); err != nil {
+		t.Fatalf("freeze: %v", err)
+	}
+	if _, err := registry.Push(ctx, "jobs", "always-fail", memoryPayload{ID: 7}); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	unit := NewUnit(registry, "jobs")
+	if err := unit.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer unit.Stop(context.Background())
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("job not executed")
+	}
+	time.Sleep(50 * time.Millisecond)
+	failed, _ := registry.driver(DefaultDriver).Count(ctx, "jobs", StateFailed)
+	if failed != 1 {
+		t.Fatalf("failed without retention = %d", failed)
+	}
+}
+
+func TestQueueProviderInstallsTaskDispatcherWithoutEvent(t *testing.T) {
+	ctx := context.Background()
+	app := runa.New()
+	app.Install(task.Provider(), Provider())
+	app.Module(taskModule{})
+	if err := app.Freeze(ctx); err != nil {
+		t.Fatalf("freeze: %v", err)
+	}
+	tasks := task.Default()
+	id, err := tasks.Dispatch(ctx, "queued", memoryPayload{ID: 1}, task.Queue("default"))
+	if err != nil {
+		t.Fatalf("dispatch queued task: %v", err)
+	}
+	if id == "" {
+		t.Fatal("dispatch id is empty")
+	}
+}
+
+func TestQueueProviderInstallsEventDispatcherWithoutTaskHandlers(t *testing.T) {
+	ctx := context.Background()
+	app := runa.New()
+	app.Install(event.Provider(), Provider())
+	app.Module(eventModule{})
+	if err := app.Freeze(ctx); err != nil {
+		t.Fatalf("freeze: %v", err)
+	}
+	if err := event.Default().Emit(ctx, "created", memoryPayload{ID: 1}); err != nil {
+		t.Fatalf("emit queued event: %v", err)
+	}
+}
+
 func TestMemoryWorkerState(t *testing.T) {
 	ctx := context.Background()
 	driver := MemoryDriver().(WorkerState)
@@ -276,4 +497,22 @@ func queueInfoByName(items []QueueInfo, name string) QueueInfo {
 		}
 	}
 	return QueueInfo{}
+}
+
+type taskModule struct{ runaprovider.ModuleBase }
+
+func (taskModule) Name() string { return "queue-test-task" }
+
+func (taskModule) Register(ctx context.Context, _ runaprovider.Context) error {
+	task.Default().Register[memoryPayload]("queued", func(context.Context, *task.TaskOf[memoryPayload]) error { return nil })
+	return nil
+}
+
+type eventModule struct{ runaprovider.ModuleBase }
+
+func (eventModule) Name() string { return "queue-test-event" }
+
+func (eventModule) Register(ctx context.Context, _ runaprovider.Context) error {
+	event.Default().On[memoryPayload]("created", func(context.Context, *event.EventOf[memoryPayload]) error { return nil }, event.Queue("default"))
+	return nil
 }

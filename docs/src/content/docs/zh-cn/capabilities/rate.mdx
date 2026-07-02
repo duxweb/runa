@@ -88,21 +88,20 @@ key = ["ip", "route"]
 
 ## 驱动
 
-内置 `memory` 驱动适合单进程限流。多实例部署时，安装 `rate/redis` 并通过 `RegisterDriver` 注册 Redis 驱动，再用 `rate.Use("redis")` 让指定 limiter 使用它。
+内置 `memory` 驱动适合单进程限流。多实例部署时，安装 `rate/redis`，再用 `rate.Use("redis")` 让指定 limiter 使用它。
 
 ```go
 import (
-    goredis "github.com/redis/go-redis/v9"
     rateredis "github.com/duxweb/runa/rate/redis"
 )
 
-client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
-
-app.Install(rate.Provider(
-    rate.RegisterDriver("redis", rateredis.Driver(client, rate.Prefix("runa:rate:"))),
-    rate.RegisterLimiter("api", rate.Use("redis"), rate.FixedWindow(100, time.Minute), rate.Key(rate.ByIP())),
-))
+app.Install(
+    rate.Provider(rate.RegisterLimiter("api", rate.Use("redis"), rate.FixedWindow(100, time.Minute), rate.Key(rate.ByIP()))),
+    rateredis.Provider(rateredis.Addr("127.0.0.1:6379"), rateredis.Prefix("runa:rate:")),
+)
 ```
+
+`rate/redis` 也支持 `Client(client)` 注入共享 Redis client。注入的 client 不由 Runa 关闭；Provider 自建的 client 会随应用生命周期关闭。
 
 ## 三种算法怎么选
 

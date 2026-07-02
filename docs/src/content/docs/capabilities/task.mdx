@@ -80,13 +80,18 @@ _, err := tasks.Dispatch(ctx, "mail.send", payload,
     task.Queue("default"),
     task.Delay(time.Minute),
     task.Unique("mail:1"),
+    task.UniqueUntilDone(),
+    task.UniqueFor(30*time.Minute),
 )
 ```
 
 - `Direct()` forces direct execution.
 - `Queue(name)` selects a queue.
 - `Delay(duration)` delays execution.
-- `Unique(key)` deduplicates dispatch.
+- `Unique(key)` deduplicates queued dispatch.
+- `UniqueUntilDone()` keeps the unique lock until success or terminal failure.
+- `UniqueUntilStart()` releases the unique lock when the queue worker reserves the task.
+- `UniqueFor(ttl)` sets a maximum unique lock lifetime.
 
 ## Commands
 

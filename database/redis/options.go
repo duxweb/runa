@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/duxweb/runa/core"
+	goredis "github.com/redis/go-redis/v9"
 )
 
 // Option configures a Redis database driver.
@@ -22,6 +23,12 @@ type options struct {
 	poolSize     int
 	minIdle      int
 	meta         core.Map
+	client       *goredis.Client
+}
+
+// Client uses an existing Redis client. The runtime will not close injected clients.
+func Client(client *goredis.Client) Option {
+	return func(options *options) { options.client = client }
 }
 
 // Addr sets the Redis server address.

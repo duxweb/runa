@@ -131,6 +131,8 @@ route.Default().Get("/users", func(ctx *route.Context) error {
 
 ## Redis driver
 
+You can register Redis through `database.Provider(...)` directly:
+
 ```go
 import dbredis "github.com/duxweb/runa/database/redis"
 
@@ -141,6 +143,31 @@ app.Install(database.Provider(
     )),
 ))
 ```
+
+Or install `dbredis.Provider(...)` to register Redis runtimes from `config/redis.toml` or from code options:
+
+```toml
+# config/redis.toml
+addr = "127.0.0.1:6379"
+db = 0
+
+[cache]
+addr = "127.0.0.1:6379"
+db = 1
+```
+
+```go
+app.Install(
+    database.Provider(),
+    dbredis.Provider(),
+)
+```
+
+Root keys in `config/redis.toml` register the `default` runtime. Tables such as `[cache]` register named runtimes.
+
+Other Redis-backed drivers such as `queue/redis`, `cache/redis`, and `lock/redis` no longer depend on `database/redis` for client lookup. They can read the same `[redis]` / `[redis.<name>]` config and create their own pools, or you can explicitly share one pool by passing the same `*redis.Client` with each driver package's `Client(client)` option.
+
+`database/redis` also supports `dbredis.Client(client)`, and `database/oro` supports `dboro.DB(db)`. Injected clients/DBs are owned by the caller and are not closed by Runa; connections created from DSN/options/config are closed by the database runtime.
 
 ## Commands
 

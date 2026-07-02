@@ -27,6 +27,7 @@ type Options struct {
 	Timezone       string
 	Enabled        bool
 	SkipIfRunning  bool
+	SkipIfQueued   bool
 	DelayIfRunning bool
 	Meta           core.Map
 }
@@ -74,6 +75,7 @@ func (registry *Registry) Register[T any](name string, spec string, taskName str
 		timezone:       opts.Timezone,
 		enabled:        opts.Enabled,
 		skipIfRunning:  opts.SkipIfRunning,
+		skipIfQueued:   opts.SkipIfQueued,
 		delayIfRunning: opts.DelayIfRunning,
 		meta:           core.CloneMap(opts.Meta),
 	})
@@ -156,6 +158,7 @@ type entry struct {
 	timezone       string
 	enabled        bool
 	skipIfRunning  bool
+	skipIfQueued   bool
 	delayIfRunning bool
 	meta           core.Map
 }
@@ -267,6 +270,10 @@ func (unit *Unit) run(ctx context.Context, item entry) {
 		message := task.Message{Name: item.task, Payload: append([]byte(nil), item.payload...), Meta: core.CloneMap(item.meta)}
 		if item.queue != "" {
 			message.Queue = item.queue
+			if item.skipIfQueued {
+				message.Unique = "schedule:" + item.name
+				message.UniqueStrategy = "until-done"
+			}
 		}
 		if _, err := unit.tasks.DispatchMessage(ctx, message); err != nil {
 			runlog.Channel(nil, runlog.Schedule).ErrorContext(ctx, "schedule task failed", "name", item.name, "task", item.task, "err", err)
@@ -349,6 +356,11 @@ func Enabled(value bool) Option {
 // SkipIfRunning skips a trigger while the previous run is active.
 func SkipIfRunning() Option {
 	return func(options *Options) { options.SkipIfRunning = true }
+}
+
+// SkipIfQueued skips queue dispatch while the previous queued schedule task is still pending or running.
+func SkipIfQueued() Option {
+	return func(options *Options) { options.SkipIfQueued = true }
 }
 
 // DelayIfRunning runs one delayed trigger after the active run completes.

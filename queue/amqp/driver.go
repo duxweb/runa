@@ -20,21 +20,20 @@ var ErrUnsupported = errors.New("amqp queue driver does not support this operati
 // AMQP is intentionally kept in a subpackage so the core queue package does not
 // depend on RabbitMQ-specific APIs.
 func Driver(conn *amqp091.Connection, items ...Option) queue.Driver {
-	opts := options{prefetch: 1}
-	for _, item := range items {
-		if item != nil {
-			item(&opts)
-		}
-	}
-	if opts.prefetch <= 0 {
-		opts.prefetch = 1
-	}
+	opts := defaultOptions()
+	applyOptions(&opts, items...)
+	normalizeOptions(&opts)
 	return &driver{conn: conn, options: opts, reserved: make(map[string]reserved), consumers: make(map[string]consumer)}
+}
+
+func newDriver(conn *amqp091.Connection, opts options, ownsConn bool) queue.Driver {
+	return &driver{conn: conn, options: opts, ownsConn: ownsConn, reserved: make(map[string]reserved), consumers: make(map[string]consumer)}
 }
 
 type driver struct {
 	conn      *amqp091.Connection
 	options   options
+	ownsConn  bool
 	mu        sync.Mutex
 	reserved  map[string]reserved
 	consumers map[string]consumer
@@ -42,7 +41,7 @@ type driver struct {
 	publish   *amqp091.Channel
 }
 
-func (driver *driver) Name() string { return "amqp" }
+func (driver *driver) Name() string { return driver.options.driverName }
 
 func (driver *driver) Push(ctx context.Context, queueName string, job *queue.JobMessage) (string, error) {
 	if driver.conn == nil {
@@ -185,6 +184,10 @@ func (driver *driver) Delete(context.Context, string, string) error {
 	return ErrUnsupported
 }
 
+func (driver *driver) Purge(context.Context, string, queue.JobState, time.Time) (int64, error) {
+	return 0, ErrUnsupported
+}
+
 func (driver *driver) Count(context.Context, string, queue.JobState) (int64, error) {
 	return 0, ErrUnsupported
 }
@@ -211,7 +214,7 @@ func (driver *driver) Close(context.Context) error {
 	for _, item := range consumers {
 		_ = item.channel.Close()
 	}
-	if driver.conn == nil {
+	if driver.conn == nil || !driver.ownsConn {
 		return nil
 	}
 	return driver.conn.Close()

@@ -89,21 +89,20 @@ role = "hot"
 
 ## Redis 驱动
 
+Redis 驱动可以用自己的 Provider 注册。`cache/redis` 获取 client 的顺序是：`Client(client)` 注入、`Addr(...)` 等显式选项、`[cache.redis]` 功能配置、共享 `[redis]` / `[redis.<name>]` 配置，最后回退到 `127.0.0.1:6379`。
+
 ```go
 import (
-    goredis "github.com/redis/go-redis/v9"
     cacheredis "github.com/duxweb/runa/cache/redis"
 )
 
-client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
-
-app.Install(cache.Provider(
-    cache.RegisterDriver("redis", cacheredis.Driver(client, cache.Prefix("runa:"))),
-    cache.RegisterPool("default", cache.Use("redis")),
-))
+app.Install(
+    cache.Provider(cache.RegisterPool("default", cache.Use("redis"))),
+    cacheredis.Provider(cacheredis.Addr("127.0.0.1:6379"), cacheredis.Prefix("runa:")),
+)
 ```
 
-`RegisterDriver("redis", ...)` 只是把 Redis 驱动注册进缓存注册表。`RegisterPool("default", cache.Use("redis"))` 才会让 `default` 池使用这个驱动；不写 `Use(...)` 时使用内置 `memory` 驱动。
+仍然可以用 `cacheredis.Driver(client, cache.Prefix(...))` 手工传入 client，或用 `cacheredis.Provider(cacheredis.Client(client))` 注入。注入的 client 不由 Runa 关闭；Provider 自建的 client 会随应用生命周期关闭。
 
 Redis 驱动只在你 import `github.com/duxweb/runa/cache/redis` 时进入依赖图。
 

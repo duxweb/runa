@@ -94,6 +94,15 @@ func (hub *Hub) configure(config Config) {
 	hub.config = normalize(merged)
 }
 
+// Configure merges runtime hub configuration.
+func (hub *Hub) Configure(config Config) *Hub {
+	if hub == nil {
+		return nil
+	}
+	hub.configure(config)
+	return hub
+}
+
 // Name returns hub name.
 func (hub *Hub) Name() string { return hub.name }
 

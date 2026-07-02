@@ -104,13 +104,13 @@ Redis example:
 ```go
 import messageredis "github.com/duxweb/runa/message/redis"
 
-app.Install(message.Provider(
-    message.RegisterDriver("redis", messageredis.Driver(client, messageredis.Prefix("runa:msg:"))),
-    message.RegisterBroker("default", message.Use("redis")),
-))
+app.Install(
+    message.Provider(message.RegisterBroker("default", message.Use("redis"))),
+    messageredis.Provider(messageredis.Addr("127.0.0.1:6379"), messageredis.Prefix("runa:msg:")),
+)
 ```
 
-NATS, AMQP, and MQTT drivers all connect through `message.RegisterDriver(name, driver)`. Driver package factories are consistently named `Driver(...)` and return the `message.Driver` interface.
+Redis, NATS, AMQP, and MQTT driver packages provide `Provider(...)` for config-driven setup and still keep `Driver(conn/client, ...)` as the manual escape hatch. Injected clients/connections are not closed by Runa; provider-created ones are closed with the app lifecycle. Driver config falls back from `[message.<driver>]` to shared `[redis]`, `[nats]`, `[amqp]`, or `[mqtt]`.
 
 ## Topic matching
 

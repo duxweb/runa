@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	orodb "github.com/duxweb/oro"
 	"github.com/duxweb/runa/database"
 	_ "modernc.org/sqlite"
 )
@@ -34,5 +35,30 @@ func TestDatabaseOpensOroRuntime(t *testing.T) {
 	info := runtime.Info()
 	if info.Dialect != "sqlite" || info.Meta["role"] != "primary" {
 		t.Fatalf("info = %#v", info)
+	}
+}
+
+func TestDriverUsesInjectedOroDBWithoutClosingIt(t *testing.T) {
+	ctx := context.Background()
+	base, err := Driver(DSN(":memory:"), Dialect("sqlite")).Open(ctx, database.Config{Name: "base"})
+	if err != nil {
+		t.Fatalf("open base: %v", err)
+	}
+	raw, ok := base.Raw().(*orodb.DB)
+	if !ok || raw == nil {
+		t.Fatalf("raw = %#v", base.Raw())
+	}
+	injected, err := Driver(DB(raw), Dialect("sqlite"), Meta("role", "shared")).Open(ctx, database.Config{Name: "shared"})
+	if err != nil {
+		t.Fatalf("open injected: %v", err)
+	}
+	if err := injected.Close(ctx); err != nil {
+		t.Fatalf("close injected: %v", err)
+	}
+	if err := base.Ping(ctx); err != nil {
+		t.Fatalf("injected DB should remain open: %v", err)
+	}
+	if err := base.Close(ctx); err != nil {
+		t.Fatalf("close base: %v", err)
 	}
 }

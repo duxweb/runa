@@ -80,13 +80,18 @@ _, err := tasks.Dispatch(ctx, "mail.send", payload,
     task.Queue("default"),
     task.Delay(time.Minute),
     task.Unique("mail:1"),
+    task.UniqueUntilDone(),
+    task.UniqueFor(30*time.Minute),
 )
 ```
 
 - `Direct()` 强制直接执行
 - `Queue(name)` 指定队列
 - `Delay(duration)` 延迟执行
-- `Unique(key)` 去重
+- `Unique(key)` 对队列分发去重
+- `UniqueUntilDone()` 任务成功或终态失败后释放唯一锁
+- `UniqueUntilStart()` worker 取走任务时释放唯一锁
+- `UniqueFor(ttl)` 设置唯一锁最长存活时间
 
 ## 命令
 

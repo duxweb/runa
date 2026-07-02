@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/duxweb/runa"
 	"github.com/duxweb/runa/cluster"
 	goredis "github.com/redis/go-redis/v9"
 )
@@ -37,5 +38,50 @@ func TestRedisDriverSharesInstances(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Fatalf("items after unregister = %#v", items)
+	}
+}
+
+func TestProviderUsesInjectedClientWithoutClosingIt(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	app := runa.New()
+	app.Install(
+		cluster.Provider(cluster.UseDriver("redis"), cluster.ID("node-1"), cluster.Service("api"), cluster.TTL(time.Minute)),
+		Provider(Client(client), Prefix("provider:cluster")),
+	)
+	ctx := context.Background()
+	if err := app.Freeze(ctx); err != nil {
+		t.Fatalf("freeze: %v", err)
+	}
+	items, err := cluster.Default().Instances(ctx, "api")
+	if err != nil || len(items) != 1 || items[0].ID != "node-1" {
+		t.Fatalf("instances=%#v err=%v", items, err)
+	}
+	if err := app.Shutdown(ctx); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+	if err := client.Ping(ctx).Err(); err != nil {
+		t.Fatalf("injected client should remain open: %v", err)
+	}
+	_ = client.Close()
+}
+
+func TestProviderUsesExplicitOptions(t *testing.T) {
+	server := miniredis.RunT(t)
+	app := runa.New()
+	app.Install(
+		cluster.Provider(cluster.UseDriver("redis"), cluster.ID("node-1"), cluster.Service("api"), cluster.TTL(time.Minute)),
+		Provider(Addr(server.Addr()), Prefix("provider:cluster")),
+	)
+	ctx := context.Background()
+	if err := app.Freeze(ctx); err != nil {
+		t.Fatalf("freeze: %v", err)
+	}
+	items, err := cluster.Default().Instances(ctx, "api")
+	if err != nil || len(items) != 1 || items[0].ID != "node-1" {
+		t.Fatalf("instances=%#v err=%v", items, err)
+	}
+	if err := app.Shutdown(ctx); err != nil {
+		t.Fatalf("shutdown: %v", err)
 	}
 }

@@ -24,9 +24,18 @@ func Driver(client *goredis.Client, options ...lock.DriverOption) lock.Driver {
 	return &redisStore{client: client, options: opts}
 }
 
+func newStore(client *goredis.Client, opts options, ownsClient bool) lock.Driver {
+	return &redisStore{
+		client:     client,
+		options:    lock.DriverOptions{Name: opts.driverName, Prefix: opts.prefix},
+		ownsClient: ownsClient,
+	}
+}
+
 type redisStore struct {
-	client  *goredis.Client
-	options lock.DriverOptions
+	client     *goredis.Client
+	options    lock.DriverOptions
+	ownsClient bool
 }
 
 func (store *redisStore) Name() string {
@@ -80,7 +89,12 @@ func (store *redisStore) Release(ctx context.Context, key string, token string) 
 	return nil
 }
 
-func (store *redisStore) Close(context.Context) error { return nil }
+func (store *redisStore) Close(context.Context) error {
+	if store.client == nil || !store.ownsClient {
+		return nil
+	}
+	return store.client.Close()
+}
 
 func (store *redisStore) key(key string) string { return store.options.Prefix + key }
 

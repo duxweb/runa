@@ -12,9 +12,10 @@ import (
 )
 
 type redisDriver struct {
-	client  *goredis.Client
-	options rate.DriverOptions
-	seq     atomic.Uint64
+	client     *goredis.Client
+	options    rate.DriverOptions
+	ownsClient bool
+	seq        atomic.Uint64
 }
 
 // Driver creates a Redis-backed rate driver.
@@ -32,6 +33,14 @@ func Driver(client *goredis.Client, options ...rate.DriverOption) rate.Driver {
 		opts.Prefix = "runa:rate:"
 	}
 	return &redisDriver{client: client, options: opts}
+}
+
+func newDriver(client *goredis.Client, opts options, ownsClient bool) rate.Driver {
+	return &redisDriver{
+		client:     client,
+		options:    rate.DriverOptions{Name: opts.driverName, Prefix: opts.prefix},
+		ownsClient: ownsClient,
+	}
 }
 
 func (driver *redisDriver) Name() string { return driver.options.Name }
@@ -53,7 +62,12 @@ func (driver *redisDriver) Reset(ctx context.Context, _ rate.Rule, key string) e
 	return driver.client.Del(core.NormalizeContext(ctx), driver.key(key)).Err()
 }
 
-func (driver *redisDriver) Close(context.Context) error { return nil }
+func (driver *redisDriver) Close(context.Context) error {
+	if driver.client == nil || !driver.ownsClient {
+		return nil
+	}
+	return driver.client.Close()
+}
 
 func (driver *redisDriver) fixed(ctx context.Context, key string, rule rate.Rule, now time.Time) (rate.Result, error) {
 	windowMS := rule.Window.Milliseconds()

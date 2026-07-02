@@ -12,17 +12,19 @@ import (
 
 func Driver(conn *amqp091.Connection, options ...Option) message.Driver {
 	opts := defaultOptions()
-	for _, option := range options {
-		if option != nil {
-			option(&opts)
-		}
-	}
+	applyOptions(&opts, options...)
+	normalizeOptions(&opts)
 	return &driver{conn: conn, options: opts}
+}
+
+func newDriver(conn *amqp091.Connection, opts options, ownsConn bool) message.Driver {
+	return &driver{conn: conn, options: opts, ownsConn: ownsConn}
 }
 
 type driver struct {
 	conn     *amqp091.Connection
 	options  options
+	ownsConn bool
 	mu       sync.Mutex
 	publish  *amqp091.Channel
 	channels []*amqp091.Channel
@@ -103,7 +105,7 @@ func (driver *driver) Close(context.Context) error {
 			_ = ch.Close()
 		}
 	}
-	if driver.conn != nil {
+	if driver.conn != nil && driver.ownsConn {
 		return driver.conn.Close()
 	}
 	return nil

@@ -100,21 +100,20 @@ auto_renew = true
 
 ## 驱动
 
-内置 `memory` 驱动适合同进程互斥。跨进程或多实例部署时，安装 `lock/redis` 并通过 `RegisterDriver` 注册 Redis 驱动，再用 `lock.Use("redis")` 让指定 locker 使用它。
+内置 `memory` 驱动适合同进程互斥。跨进程或多实例部署时，安装 `lock/redis`，再用 `lock.Use("redis")` 让指定 locker 使用它。
 
 ```go
 import (
-    goredis "github.com/redis/go-redis/v9"
     lockredis "github.com/duxweb/runa/lock/redis"
 )
 
-client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
-
-app.Install(lock.Provider(
-    lock.RegisterDriver("redis", lockredis.Driver(client, lock.DriverMeta("role", "shared"))),
-    lock.RegisterLocker("default", lock.Use("redis"), lock.Prefix("runa:lock:")),
-))
+app.Install(
+    lock.Provider(lock.RegisterLocker("default", lock.Use("redis"), lock.Prefix("runa:lock:"))),
+    lockredis.Provider(lockredis.Addr("127.0.0.1:6379")),
+)
 ```
+
+`lock/redis` 也支持 `Client(client)` 注入共享 Redis client。注入的 client 不由 Runa 关闭；Provider 自建的 client 会随应用生命周期关闭。
 
 ## 常见错误
 

@@ -50,27 +50,31 @@ type Options struct {
 
 // DispatchOptions stores dispatch settings.
 type DispatchOptions struct {
-	Mode    string
-	Queue   string
-	Delay   time.Duration
-	Timeout time.Duration
-	Retry   int
-	Unique  string
-	Meta    core.Map
+	Mode           string
+	Queue          string
+	Delay          time.Duration
+	Timeout        time.Duration
+	Retry          int
+	Unique         string
+	UniqueStrategy string
+	UniqueTTL      time.Duration
+	Meta           core.Map
 }
 
 // Message is the serialized task dispatch format.
 type Message struct {
-	ID      string        `json:"id"`
-	Name    string        `json:"name"`
-	Payload []byte        `json:"payload"`
-	Meta    core.Map      `json:"meta"`
-	Delay   time.Duration `json:"delay"`
-	Timeout time.Duration `json:"timeout"`
-	Retry   int           `json:"retry"`
-	Unique  string        `json:"unique"`
-	Queue   string        `json:"queue"`
-	Attempt int           `json:"attempt"`
+	ID             string        `json:"id"`
+	Name           string        `json:"name"`
+	Payload        []byte        `json:"payload"`
+	Meta           core.Map      `json:"meta"`
+	Delay          time.Duration `json:"delay"`
+	Timeout        time.Duration `json:"timeout"`
+	Retry          int           `json:"retry"`
+	Unique         string        `json:"unique"`
+	UniqueStrategy string        `json:"unique_strategy"`
+	UniqueTTL      time.Duration `json:"unique_ttl"`
+	Queue          string        `json:"queue"`
+	Attempt        int           `json:"attempt"`
 }
 
 // Dispatcher dispatches a serialized task message.
@@ -149,14 +153,16 @@ func (registry *Registry) Dispatch[T any](ctx context.Context, name string, payl
 		}
 	}
 	return registry.DispatchMessage(ctx, Message{
-		Name:    name,
-		Payload: body,
-		Meta:    core.CloneMap(opts.Meta),
-		Delay:   opts.Delay,
-		Timeout: opts.Timeout,
-		Retry:   opts.Retry,
-		Unique:  opts.Unique,
-		Queue:   opts.Queue,
+		Name:           name,
+		Payload:        body,
+		Meta:           core.CloneMap(opts.Meta),
+		Delay:          opts.Delay,
+		Timeout:        opts.Timeout,
+		Retry:          opts.Retry,
+		Unique:         opts.Unique,
+		UniqueStrategy: opts.UniqueStrategy,
+		UniqueTTL:      opts.UniqueTTL,
+		Queue:          opts.Queue,
 	})
 }
 
@@ -345,7 +351,27 @@ func Delay(duration time.Duration) DispatchOption {
 
 // Unique sets unique key.
 func Unique(key string) DispatchOption {
-	return dispatchOptionFunc(func(options *DispatchOptions) { options.Unique = key })
+	return dispatchOptionFunc(func(options *DispatchOptions) {
+		options.Unique = key
+		if options.UniqueStrategy == "" {
+			options.UniqueStrategy = "until-done"
+		}
+	})
+}
+
+// UniqueUntilStart releases the unique lock when a worker reserves the queued task.
+func UniqueUntilStart() DispatchOption {
+	return dispatchOptionFunc(func(options *DispatchOptions) { options.UniqueStrategy = "until-start" })
+}
+
+// UniqueUntilDone releases the unique lock when the queued task succeeds or reaches terminal failure.
+func UniqueUntilDone() DispatchOption {
+	return dispatchOptionFunc(func(options *DispatchOptions) { options.UniqueStrategy = "until-done" })
+}
+
+// UniqueFor sets a maximum unique lock lifetime for queued task dispatch.
+func UniqueFor(ttl time.Duration) DispatchOption {
+	return dispatchOptionFunc(func(options *DispatchOptions) { options.UniqueTTL = ttl })
 }
 
 // Meta sets task or dispatch metadata.

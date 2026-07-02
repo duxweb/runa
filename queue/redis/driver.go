@@ -7,28 +7,25 @@ import (
 	"sort"
 	"time"
 
-	"github.com/duxweb/runa/core"
 	"github.com/duxweb/runa/queue"
 	goredis "github.com/redis/go-redis/v9"
 )
 
 // New creates a Redis-backed queue driver.
 func Driver(client *goredis.Client, items ...Option) queue.Driver {
-	opts := options{prefix: "runa:queue", now: core.Now}
-	for _, item := range items {
-		if item != nil {
-			item(&opts)
-		}
-	}
+	opts := defaultOptions()
+	applyOptions(&opts, items...)
+	normalizeOptions(&opts)
 	return &driver{client: client, options: opts}
 }
 
 type driver struct {
-	client  *goredis.Client
-	options options
+	client     *goredis.Client
+	options    options
+	ownsClient bool
 }
 
-func (driver *driver) Name() string { return "redis" }
+func (driver *driver) Name() string { return driver.options.driverName }
 
 var reserveScript = goredis.NewScript(`
 local ids = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, tonumber(ARGV[2]))
@@ -41,6 +38,13 @@ for _, id in ipairs(ids) do
 end
 return claimed
 `)
+
+const deleteUniqueLua = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+	return redis.call('DEL', KEYS[1])
+end
+return 0
+`
 
 func (driver *driver) Push(ctx context.Context, queueName string, job *queue.JobMessage) (string, error) {
 	if driver.client == nil {
@@ -62,9 +66,10 @@ func (driver *driver) Push(ctx context.Context, queueName string, job *queue.Job
 		item.RunAt = now
 	}
 	item.UpdatedAt = now
+	item.UniqueStrategy = queueUniqueStrategy(item.Unique, item.UniqueStrategy)
 	unique := driver.uniqueKey(queueName, item.Name, item.Unique)
 	if unique != "" {
-		ok, err := driver.client.SetNX(ctx, unique, item.ID, 0).Result()
+		ok, err := driver.client.SetNX(ctx, unique, item.ID, uniqueTTL(item.UniqueTTL)).Result()
 		if err != nil {
 			return "", err
 		}
@@ -75,7 +80,7 @@ func (driver *driver) Push(ctx context.Context, queueName string, job *queue.Job
 	body, err := json.Marshal(item)
 	if err != nil {
 		if unique != "" {
-			_ = driver.client.Del(ctx, unique).Err()
+			_ = driver.deleteUniqueNow(ctx, unique, item.ID)
 		}
 		return "", err
 	}
@@ -84,7 +89,7 @@ func (driver *driver) Push(ctx context.Context, queueName string, job *queue.Job
 	pipe.ZAdd(ctx, driver.stateKey(queueName, queue.StatePending), goredis.Z{Score: score(item.RunAt), Member: item.ID})
 	if _, err := pipe.Exec(ctx); err != nil {
 		if unique != "" {
-			_ = driver.client.Del(ctx, unique).Err()
+			_ = driver.deleteUniqueNow(ctx, unique, item.ID)
 		}
 		return "", err
 	}
@@ -128,7 +133,12 @@ func (driver *driver) Reserve(ctx context.Context, queueName string, limit int, 
 		if err != nil {
 			return nil, err
 		}
-		if err := driver.client.Set(ctx, driver.jobKey(id), body, 0).Err(); err != nil {
+		pipe := driver.client.TxPipeline()
+		pipe.Set(ctx, driver.jobKey(id), body, 0)
+		if driver.shouldDeleteUniqueUntilStart(item) {
+			driver.deleteUnique(pipe, ctx, driver.uniqueKey(item.Queue, item.Name, item.Unique), item.ID)
+		}
+		if _, err := pipe.Exec(ctx); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -145,7 +155,7 @@ func (driver *driver) Ack(ctx context.Context, queueName string, id string) erro
 	pipe.ZRem(ctx, driver.stateKey(queueName, queue.StateFailed), id)
 	if item != nil {
 		if unique := driver.uniqueKey(item.Queue, item.Name, item.Unique); unique != "" {
-			pipe.Del(ctx, unique)
+			driver.deleteUnique(pipe, ctx, unique, item.ID)
 		}
 	}
 	_, err := pipe.Exec(ctx)
@@ -191,6 +201,9 @@ func (driver *driver) Fail(ctx context.Context, queueName string, id string, rea
 	pipe.ZRem(ctx, driver.stateKey(queueName, queue.StateReserved), id)
 	pipe.ZAdd(ctx, driver.stateKey(queueName, queue.StateFailed), goredis.Z{Score: score(now), Member: id})
 	pipe.Set(ctx, driver.jobKey(id), body, 0)
+	if driver.shouldDeleteUniqueUntilDone(item) {
+		driver.deleteUnique(pipe, ctx, driver.uniqueKey(item.Queue, item.Name, item.Unique), item.ID)
+	}
 	_, err = pipe.Exec(ctx)
 	return err
 }
@@ -219,6 +232,37 @@ func (driver *driver) Renew(ctx context.Context, queueName string, id string, le
 
 func (driver *driver) Delete(ctx context.Context, queueName string, id string) error {
 	return driver.Ack(ctx, queueName, id)
+}
+
+func (driver *driver) Purge(ctx context.Context, queueName string, state queue.JobState, olderThan time.Time) (int64, error) {
+	if state != queue.StateFailed {
+		return 0, nil
+	}
+	key := driver.stateKey(queueName, state)
+	ids, err := driver.client.ZRangeByScore(ctx, key, &goredis.ZRangeBy{
+		Min: "-inf",
+		Max: "(" + scoreString(olderThan),
+	}).Result()
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	pipe := driver.client.TxPipeline()
+	pipe.ZRem(ctx, key, anySlice(ids)...)
+	for _, id := range ids {
+		if item, err := driver.get(ctx, id); err == nil {
+			if unique := driver.uniqueKey(item.Queue, item.Name, item.Unique); unique != "" {
+				driver.deleteUnique(pipe, ctx, unique, item.ID)
+			}
+		}
+		pipe.Del(ctx, driver.jobKey(id))
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return 0, err
+	}
+	return int64(len(ids)), nil
 }
 
 func (driver *driver) Count(ctx context.Context, queueName string, state queue.JobState) (int64, error) {
@@ -272,7 +316,7 @@ func (driver *driver) List(ctx context.Context, queueName string, query queue.Jo
 }
 
 func (driver *driver) Close(context.Context) error {
-	if driver.client == nil {
+	if driver.client == nil || !driver.ownsClient {
 		return nil
 	}
 	return driver.client.Close()
@@ -394,6 +438,53 @@ func (driver *driver) uniqueKey(queueName string, jobName string, unique string)
 		return ""
 	}
 	return driver.options.prefix + ":unique:" + queueName + ":" + jobName + ":" + unique
+}
+
+func (driver *driver) deleteUnique(pipe goredis.Pipeliner, ctx context.Context, key string, id string) {
+	if key == "" || id == "" {
+		return
+	}
+	pipe.Eval(ctx, deleteUniqueLua, []string{key}, id)
+}
+
+func (driver *driver) deleteUniqueNow(ctx context.Context, key string, id string) error {
+	if key == "" || id == "" {
+		return nil
+	}
+	return driver.client.Eval(ctx, deleteUniqueLua, []string{key}, id).Err()
+}
+
+func (driver *driver) shouldDeleteUniqueUntilStart(item *queue.JobMessage) bool {
+	return item != nil && item.UniqueStrategy == string(queue.UniqueStrategyUntilStart)
+}
+
+func (driver *driver) shouldDeleteUniqueUntilDone(item *queue.JobMessage) bool {
+	return item != nil && (item.UniqueStrategy == "" || item.UniqueStrategy == string(queue.UniqueStrategyUntilDone))
+}
+
+func queueUniqueStrategy(unique string, strategy string) string {
+	if unique == "" {
+		return ""
+	}
+	if strategy == string(queue.UniqueStrategyUntilStart) {
+		return string(queue.UniqueStrategyUntilStart)
+	}
+	return string(queue.UniqueStrategyUntilDone)
+}
+
+func uniqueTTL(ttl time.Duration) time.Duration {
+	if ttl <= 0 {
+		return 0
+	}
+	return ttl
+}
+
+func anySlice(values []string) []any {
+	items := make([]any, len(values))
+	for index, value := range values {
+		items[index] = value
+	}
+	return items
 }
 
 func (driver *driver) workersKey() string {

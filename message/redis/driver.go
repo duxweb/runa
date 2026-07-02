@@ -14,19 +14,21 @@ import (
 
 func Driver(client *goredis.Client, options ...Option) message.Driver {
 	opts := defaultOptions()
-	for _, option := range options {
-		if option != nil {
-			option(&opts)
-		}
-	}
+	applyOptions(&opts, options...)
+	normalizeOptions(&opts)
 	return &driver{client: client, options: opts}
 }
 
+func newDriver(client *goredis.Client, opts options, ownsClient bool) message.Driver {
+	return &driver{client: client, options: opts, ownsClient: ownsClient}
+}
+
 type driver struct {
-	client  *goredis.Client
-	options options
-	mu      sync.Mutex
-	pubsubs []*goredis.PubSub
+	client     *goredis.Client
+	options    options
+	ownsClient bool
+	mu         sync.Mutex
+	pubsubs    []*goredis.PubSub
 }
 
 func (driver *driver) Publish(ctx context.Context, topic string, item message.Envelope) error {
@@ -74,6 +76,9 @@ func (driver *driver) Close(context.Context) error {
 		if pubsub != nil {
 			err = errors.Join(err, pubsub.Close())
 		}
+	}
+	if driver.client != nil && driver.ownsClient {
+		err = errors.Join(err, driver.client.Close())
 	}
 	return err
 }

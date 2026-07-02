@@ -44,6 +44,57 @@ ttl = "10m"
 
 键：`driver`、`prefix`、`ttl`、`meta`。
 
+## Redis
+
+完整配置路径：
+
+```toml
+[redis.default]
+addr = "127.0.0.1:6379"
+username = ""
+password = ""
+db = 0
+pool_size = 10
+min_idle = 1
+```
+
+写在 `config/redis.toml` 里：
+
+```toml
+addr = "127.0.0.1:6379"
+username = ""
+password = ""
+db = 0
+pool_size = 10
+min_idle = 1
+
+[cache]
+addr = "127.0.0.1:6379"
+db = 1
+```
+
+键：`addr`、`username`、`password`、`db`、`logger`、`dial_timeout`、`read_timeout`、`write_timeout`、`pool_size`、`min_idle`。
+
+按完整路径表示时是 `redis.<name>`；写在 `config/redis.toml` 里时，根键表示 `default` 运行时，`[name]` 表表示命名运行时。
+
+Redis 驱动子包也会读取功能配置段，例如 `[cache.redis]`、`[lock.redis]`、`[rate.redis]`、`[queue.redis]`、`[message.redis]`、`[cluster.redis]`、`[ws.redis]`。功能段不存在时，会回退到 `[redis]` 或由 `Use(name)` 选择的 `[redis.<name>]`。
+
+## AMQP / NATS / MQTT
+
+```toml
+[amqp]
+url = "amqp://guest:guest@127.0.0.1:5672/"
+
+[nats]
+url = "nats://127.0.0.1:4222"
+
+[mqtt]
+broker = "tcp://127.0.0.1:1883"
+client_id = "runa"
+```
+
+消息和队列驱动子包会先读取功能段，例如 `[message.amqp]`、`[queue.amqp]`、`[message.nats]`、`[message.mqtt]`，再回退到共享 `[amqp]`、`[nats]` 或 `[mqtt]`。
+
 ## Queue
 
 ```toml

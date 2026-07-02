@@ -106,13 +106,13 @@ Redis 示例：
 ```go
 import messageredis "github.com/duxweb/runa/message/redis"
 
-app.Install(message.Provider(
-    message.RegisterDriver("redis", messageredis.Driver(client, messageredis.Prefix("runa:msg:"))),
-    message.RegisterBroker("default", message.Use("redis")),
-))
+app.Install(
+    message.Provider(message.RegisterBroker("default", message.Use("redis"))),
+    messageredis.Provider(messageredis.Addr("127.0.0.1:6379"), messageredis.Prefix("runa:msg:")),
+)
 ```
 
-NATS、AMQP、MQTT 驱动也都通过 `message.RegisterDriver(name, driver)` 接入，驱动包的工厂统一叫 `Driver(...)`，返回 `message.Driver` 接口。
+Redis、NATS、AMQP、MQTT 驱动包都提供 `Provider(...)` 做配置化接入，同时保留 `Driver(conn/client, ...)` 作为手工接线逃生口。注入的 client/conn 不由 Runa 关闭；Provider 自建的连接会随应用生命周期关闭。驱动配置会从 `[message.<driver>]` 回退到共享 `[redis]`、`[nats]`、`[amqp]` 或 `[mqtt]`。
 
 ## 什么时候用 message
 

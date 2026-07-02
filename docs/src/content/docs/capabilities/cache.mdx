@@ -89,21 +89,20 @@ role = "hot"
 
 ## Redis driver
 
+The Redis driver can be registered by its own provider. `cache/redis` resolves the client in this order: `Client(client)`, explicit options such as `Addr(...)`, `[cache.redis]` config, shared `[redis]` / `[redis.<name>]` config, then `127.0.0.1:6379`.
+
 ```go
 import (
-    goredis "github.com/redis/go-redis/v9"
     cacheredis "github.com/duxweb/runa/cache/redis"
 )
 
-client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
-
-app.Install(cache.Provider(
-    cache.RegisterDriver("redis", cacheredis.Driver(client, cache.Prefix("runa:"))),
-    cache.RegisterPool("default", cache.Use("redis")),
-))
+app.Install(
+    cache.Provider(cache.RegisterPool("default", cache.Use("redis"))),
+    cacheredis.Provider(cacheredis.Addr("127.0.0.1:6379"), cacheredis.Prefix("runa:")),
+)
 ```
 
-`RegisterDriver("redis", ...)` only registers the Redis driver in the cache registry. `RegisterPool("default", cache.Use("redis"))` makes the `default` pool use that driver. Without `Use(...)`, the built-in `memory` driver is used.
+You can still pass an existing client manually with `cacheredis.Driver(client, cache.Prefix(...))` or `cacheredis.Provider(cacheredis.Client(client))`. Injected clients are not closed by Runa; clients created by the provider are closed with the app lifecycle.
 
 The Redis driver enters the dependency graph only when you import `github.com/duxweb/runa/cache/redis`.
 

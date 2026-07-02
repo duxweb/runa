@@ -50,6 +50,9 @@ func (driver driver) Open(ctx context.Context, config database.Config) (database
 		opts.maxIdle = cfg.GetInt(configPath+".max_idle", opts.maxIdle)
 	}
 	applyOptions(&opts, driver.items...)
+	if opts.db != nil {
+		return &OroDatabase{name: config.Name, dialect: opts.dialect, db: opts.db, meta: opts.meta}, nil
+	}
 	if opts.dsn == "" {
 		return nil, fmt.Errorf("oro database %s dsn is required", config.Name)
 	}
@@ -78,7 +81,7 @@ func (driver driver) Open(ctx context.Context, config database.Config) (database
 	if err != nil {
 		return nil, err
 	}
-	return &OroDatabase{name: config.Name, dialect: opts.dialect, db: db, meta: opts.meta}, nil
+	return &OroDatabase{name: config.Name, dialect: opts.dialect, db: db, ownsDB: true, meta: opts.meta}, nil
 }
 
 func oroDriver(dialect string, dsn string) orodb.Driver {
@@ -167,6 +170,7 @@ type OroDatabase struct {
 	name    string
 	dialect string
 	db      *orodb.DB
+	ownsDB  bool
 	meta    core.Map
 }
 
@@ -193,7 +197,7 @@ func (db *OroDatabase) Ping(ctx context.Context) error {
 
 // Close closes the database.
 func (db *OroDatabase) Close(ctx context.Context) error {
-	if db.db == nil {
+	if db.db == nil || !db.ownsDB {
 		return nil
 	}
 	return db.db.Close(ctx)

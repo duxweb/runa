@@ -12,6 +12,9 @@ require (
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/duxweb/runa/route v0.1.1 // indirect
+	github.com/duxweb/runa/scope v0.1.1 // indirect
+	github.com/duxweb/runa/validate v0.1.1 // indirect
 	github.com/samber/do/v2 v2.0.0 // indirect
 	github.com/samber/go-type-to-string v1.8.0 // indirect
 	github.com/urfave/cli/v3 v3.10.0 // indirect

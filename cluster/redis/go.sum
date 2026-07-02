@@ -10,6 +10,12 @@ github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UF
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/duxweb/runa v0.1.1 h1:a0/wlnpBcPLFgOgArQBdeC/jDtJVCBC+dSZvmJR1xJc=
+github.com/duxweb/runa v0.1.1/go.mod h1:BgDBC7oZIRCfVZGLnELdF8TIxyqzqHAq3FLMSCfeeyU=
+github.com/duxweb/runa/cluster v0.1.1 h1:NfhfZI88YzQE6tHsugNHneDMveaVnaDu4iHA7dGoI3U=
+github.com/duxweb/runa/cluster v0.1.1/go.mod h1:/ACa0Wl/T5M/euG0bP36XFfb6Ob307cr6Til52ZhUXE=
+github.com/duxweb/runa/id v0.1.1 h1:jFs6MhkPwsdI2p5MUHz96c626osc/N2s7i56u0RyaeI=
+github.com/duxweb/runa/id v0.1.1/go.mod h1:6CLJvjuvCLRNjwaAfzWh2ogKBLa3ZDFOxIl5qqo45ag=
 github.com/klauspost/cpuid/v2 v2.2.10 h1:tBs3QSyvjDyFTq3uoc/9xFpCuOsJQFNPiAhYdw2skhE=
 github.com/klauspost/cpuid/v2 v2.2.10/go.mod h1:hqwkgyIinND0mEev00jJYCxPNVRVXFQeu1XKlok6oO0=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=

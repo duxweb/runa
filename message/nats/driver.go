@@ -14,17 +14,19 @@ import (
 
 func Driver(conn *natsgo.Conn, options ...Option) message.Driver {
 	opts := defaultOptions()
-	for _, option := range options {
-		if option != nil {
-			option(&opts)
-		}
-	}
+	applyOptions(&opts, options...)
+	normalizeOptions(&opts)
 	return &driver{conn: conn, options: opts}
+}
+
+func newDriver(conn *natsgo.Conn, opts options, ownsConn bool) message.Driver {
+	return &driver{conn: conn, options: opts, ownsConn: ownsConn}
 }
 
 type driver struct {
 	conn          *natsgo.Conn
 	options       options
+	ownsConn      bool
 	mu            sync.Mutex
 	subscriptions []*natsgo.Subscription
 }
@@ -86,6 +88,9 @@ func (driver *driver) Close(context.Context) error {
 		if subscription != nil {
 			joined = errors.Join(joined, drain(subscription, driver.options.drainTimeout))
 		}
+	}
+	if driver.conn != nil && driver.ownsConn {
+		driver.conn.Close()
 	}
 	return joined
 }

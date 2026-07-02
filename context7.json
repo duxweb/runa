@@ -1,4 +1,55 @@
 {
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "Runa",
+  "description": "A Go framework for business applications with a lean micro-kernel, on-demand capabilities, typed HTTP routes, modules, lifecycle, config, DI, commands, queues, schedules, views, i18n, observability, and isolated driver modules.",
+  "branch": "main",
+  "folders": [
+    "README.md",
+    "README.zh-CN.md",
+    "docs/src/content/docs",
+    "examples"
+  ],
+  "excludeFolders": [
+    "docs/node_modules",
+    "docs/dist",
+    "docs/.astro",
+    "node_modules",
+    "website/dist",
+    ".astro",
+    ".github",
+    "_plans",
+    "benchmarks"
+  ],
+  "excludeFiles": [
+    "CHANGELOG.md",
+    "CHANGELOG.zh-CN.md",
+    "go.sum",
+    "docs/pnpm-lock.yaml",
+    "llms.txt"
+  ],
+  "rules": [
+    "Use Go 1.27 or newer; the current public preview targets Go 1.27rc1.",
+    "Install only the modules you import; capabilities and drivers are separate Go modules.",
+    "Start HTTP applications with github.com/duxweb/runa and github.com/duxweb/runa/route.",
+    "Register capabilities with Provider(...) during startup and call Default() only after the application has been frozen or run.",
+    "Keep transports decoupled from optional capabilities; integrate through route services, Provider registration, or small interfaces.",
+    "Use bare Driver interfaces and Use(name) driver selection options; heavy dependencies belong in driver submodules.",
+    "Use typed route context methods such as ctx.Param[T], ctx.Query[T], ctx.Header[T], ctx.Cookie[T], ctx.Form[T], ctx.Meta[T], ctx.Input[T], and ctx.Service[T].",
+    "Use route.MetaAs[T] as a method on *route.Route for typed route metadata.",
+    "Use runa.Module for business modules; generated modules keep module.go as the root entry and place handlers, resources, services, models, commands, listeners, queue, schedule, and middleware in subdirectories.",
+    "Use core.Now(), core.Location(), and runa.Timezone(...) for application wall-clock timestamps; keep native time.Now() for latency, timeout, and monotonic-duration measurement.",
+    "Use lang.Provider() for i18n catalogs and middleware/lang for locale negotiation; use lang/view only as opt-in template glue.",
+    "Inject global template functions through view.Funcs and request-scoped functions through view.ContextFunc.",
+    "Use log.Provider(...) for logging and log.Channel(app, name) for subsystem loggers; HTTP request logging is provided by middleware/logger.",
+    "For queue workers, keep Lease greater than or equal to the longest task Timeout to avoid duplicate execution.",
+    "Do not move heavy cloud, database, broker, or file-format dependencies into core capability modules; isolate them in driver submodules.",
+    "Update English and Chinese documentation together for public API or behavior changes."
+  ],
+  "previousVersions": [
+    {
+      "tag": "v0.1.0"
+    }
+  ],
   "url": "https://context7.com/duxweb/runa",
   "public_key": "pk_mDanCAri3VFtJwx29YyFC"
 }

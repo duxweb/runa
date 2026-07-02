@@ -16,9 +16,14 @@ func MemoryDriver() Driver {
 		pending:   make(map[string]map[string]*JobMessage),
 		reserved:  make(map[string]map[string]*JobMessage),
 		failed:    make(map[string]map[string]*JobMessage),
-		unique:    make(map[string]string),
+		unique:    make(map[string]uniqueLock),
 		instances: make(map[string]WorkerInstance),
 	}
+}
+
+type uniqueLock struct {
+	id       string
+	expireAt time.Time
 }
 
 type memoryDriver struct {
@@ -26,7 +31,7 @@ type memoryDriver struct {
 	pending   map[string]map[string]*JobMessage
 	reserved  map[string]map[string]*JobMessage
 	failed    map[string]map[string]*JobMessage
-	unique    map[string]string
+	unique    map[string]uniqueLock
 	instances map[string]WorkerInstance
 	closed    bool
 }
@@ -48,18 +53,22 @@ func (driver *memoryDriver) Push(ctx context.Context, queueName string, job *Job
 	if driver.closed {
 		return "", fmt.Errorf("memory queue is closed")
 	}
+	now := core.Now()
 	key := uniqueKey(queueName, job.Name, job.Unique)
 	if key != "" {
-		if id := driver.unique[key]; id != "" {
-			return id, nil
+		if lock, ok := driver.unique[key]; ok {
+			if lock.expireAt.IsZero() || lock.expireAt.After(now) {
+				return lock.id, nil
+			}
+			delete(driver.unique, key)
 		}
 	}
 	item := cloneMessage(job)
 	item.Queue = queueName
+	item.UniqueStrategy = normalizeUniqueStrategy(item.Unique, item.UniqueStrategy)
 	if item.ID == "" {
 		item.ID = fmt.Sprintf("mem-%d", core.Now().UnixNano())
 	}
-	now := core.Now()
 	if item.CreatedAt.IsZero() {
 		item.CreatedAt = now
 	}
@@ -69,7 +78,7 @@ func (driver *memoryDriver) Push(ctx context.Context, queueName string, job *Job
 	item.UpdatedAt = now
 	driver.bucket(driver.pending, queueName)[item.ID] = item
 	if key != "" {
-		driver.unique[key] = item.ID
+		driver.unique[key] = uniqueLock{id: item.ID, expireAt: uniqueExpireAt(now, item.UniqueTTL)}
 	}
 	return item.ID, nil
 }
@@ -108,6 +117,7 @@ func (driver *memoryDriver) Reserve(ctx context.Context, queueName string, limit
 		item.ReservedUntil = now.Add(lease)
 		item.UpdatedAt = now
 		driver.bucket(driver.reserved, queueName)[item.ID] = item
+		driver.deleteUniqueUntilStartLocked(item)
 		results = append(results, cloneMessage(item))
 	}
 	return results, nil
@@ -164,6 +174,7 @@ func (driver *memoryDriver) Fail(ctx context.Context, queueName string, id strin
 	item.LastError = reason
 	item.UpdatedAt = now
 	driver.bucket(driver.failed, queueName)[id] = item
+	driver.deleteUniqueUntilDoneLocked(item)
 	return nil
 }
 
@@ -200,6 +211,27 @@ func (driver *memoryDriver) Delete(ctx context.Context, queueName string, id str
 		}
 	}
 	return fmt.Errorf("job %s is not found", id)
+}
+
+func (driver *memoryDriver) Purge(ctx context.Context, queueName string, state JobState, olderThan time.Time) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if state != StateFailed {
+		return 0, nil
+	}
+	driver.mu.Lock()
+	defer driver.mu.Unlock()
+	var count int64
+	for id, item := range driver.failed[queueName] {
+		if item.UpdatedAt.IsZero() || !item.UpdatedAt.Before(olderThan) {
+			continue
+		}
+		delete(driver.failed[queueName], id)
+		driver.deleteUniqueLocked(item)
+		count++
+	}
+	return count, nil
 }
 
 func (driver *memoryDriver) Count(ctx context.Context, queueName string, state JobState) (int64, error) {
@@ -347,9 +379,32 @@ func (driver *memoryDriver) requeueExpiredLocked(queueName string, now time.Time
 
 func (driver *memoryDriver) deleteUniqueLocked(item *JobMessage) {
 	key := uniqueKey(item.Queue, item.Name, item.Unique)
-	if key != "" {
+	if key == "" {
+		return
+	}
+	lock, ok := driver.unique[key]
+	if ok && lock.id == item.ID {
 		delete(driver.unique, key)
 	}
+}
+
+func (driver *memoryDriver) deleteUniqueUntilStartLocked(item *JobMessage) {
+	if item.UniqueStrategy == string(UniqueStrategyUntilStart) {
+		driver.deleteUniqueLocked(item)
+	}
+}
+
+func (driver *memoryDriver) deleteUniqueUntilDoneLocked(item *JobMessage) {
+	if item.UniqueStrategy == "" || item.UniqueStrategy == string(UniqueStrategyUntilDone) {
+		driver.deleteUniqueLocked(item)
+	}
+}
+
+func uniqueExpireAt(now time.Time, ttl time.Duration) time.Time {
+	if ttl <= 0 {
+		return time.Time{}
+	}
+	return now.Add(ttl)
 }
 
 func uniqueKey(queueName string, jobName string, value string) string {

@@ -96,6 +96,7 @@ schedules.Register("daily-report", "0 2 * * *", "report.daily", payload,
     schedule.Timezone("Asia/Shanghai"),
     schedule.Queue("default"),
     schedule.SkipIfRunning(),
+    schedule.SkipIfQueued(),
     schedule.Meta("owner", "ops"),
 )
 ```
@@ -103,7 +104,8 @@ schedules.Register("daily-report", "0 2 * * *", "report.daily", payload,
 - `Timezone(name)` 设置这个调度项自己的时区，会覆盖应用时区
 - `Queue(name)` 通过队列执行任务
 - `Direct()` 强制直接执行
-- `SkipIfRunning()` 上一次未结束时跳过本次
+- `SkipIfRunning()` 直接执行模式下，上一次未结束时跳过本次
+- `SkipIfQueued()` 队列模式下写入稳定唯一键（`schedule:<name>`），上一轮仍在排队或执行时，本轮不会再入队一份
 - `DelayIfRunning()` 上一次未结束时延后执行
 - `Enabled(false)` 暂停调度
 

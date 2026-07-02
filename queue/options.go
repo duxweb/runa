@@ -57,12 +57,14 @@ type JobOptions struct {
 
 // PushOptions stores one push settings.
 type PushOptions struct {
-	Delay      time.Duration
-	Retry      int
-	RetryDelay time.Duration
-	Timeout    time.Duration
-	Unique     string
-	Meta       core.Map
+	Delay          time.Duration
+	Retry          int
+	RetryDelay     time.Duration
+	Timeout        time.Duration
+	Unique         string
+	UniqueStrategy string
+	UniqueTTL      time.Duration
+	Meta           core.Map
 }
 
 type optionFunc func(*QueueOptions)
@@ -165,7 +167,27 @@ func Delay(duration time.Duration) PushOption {
 
 // Unique sets push unique key.
 func Unique(key string) PushOption {
-	return pushOptionFunc(func(options *PushOptions) { options.Unique = key })
+	return pushOptionFunc(func(options *PushOptions) {
+		options.Unique = key
+		if options.UniqueStrategy == "" {
+			options.UniqueStrategy = string(UniqueStrategyUntilDone)
+		}
+	})
+}
+
+// UniqueUntilStart releases the unique lock when a worker reserves the job.
+func UniqueUntilStart() PushOption {
+	return pushOptionFunc(func(options *PushOptions) { options.UniqueStrategy = string(UniqueStrategyUntilStart) })
+}
+
+// UniqueUntilDone releases the unique lock when the job succeeds or reaches terminal failure.
+func UniqueUntilDone() PushOption {
+	return pushOptionFunc(func(options *PushOptions) { options.UniqueStrategy = string(UniqueStrategyUntilDone) })
+}
+
+// UniqueFor sets a maximum unique lock lifetime.
+func UniqueFor(ttl time.Duration) PushOption {
+	return pushOptionFunc(func(options *PushOptions) { options.UniqueTTL = ttl })
 }
 
 // Meta sets metadata.

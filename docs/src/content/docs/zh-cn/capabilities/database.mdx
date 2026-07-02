@@ -131,6 +131,8 @@ route.Default().Get("/users", func(ctx *route.Context) error {
 
 ## Redis 驱动
 
+可以直接通过 `database.Provider(...)` 注册 Redis：
+
 ```go
 import dbredis "github.com/duxweb/runa/database/redis"
 
@@ -141,6 +143,31 @@ app.Install(database.Provider(
     )),
 ))
 ```
+
+也可以安装 `dbredis.Provider(...)`，从 `config/redis.toml` 或代码选项注册 Redis 运行时：
+
+```toml
+# config/redis.toml
+addr = "127.0.0.1:6379"
+db = 0
+
+[cache]
+addr = "127.0.0.1:6379"
+db = 1
+```
+
+```go
+app.Install(
+    database.Provider(),
+    dbredis.Provider(),
+)
+```
+
+`config/redis.toml` 根键会注册 `default` 运行时，`[cache]` 这类表会注册命名运行时。
+
+`queue/redis`、`cache/redis`、`lock/redis` 等 Redis 驱动不再依赖 `database/redis` 获取 client。它们可以读取同一份 `[redis]` / `[redis.<name>]` 配置并各自建池；如果要共用一个连接池，由应用创建同一个 `*redis.Client`，再用各驱动包的 `Client(client)` 选项显式注入。
+
+`database/redis` 也支持 `dbredis.Client(client)`，`database/oro` 支持 `dboro.DB(db)`。注入的 client/DB 归调用方所有，Runa 不会关闭；从 DSN、选项或配置自建的连接会由数据库运行时关闭。
 
 ## 命令
 

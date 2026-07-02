@@ -24,13 +24,22 @@ func Driver(client *goredis.Client, options ...cache.DriverOption) cache.Driver 
 	return &redisStore{client: client, options: opts}
 }
 
+func newStore(client *goredis.Client, opts options, ownsClient bool) cache.Driver {
+	return &redisStore{
+		client:     client,
+		options:    cache.DriverOptions{Name: opts.driverName, Prefix: opts.prefix, TTL: opts.ttl},
+		ownsClient: ownsClient,
+	}
+}
+
 type redisStore struct {
-	client  *goredis.Client
-	options cache.DriverOptions
-	hit     atomic.Uint64
-	miss    atomic.Uint64
-	set     atomic.Uint64
-	delete  atomic.Uint64
+	client     *goredis.Client
+	options    cache.DriverOptions
+	ownsClient bool
+	hit        atomic.Uint64
+	miss       atomic.Uint64
+	set        atomic.Uint64
+	delete     atomic.Uint64
 }
 
 func (store *redisStore) Name() string {
@@ -156,7 +165,12 @@ func (store *redisStore) Purge(ctx context.Context) error {
 	}
 }
 
-func (store *redisStore) Close(context.Context) error { return nil }
+func (store *redisStore) Close(context.Context) error {
+	if store.client == nil || !store.ownsClient {
+		return nil
+	}
+	return store.client.Close()
+}
 
 func (store *redisStore) Stats(context.Context) cache.Stats {
 	return cache.Stats{

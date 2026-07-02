@@ -35,6 +35,57 @@ ttl = "10m"
 
 Keys: `driver`, `prefix`, `ttl`, `meta`.
 
+## Redis
+
+Full config path:
+
+```toml
+[redis.default]
+addr = "127.0.0.1:6379"
+username = ""
+password = ""
+db = 0
+pool_size = 10
+min_idle = 1
+```
+
+Inside `config/redis.toml`:
+
+```toml
+addr = "127.0.0.1:6379"
+username = ""
+password = ""
+db = 0
+pool_size = 10
+min_idle = 1
+
+[cache]
+addr = "127.0.0.1:6379"
+db = 1
+```
+
+Keys: `addr`, `username`, `password`, `db`, `logger`, `dial_timeout`, `read_timeout`, `write_timeout`, `pool_size`, `min_idle`.
+
+When shown as a full config path, Redis runtime config is `redis.<name>`. Inside `config/redis.toml`, use root keys for `default` or `[name]` tables for named runtimes.
+
+Redis-backed driver packages also read feature-specific sections such as `[cache.redis]`, `[lock.redis]`, `[rate.redis]`, `[queue.redis]`, `[message.redis]`, `[cluster.redis]`, and `[ws.redis]`. If the feature section is missing, they fall back to `[redis]` or `[redis.<name>]` selected by `Use(name)`.
+
+## AMQP / NATS / MQTT
+
+```toml
+[amqp]
+url = "amqp://guest:guest@127.0.0.1:5672/"
+
+[nats]
+url = "nats://127.0.0.1:4222"
+
+[mqtt]
+broker = "tcp://127.0.0.1:1883"
+client_id = "runa"
+```
+
+Message and queue driver packages first read feature-specific sections such as `[message.amqp]`, `[queue.amqp]`, `[message.nats]`, or `[message.mqtt]`, then fall back to shared `[amqp]`, `[nats]`, or `[mqtt]` sections.
+
 ## Queue
 
 ```toml

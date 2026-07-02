@@ -3,6 +3,7 @@ package oro
 import (
 	"time"
 
+	orodb "github.com/duxweb/oro"
 	"github.com/duxweb/runa/core"
 )
 
@@ -20,6 +21,12 @@ type options struct {
 	maxLifetime time.Duration
 	debug       bool
 	meta        core.Map
+	db          *orodb.DB
+}
+
+// DB uses an existing Oro DB. The runtime will not close injected DBs.
+func DB(value *orodb.DB) Option {
+	return func(options *options) { options.db = value }
 }
 
 // DSN sets the database DSN.

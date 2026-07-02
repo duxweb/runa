@@ -88,21 +88,20 @@ key = ["ip", "route"]
 
 ## Drivers
 
-The built-in `memory` driver is suitable for single-process rate limiting. For multi-instance deployments, install `rate/redis`, register the Redis driver with `RegisterDriver`, then use `rate.Use("redis")` for the target limiter.
+The built-in `memory` driver is suitable for single-process rate limiting. For multi-instance deployments, install `rate/redis`, then use `rate.Use("redis")` for the target limiter.
 
 ```go
 import (
-    goredis "github.com/redis/go-redis/v9"
     rateredis "github.com/duxweb/runa/rate/redis"
 )
 
-client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
-
-app.Install(rate.Provider(
-    rate.RegisterDriver("redis", rateredis.Driver(client, rate.Prefix("runa:rate:"))),
-    rate.RegisterLimiter("api", rate.Use("redis"), rate.FixedWindow(100, time.Minute), rate.Key(rate.ByIP())),
-))
+app.Install(
+    rate.Provider(rate.RegisterLimiter("api", rate.Use("redis"), rate.FixedWindow(100, time.Minute), rate.Key(rate.ByIP()))),
+    rateredis.Provider(rateredis.Addr("127.0.0.1:6379"), rateredis.Prefix("runa:rate:")),
+)
 ```
+
+`rate/redis` also accepts `Client(client)` for a shared Redis client. Injected clients are not closed; provider-created clients are closed with the app lifecycle.
 
 ## Which algorithm to choose
 

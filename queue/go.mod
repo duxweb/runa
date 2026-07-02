@@ -12,6 +12,7 @@ require (
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
+	github.com/lmittmann/tint v1.1.3 // indirect
 	github.com/samber/go-type-to-string v1.8.0 // indirect
 	github.com/urfave/cli/v3 v3.10.0 // indirect
 )

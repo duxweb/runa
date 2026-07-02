@@ -96,6 +96,7 @@ schedules.Register("daily-report", "0 2 * * *", "report.daily", payload,
     schedule.Timezone("Asia/Shanghai"),
     schedule.Queue("default"),
     schedule.SkipIfRunning(),
+    schedule.SkipIfQueued(),
     schedule.Meta("owner", "ops"),
 )
 ```
@@ -103,7 +104,8 @@ schedules.Register("daily-report", "0 2 * * *", "report.daily", payload,
 - `Timezone(name)` sets the timezone for this schedule and overrides the application timezone.
 - `Queue(name)` executes through a queue.
 - `Direct()` forces direct execution.
-- `SkipIfRunning()` skips this run if the previous run is still active.
+- `SkipIfRunning()` skips this run if the previous direct run is still active.
+- `SkipIfQueued()` adds a stable queue unique key (`schedule:<name>`) in queue mode, so a new tick is skipped while the previous scheduled task is still pending or running.
 - `DelayIfRunning()` delays this run if the previous run is still active.
 - `Enabled(false)` pauses the schedule.
 

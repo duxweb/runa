@@ -49,21 +49,26 @@ func (driver driver) Open(ctx context.Context, config database.Config) (database
 		opts.minIdle = cfg.GetInt(configPath+".min_idle", opts.minIdle)
 	}
 	applyOptions(&opts, driver.items...)
-	if opts.addr == "" {
+	if opts.client == nil && opts.addr == "" {
 		return nil, fmt.Errorf("redis database %s addr is required", config.Name)
 	}
-	client := goredis.NewClient(&goredis.Options{
-		Addr:         opts.addr,
-		Username:     opts.username,
-		Password:     opts.password,
-		DB:           opts.db,
-		DialTimeout:  timeout(opts.dialTimeout),
-		ReadTimeout:  timeout(opts.readTimeout),
-		WriteTimeout: timeout(opts.writeTimeout),
-		PoolSize:     opts.poolSize,
-		MinIdleConns: opts.minIdle,
-	})
-	db := &RedisDatabase{name: config.Name, addr: opts.addr, client: client, meta: opts.meta}
+	client := opts.client
+	ownsClient := false
+	if client == nil {
+		client = goredis.NewClient(&goredis.Options{
+			Addr:         opts.addr,
+			Username:     opts.username,
+			Password:     opts.password,
+			DB:           opts.db,
+			DialTimeout:  timeout(opts.dialTimeout),
+			ReadTimeout:  timeout(opts.readTimeout),
+			WriteTimeout: timeout(opts.writeTimeout),
+			PoolSize:     opts.poolSize,
+			MinIdleConns: opts.minIdle,
+		})
+		ownsClient = true
+	}
+	db := &RedisDatabase{name: config.Name, addr: opts.addr, client: client, ownsClient: ownsClient, meta: opts.meta}
 	if err := db.Ping(ctx); err != nil {
 		_ = db.Close(ctx)
 		return nil, err
@@ -108,10 +113,11 @@ func timeout(value time.Duration) time.Duration {
 
 // RedisDatabase is a Runa database runtime for Redis.
 type RedisDatabase struct {
-	name   string
-	addr   string
-	client *goredis.Client
-	meta   core.Map
+	name       string
+	addr       string
+	client     *goredis.Client
+	ownsClient bool
+	meta       core.Map
 }
 
 // Name returns runtime name.
@@ -136,7 +142,7 @@ func (db *RedisDatabase) Ping(ctx context.Context) error {
 
 // Close closes Redis client.
 func (db *RedisDatabase) Close(context.Context) error {
-	if db.client == nil {
+	if db.client == nil || !db.ownsClient {
 		return nil
 	}
 	return db.client.Close()

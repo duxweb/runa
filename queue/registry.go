@@ -299,20 +299,22 @@ func (registry *Registry) PushMessage(ctx context.Context, queueName string, nam
 		retryDelay = queue.options.RetryDelay
 	}
 	message := &JobMessage{
-		ID:         registry.nextID(),
-		Queue:      queue.name,
-		Name:       name,
-		Payload:    append([]byte(nil), payload...),
-		Meta:       mergeMap(queue.options.Meta, job.options.Meta, options.Meta),
-		MaxAttempt: maxAttempt,
-		CreatedAt:  now,
-		RunAt:      now.Add(options.Delay),
-		Timeout:    timeout,
-		RetryDelay: retryDelay,
-		Unique:     options.Unique,
-		UpdatedAt:  now,
-		Attempt:    0,
-		LastError:  "",
+		ID:             registry.nextID(),
+		Queue:          queue.name,
+		Name:           name,
+		Payload:        append([]byte(nil), payload...),
+		Meta:           mergeMap(queue.options.Meta, job.options.Meta, options.Meta),
+		MaxAttempt:     maxAttempt,
+		CreatedAt:      now,
+		RunAt:          now.Add(options.Delay),
+		Timeout:        timeout,
+		RetryDelay:     retryDelay,
+		Unique:         options.Unique,
+		UniqueStrategy: normalizeUniqueStrategy(options.Unique, options.UniqueStrategy),
+		UniqueTTL:      options.UniqueTTL,
+		UpdatedAt:      now,
+		Attempt:        0,
+		LastError:      "",
 	}
 	call := PushHandlerFunc(func(ctx context.Context, queue string, job *JobMessage) (string, error) {
 		return driver.Push(ctx, queue, job)
@@ -322,6 +324,16 @@ func (registry *Registry) PushMessage(ctx context.Context, queueName string, nam
 		call = middlewares[i](call)
 	}
 	return call(ctx, queue.name, message)
+}
+
+func normalizeUniqueStrategy(unique string, strategy string) string {
+	if unique == "" {
+		return ""
+	}
+	if strategy == string(UniqueStrategyUntilStart) {
+		return string(UniqueStrategyUntilStart)
+	}
+	return string(UniqueStrategyUntilDone)
 }
 
 // Freeze validates all registrations and marks the registry as readonly.

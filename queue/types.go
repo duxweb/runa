@@ -26,6 +26,16 @@ const (
 	StateFailed   JobState = "failed"
 )
 
+// UniqueStrategy controls when a unique job lock is released.
+type UniqueStrategy string
+
+const (
+	// UniqueUntilDone keeps a unique lock until a job succeeds or reaches a terminal failure.
+	UniqueStrategyUntilDone UniqueStrategy = "until-done"
+	// UniqueUntilStart releases a unique lock when a worker reserves the job.
+	UniqueStrategyUntilStart UniqueStrategy = "until-start"
+)
+
 // Job stores one typed job execution.
 type Job[T any] struct {
 	ID         string
@@ -57,21 +67,23 @@ type PushMiddleware func(PushHandlerFunc) PushHandlerFunc
 
 // JobMessage is the driver-level serialized queue payload.
 type JobMessage struct {
-	ID            string        `json:"id"`
-	Queue         string        `json:"queue"`
-	Name          string        `json:"name"`
-	Payload       []byte        `json:"payload"`
-	Meta          core.Map      `json:"meta"`
-	Attempt       int           `json:"attempt"`
-	MaxAttempt    int           `json:"max_attempt"`
-	CreatedAt     time.Time     `json:"created_at"`
-	RunAt         time.Time     `json:"run_at"`
-	ReservedUntil time.Time     `json:"reserved_until"`
-	Timeout       time.Duration `json:"timeout"`
-	RetryDelay    time.Duration `json:"retry_delay"`
-	Unique        string        `json:"unique"`
-	LastError     string        `json:"last_error"`
-	UpdatedAt     time.Time     `json:"updated_at"`
+	ID             string        `json:"id"`
+	Queue          string        `json:"queue"`
+	Name           string        `json:"name"`
+	Payload        []byte        `json:"payload"`
+	Meta           core.Map      `json:"meta"`
+	Attempt        int           `json:"attempt"`
+	MaxAttempt     int           `json:"max_attempt"`
+	CreatedAt      time.Time     `json:"created_at"`
+	RunAt          time.Time     `json:"run_at"`
+	ReservedUntil  time.Time     `json:"reserved_until"`
+	Timeout        time.Duration `json:"timeout"`
+	RetryDelay     time.Duration `json:"retry_delay"`
+	Unique         string        `json:"unique"`
+	UniqueStrategy string        `json:"unique_strategy"`
+	UniqueTTL      time.Duration `json:"unique_ttl"`
+	LastError      string        `json:"last_error"`
+	UpdatedAt      time.Time     `json:"updated_at"`
 }
 
 // JobQuery filters driver job listing.
@@ -91,6 +103,7 @@ type Driver interface {
 	Fail(ctx context.Context, queue string, id string, reason string) error
 	Renew(ctx context.Context, queue string, id string, lease time.Duration) error
 	Delete(ctx context.Context, queue string, id string) error
+	Purge(ctx context.Context, queue string, state JobState, olderThan time.Time) (int64, error)
 	Count(ctx context.Context, queue string, state JobState) (int64, error)
 	List(ctx context.Context, queue string, query JobQuery) ([]*JobMessage, error)
 	Close(ctx context.Context) error

@@ -120,37 +120,60 @@ stop_timeout = "30s"
 | `queue.queues.<name>` | `driver`, `workers`, `retry`, `retry_delay`, `timeout`, `retention`, `meta` |
 | `queue.workers.<name>` | `concurrency`, `poll_interval`, `lease`, `stop_timeout`, `meta` |
 
-`retention` is currently a reserved config field for future failed-job cleanup policy. Existing drivers do not automatically delete failed jobs based on `retention`, so production cleanup should be handled with driver-specific operations.
+`retention` enables automatic cleanup of failed jobs for drivers that support `Purge`, including the built-in `memory` driver and `queue/redis`. A value of `0` disables cleanup. The AMQP driver does not expose failed-job listing or purge operations, so retention cleanup is not available there.
 
 ## Redis driver
 
+Use the Redis driver provider for config-driven setup:
+
 ```go
 import (
-    goredis "github.com/redis/go-redis/v9"
     queueredis "github.com/duxweb/runa/queue/redis"
 )
 
-client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
-
-app.Install(queue.Provider(
-    queue.RegisterDriver("redis", queueredis.Driver(client, queueredis.Prefix("runa:queue:"))),
-    queue.RegisterQueue("default", queue.Use("redis"), queue.Workers("default")),
-    queue.RegisterWorker("default", queue.Concurrency(4)),
-))
+app.Install(
+    queue.Provider(
+        queue.RegisterQueue("default", queue.Use("redis"), queue.Workers("default")),
+        queue.RegisterWorker("default", queue.Concurrency(4)),
+    ),
+    queueredis.Provider(queueredis.Addr("127.0.0.1:6379"), queueredis.Prefix("runa:queue:")),
+)
 ```
+
+`queue/redis` resolves the client in this order: `Client(client)`, explicit options such as `Addr(...)`, `[queue.redis]` config, shared `[redis]` / `[redis.<name>]` config, then `127.0.0.1:6379`. `Use(name)` selects the shared Redis config name; it does not select a `database/redis` runtime.
+
+```toml
+# config/redis.toml
+addr = "127.0.0.1:6379"
+db = 0
+```
+
+```go
+app.Install(
+    queue.Provider(
+        queue.RegisterQueue("default", queue.Use("redis"), queue.Workers("default")),
+        queue.RegisterWorker("default", queue.Concurrency(4)),
+    ),
+    queueredis.Provider(queueredis.Use("default"), queueredis.Prefix("runa:queue:")),
+)
+```
+
+To share one Redis connection pool across multiple drivers, create the client yourself and pass the same object with `Client(client)` to each driver provider. Injected clients are not closed by Runa; provider-created clients are closed with the app lifecycle.
+
+The Redis client dependency still lives only in Redis driver modules. Importing `queue` alone does not pull `go-redis`.
 
 ## AMQP driver
 
 ```go
 import queueamqp "github.com/duxweb/runa/queue/amqp"
 
-app.Install(queue.Provider(
-    queue.RegisterDriver("amqp", queueamqp.Driver(conn, queueamqp.Exchange("runa"))),
-    queue.RegisterQueue("default", queue.Use("amqp"), queue.Workers("default")),
-))
+app.Install(
+    queue.Provider(queue.RegisterQueue("default", queue.Use("amqp"), queue.Workers("default"))),
+    queueamqp.Provider(queueamqp.URL("amqp://guest:guest@127.0.0.1:5672/"), queueamqp.Exchange("runa")),
+)
 ```
 
-The AMQP driver fits cases that only need publish and consume. It currently does not support `Renew`, `Delete`, `Count`, or `List`, so parts of `queue:list` are limited. Prefer Redis for long-running jobs or for workloads that need complete failed-job inspection.
+The AMQP driver fits cases that only need publish and consume. It currently does not support `Renew`, `Delete`, `Purge`, `Count`, or `List`, so parts of `queue:list` are limited. Prefer Redis for long-running jobs or for workloads that need complete failed-job inspection.
 
 ## Commands
 
@@ -216,6 +239,8 @@ _, err := queue.Default().Push(
     EmailJob{To: "hello@runa.dev"},
     queue.Delay(10*time.Minute),          // can be consumed after 10 minutes
     queue.Unique("mail:hello@runa.dev"),  // one job for the same queue + job name + key
+    queue.UniqueUntilDone(),              // default: release after success or terminal failure
+    queue.UniqueFor(30*time.Minute),      // optional TTL safety net
     queue.Retry(3),                       // up to 3 retries after the first failure
     queue.RetryDelay(5*time.Second),
     queue.Timeout(30*time.Second),
@@ -227,6 +252,9 @@ Common rules:
 
 - `Delay(d)` moves the job to delayed state until it becomes due.
 - `Unique(key)` prevents duplicate pushes for the same queue, job name, and key. A duplicate Push returns the existing job ID.
+- `UniqueUntilDone()` is the default unique policy. It keeps the lock while the job is pending, reserved, or retrying, and releases it after success or terminal failure.
+- `UniqueUntilStart()` releases the lock when a worker reserves the job, allowing the next logical job to be queued while the current one is running.
+- `UniqueFor(ttl)` adds a TTL to the unique lock. It can be combined with either policy as a safety net.
 - `Retry(n)` means up to `n` retries after the first failed execution. It is not the total execution count.
 - `Meta(key, value)` is not part of the payload. Queue, job, and push metadata are merged and are available as `job.Meta`.
 - The queue model is at-least-once. Business handlers should still be idempotent because crashes, lease expiry, and retries can run the same business job again.
@@ -244,15 +272,16 @@ Common rules:
 In production, avoid putting every task into one queue. Split queues by priority and runtime profile, then attach different workers:
 
 ```go
-app.Install(queue.Provider(
-    queue.RegisterDriver("redis", queueredis.Driver(client)),
+app.Install(
+    queue.Provider(
+        queue.RegisterQueue("critical", queue.Use("redis"), queue.Workers("critical")),
+        queue.RegisterQueue("bulk", queue.Use("redis"), queue.Workers("bulk"), queue.Timeout(5*time.Minute)),
 
-    queue.RegisterQueue("critical", queue.Use("redis"), queue.Workers("critical")),
-    queue.RegisterQueue("bulk", queue.Use("redis"), queue.Workers("bulk"), queue.Timeout(5*time.Minute)),
-
-    queue.RegisterWorker("critical", queue.Concurrency(8), queue.Lease(time.Minute)),
-    queue.RegisterWorker("bulk", queue.Concurrency(50), queue.Lease(2*time.Minute)),
-))
+        queue.RegisterWorker("critical", queue.Concurrency(8), queue.Lease(time.Minute)),
+        queue.RegisterWorker("bulk", queue.Concurrency(50), queue.Lease(2*time.Minute)),
+    ),
+    queueredis.Provider(queueredis.Client(client)),
+)
 ```
 
 Start them as separate processes:

@@ -2,6 +2,10 @@ github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/duxweb/runa v0.1.1 h1:a0/wlnpBcPLFgOgArQBdeC/jDtJVCBC+dSZvmJR1xJc=
+github.com/duxweb/runa v0.1.1/go.mod h1:BgDBC7oZIRCfVZGLnELdF8TIxyqzqHAq3FLMSCfeeyU=
+github.com/duxweb/runa/message v0.1.1 h1:Qtd5+opVeVbAx8IlzQrLBTpHYlIowOEkmO4H85ne06o=
+github.com/duxweb/runa/message v0.1.1/go.mod h1:v47CjAHCPPObBjfFvK58vnr02dnDhVrvjTeGE9HKjYQ=
 github.com/eclipse/paho.mqtt.golang v1.5.1 h1:/VSOv3oDLlpqR2Epjn1Q7b2bSTplJIeV2ISgCl2W7nE=
 github.com/eclipse/paho.mqtt.golang v1.5.1/go.mod h1:1/yJCneuyOoCOzKSsOTUc0AJfpsItBGWvYpBLimhArU=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=

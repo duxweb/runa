@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/duxweb/runa"
 	"github.com/duxweb/runa/lock"
+	runaprovider "github.com/duxweb/runa/provider"
 	goredis "github.com/redis/go-redis/v9"
 )
 
@@ -54,4 +56,52 @@ func TestRedisStoreTTLExpiry(t *testing.T) {
 	if _, ok, err := store.Try(ctx, "a", "token-b", time.Second); err != nil || !ok {
 		t.Fatalf("try after ttl ok=%v err=%v", ok, err)
 	}
+}
+
+func TestProviderUsesInjectedClientWithoutClosingIt(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	app := newLockTestApp(t, Provider(Client(client), Prefix("provider:lock:")))
+	ctx := context.Background()
+	locker := lock.Default().MustOf(lock.DefaultName)
+	lease, ok, err := locker.Try(ctx, "a")
+	if err != nil || !ok {
+		t.Fatalf("try ok=%v err=%v", ok, err)
+	}
+	_ = lease.Release(ctx)
+	if err := app.Shutdown(ctx); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+	if err := client.Ping(ctx).Err(); err != nil {
+		t.Fatalf("injected client should remain open: %v", err)
+	}
+	_ = client.Close()
+}
+
+func TestProviderUsesExplicitOptions(t *testing.T) {
+	server := miniredis.RunT(t)
+	app := newLockTestApp(t, Provider(Addr(server.Addr()), Prefix("provider:lock:")))
+	ctx := context.Background()
+	locker := lock.Default().MustOf(lock.DefaultName)
+	lease, ok, err := locker.Try(ctx, "a")
+	if err != nil || !ok {
+		t.Fatalf("try ok=%v err=%v", ok, err)
+	}
+	_ = lease.Release(ctx)
+	if err := app.Shutdown(ctx); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+}
+
+func newLockTestApp(t *testing.T, provider runaprovider.Provider) *runa.App {
+	t.Helper()
+	app := runa.New()
+	app.Install(
+		lock.Provider(lock.RegisterLocker(lock.DefaultName, lock.Use("redis"))),
+		provider,
+	)
+	if err := app.Freeze(context.Background()); err != nil {
+		t.Fatalf("freeze: %v", err)
+	}
+	return app
 }

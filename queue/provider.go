@@ -72,12 +72,15 @@ func (provider *provider) Boot(_ context.Context, ctx runaprovider.Context) erro
 	}
 	tasks, taskErr := runaprovider.Invoke[*task.Registry](ctx)
 	events, eventErr := runaprovider.Invoke[*event.Registry](ctx)
-	if taskErr == nil && eventErr == nil {
-		installInternalHandlers(registry, tasks, events)
-		dispatcher := taskDispatcher{queues: registry}
+	dispatcher := taskDispatcher{queues: registry}
+	if taskErr == nil {
+		installTaskHandler(registry, tasks)
 		if !tasks.HasQueueDispatcher() {
 			tasks.QueueDispatcher(dispatcher)
 		}
+	}
+	if eventErr == nil {
+		installEventHandler(registry, events)
 		if !events.HasDispatcher() {
 			events.Dispatcher(dispatcher)
 		}
@@ -111,7 +114,7 @@ func RegisterWorker(name string, options ...WorkerOption) ProviderOption {
 	}
 }
 
-func installInternalHandlers(registry *Registry, tasks *task.Registry, events *event.Registry) {
+func installTaskHandler(registry *Registry, tasks *task.Registry) {
 	registry.Job[task.Message](InternalTaskJob, func(ctx context.Context, job *Job[task.Message]) error {
 		message := job.Payload
 		message.ID = job.ID
@@ -121,6 +124,9 @@ func installInternalHandlers(registry *Registry, tasks *task.Registry, events *e
 		_, err := tasks.DispatchRaw(ctx, message)
 		return err
 	})
+}
+
+func installEventHandler(registry *Registry, events *event.Registry) {
 	registry.Job[task.Message](InternalEventJob, func(ctx context.Context, job *Job[task.Message]) error {
 		message := job.Payload
 		message.ID = job.ID
@@ -150,6 +156,14 @@ func (dispatcher taskDispatcher) Dispatch(ctx context.Context, message task.Mess
 	}
 	if message.Unique != "" {
 		options = append(options, Unique(message.Unique))
+	}
+	if message.UniqueStrategy == string(UniqueStrategyUntilStart) {
+		options = append(options, UniqueUntilStart())
+	} else if message.UniqueStrategy == string(UniqueStrategyUntilDone) {
+		options = append(options, UniqueUntilDone())
+	}
+	if message.UniqueTTL > 0 {
+		options = append(options, UniqueFor(message.UniqueTTL))
 	}
 	for key, value := range message.Meta {
 		options = append(options, Meta(key, value))

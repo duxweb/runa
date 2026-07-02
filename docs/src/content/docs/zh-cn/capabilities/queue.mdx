@@ -120,37 +120,60 @@ stop_timeout = "30s"
 | `queue.queues.<name>` | `driver`、`workers`、`retry`、`retry_delay`、`timeout`、`retention`、`meta` |
 | `queue.workers.<name>` | `concurrency`、`poll_interval`、`lease`、`stop_timeout`、`meta` |
 
-`retention` 当前是保留配置字段，用于后续失败任务清理策略。现有驱动不会自动按 `retention` 删除 failed 任务，生产环境需要按驱动能力做单独清理。
+`retention` 会启用失败任务自动清理。内置 `memory` 驱动和 `queue/redis` 支持 `Purge`，会按保留期删除 failed 任务；`0` 表示不清理。AMQP 驱动不提供 failed 列表和清理能力，所以不支持 retention 清理。
 
 ## Redis 驱动
 
+推荐用 Redis 驱动 Provider 做配置化接入：
+
 ```go
 import (
-    goredis "github.com/redis/go-redis/v9"
     queueredis "github.com/duxweb/runa/queue/redis"
 )
 
-client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:6379"})
-
-app.Install(queue.Provider(
-    queue.RegisterDriver("redis", queueredis.Driver(client, queueredis.Prefix("runa:queue:"))),
-    queue.RegisterQueue("default", queue.Use("redis"), queue.Workers("default")),
-    queue.RegisterWorker("default", queue.Concurrency(4)),
-))
+app.Install(
+    queue.Provider(
+        queue.RegisterQueue("default", queue.Use("redis"), queue.Workers("default")),
+        queue.RegisterWorker("default", queue.Concurrency(4)),
+    ),
+    queueredis.Provider(queueredis.Addr("127.0.0.1:6379"), queueredis.Prefix("runa:queue:")),
+)
 ```
+
+`queue/redis` 获取 client 的顺序是：`Client(client)` 注入、`Addr(...)` 等显式选项、`[queue.redis]` 功能配置、共享 `[redis]` / `[redis.<name>]` 配置，最后回退到 `127.0.0.1:6379`。`Use(name)` 表示选择共享 Redis 配置名，不再表示选择 `database/redis` 运行时。
+
+```toml
+# config/redis.toml
+addr = "127.0.0.1:6379"
+db = 0
+```
+
+```go
+app.Install(
+    queue.Provider(
+        queue.RegisterQueue("default", queue.Use("redis"), queue.Workers("default")),
+        queue.RegisterWorker("default", queue.Concurrency(4)),
+    ),
+    queueredis.Provider(queueredis.Use("default"), queueredis.Prefix("runa:queue:")),
+)
+```
+
+如果要让多个驱动共用同一个 Redis 连接池，由应用自己创建 client，然后把同一个对象通过 `Client(client)` 注入到各驱动 Provider。注入的 client 不由 Runa 关闭；Provider 自建的 client 会随应用生命周期关闭。
+
+Redis client 依赖仍只存在于 Redis 驱动模块里。只 import `queue` 不会带入 `go-redis`。
 
 ## AMQP 驱动
 
 ```go
 import queueamqp "github.com/duxweb/runa/queue/amqp"
 
-app.Install(queue.Provider(
-    queue.RegisterDriver("amqp", queueamqp.Driver(conn, queueamqp.Exchange("runa"))),
-    queue.RegisterQueue("default", queue.Use("amqp"), queue.Workers("default")),
-))
+app.Install(
+    queue.Provider(queue.RegisterQueue("default", queue.Use("amqp"), queue.Workers("default"))),
+    queueamqp.Provider(queueamqp.URL("amqp://guest:guest@127.0.0.1:5672/"), queueamqp.Exchange("runa")),
+)
 ```
 
-AMQP 驱动适合只需要投递和消费的场景。它当前不支持 `Renew`、`Delete`、`Count`、`List`，所以 `queue:list` 的部分统计会受限，长任务和需要查看 failed 明细的场景更建议优先使用 Redis。
+AMQP 驱动适合只需要投递和消费的场景。它当前不支持 `Renew`、`Delete`、`Purge`、`Count`、`List`，所以 `queue:list` 的部分统计会受限，长任务和需要查看 failed 明细的场景更建议优先使用 Redis。
 
 ## 命令
 
@@ -216,6 +239,8 @@ _, err := queue.Default().Push(
     EmailJob{To: "hello@runa.dev"},
     queue.Delay(10*time.Minute),          // 10 分钟后才可被消费
     queue.Unique("mail:hello@runa.dev"),  // 同一队列 + 同一任务名 + 同一 key 只保留一份
+    queue.UniqueUntilDone(),              // 默认：成功或终态失败后释放
+    queue.UniqueFor(30*time.Minute),      // 可选 TTL 兜底
     queue.Retry(3),                       // 首次失败后最多再重试 3 次
     queue.RetryDelay(5*time.Second),
     queue.Timeout(30*time.Second),
@@ -227,6 +252,9 @@ _, err := queue.Default().Push(
 
 - `Delay(d)` 会把任务放到 delayed 状态，到时间后才会被 worker 取走。
 - `Unique(key)` 用于防重复投递，同一队列、同一任务名、同一 key 再次 Push 会返回已有任务 ID。
+- `UniqueUntilDone()` 是默认策略。任务 pending、reserved、retrying 期间保持唯一锁，成功或终态失败后释放。
+- `UniqueUntilStart()` 在 worker 取走任务时释放唯一锁，适合允许“当前执行中，下一轮已排队”的场景。
+- `UniqueFor(ttl)` 给唯一锁增加 TTL，可与任一策略组合，作为异常兜底。
 - `Retry(n)` 表示首次执行失败后最多再重试 `n` 次，不是总执行次数。
 - `Meta(key, value)` 不进入 payload，会合并队列、任务和本次推送的元数据，handler 里通过 `job.Meta` 读取。
 - 队列是“至少一次执行”模型，业务 handler 仍然要做幂等。进程崩溃、租约过期、重试都可能让同一业务任务再次执行。
@@ -244,15 +272,16 @@ _, err := queue.Default().Push(
 生产环境通常不要把所有任务都塞进一个队列。可以按业务优先级和耗时拆成多个队列，再用不同 worker 承接：
 
 ```go
-app.Install(queue.Provider(
-    queue.RegisterDriver("redis", queueredis.Driver(client)),
+app.Install(
+    queue.Provider(
+        queue.RegisterQueue("critical", queue.Use("redis"), queue.Workers("critical")),
+        queue.RegisterQueue("bulk", queue.Use("redis"), queue.Workers("bulk"), queue.Timeout(5*time.Minute)),
 
-    queue.RegisterQueue("critical", queue.Use("redis"), queue.Workers("critical")),
-    queue.RegisterQueue("bulk", queue.Use("redis"), queue.Workers("bulk"), queue.Timeout(5*time.Minute)),
-
-    queue.RegisterWorker("critical", queue.Concurrency(8), queue.Lease(time.Minute)),
-    queue.RegisterWorker("bulk", queue.Concurrency(50), queue.Lease(2*time.Minute)),
-))
+        queue.RegisterWorker("critical", queue.Concurrency(8), queue.Lease(time.Minute)),
+        queue.RegisterWorker("bulk", queue.Concurrency(50), queue.Lease(2*time.Minute)),
+    ),
+    queueredis.Provider(queueredis.Client(client)),
+)
 ```
 
 然后按进程拆开启动：

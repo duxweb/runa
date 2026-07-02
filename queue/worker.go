@@ -146,6 +146,9 @@ func (unit *Unit) loop(ctx context.Context) {
 	var wait sync.WaitGroup
 	defer wait.Wait()
 	queueNames := unit.registry.workerQueueNames(worker.name)
+	sweepDone := make(chan struct{})
+	go unit.sweep(ctx, queueNames, sweepDone)
+	defer close(sweepDone)
 
 	for {
 		select {
@@ -325,6 +328,57 @@ func (unit *Unit) heartbeat(ctx context.Context, drivers []WorkerState, id strin
 			return
 		case <-ctx.Done():
 			return
+		}
+	}
+}
+
+func (unit *Unit) sweep(ctx context.Context, queueNames []string, done <-chan struct{}) {
+	retentions := make(map[string]time.Duration, len(queueNames))
+	interval := time.Minute
+	for _, queueName := range queueNames {
+		entry, _, err := unit.registry.queue(queueName)
+		if err != nil || entry.options.Retention <= 0 {
+			continue
+		}
+		retentions[queueName] = entry.options.Retention
+		if entry.options.Retention < interval {
+			interval = entry.options.Retention
+		}
+	}
+	if len(retentions) == 0 {
+		return
+	}
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			unit.purgeFailed(ctx, retentions)
+		case <-done:
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (unit *Unit) purgeFailed(ctx context.Context, retentions map[string]time.Duration) {
+	for queueName, retention := range retentions {
+		_, driver, err := unit.registry.queue(queueName)
+		if err != nil {
+			continue
+		}
+		olderThan := core.Now().Add(-retention)
+		count, err := driver.Purge(ctx, queueName, StateFailed, olderThan)
+		if err != nil {
+			queueLogger().WarnContext(ctx, "queue failed job purge failed", "queue", queueName, "retention", retention, "err", err)
+			continue
+		}
+		if count > 0 {
+			queueLogger().DebugContext(ctx, "queue failed jobs purged", "queue", queueName, "count", count, "retention", retention)
 		}
 	}
 }

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/duxweb/runa"
+	runaprovider "github.com/duxweb/runa/provider"
 	"github.com/duxweb/runa/rate"
 	goredis "github.com/redis/go-redis/v9"
 )
@@ -54,4 +56,48 @@ func TestRedisDriverTokenBucketAndSlidingWindow(t *testing.T) {
 	if !first.Allowed || second.Allowed {
 		t.Fatalf("unexpected sliding results first=%+v second=%+v", first, second)
 	}
+}
+
+func TestProviderUsesInjectedClientWithoutClosingIt(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	app := newRateTestApp(t, Provider(Client(client), Prefix("provider:rate:")))
+	ctx := context.Background()
+	limiter := rate.Default().MustOf(rate.API)
+	if result, err := limiter.Allow(ctx, "a"); err != nil || !result.Allowed {
+		t.Fatalf("allow=%+v err=%v", result, err)
+	}
+	if err := app.Shutdown(ctx); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+	if err := client.Ping(ctx).Err(); err != nil {
+		t.Fatalf("injected client should remain open: %v", err)
+	}
+	_ = client.Close()
+}
+
+func TestProviderUsesExplicitOptions(t *testing.T) {
+	server := miniredis.RunT(t)
+	app := newRateTestApp(t, Provider(Addr(server.Addr()), Prefix("provider:rate:")))
+	ctx := context.Background()
+	limiter := rate.Default().MustOf(rate.API)
+	if result, err := limiter.Allow(ctx, "a"); err != nil || !result.Allowed {
+		t.Fatalf("allow=%+v err=%v", result, err)
+	}
+	if err := app.Shutdown(ctx); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+}
+
+func newRateTestApp(t *testing.T, provider runaprovider.Provider) *runa.App {
+	t.Helper()
+	app := runa.New()
+	app.Install(
+		rate.Provider(rate.RegisterLimiter(rate.API, rate.Use("redis"))),
+		provider,
+	)
+	if err := app.Freeze(context.Background()); err != nil {
+		t.Fatalf("freeze: %v", err)
+	}
+	return app
 }

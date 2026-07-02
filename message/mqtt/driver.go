@@ -14,19 +14,21 @@ import (
 
 func Driver(client paho.Client, options ...Option) message.Driver {
 	opts := defaultOptions()
-	for _, option := range options {
-		if option != nil {
-			option(&opts)
-		}
-	}
+	applyOptions(&opts, options...)
+	normalizeOptions(&opts)
 	return &driver{client: client, options: opts}
 }
 
+func newDriver(client paho.Client, opts options, ownsClient bool) message.Driver {
+	return &driver{client: client, options: opts, ownsClient: ownsClient}
+}
+
 type driver struct {
-	client  paho.Client
-	options options
-	mu      sync.Mutex
-	topics  map[string]struct{}
+	client     paho.Client
+	options    options
+	ownsClient bool
+	mu         sync.Mutex
+	topics     map[string]struct{}
 }
 
 func (driver *driver) Publish(ctx context.Context, topic string, item message.Envelope) error {
@@ -84,7 +86,7 @@ func (driver *driver) Close(ctx context.Context) error {
 	if len(topics) > 0 && driver.client != nil {
 		joined = errors.Join(joined, wait(ctx, driver.client.Unsubscribe(topics...), driver.options.timeout))
 	}
-	if driver.client != nil && driver.client.IsConnected() {
+	if driver.client != nil && driver.ownsClient && driver.client.IsConnected() {
 		driver.client.Disconnect(driver.options.disconnect)
 	}
 	return joined

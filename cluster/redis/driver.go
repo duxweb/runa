@@ -9,11 +9,17 @@ import (
 	"time"
 
 	"github.com/duxweb/runa/cluster"
-
+	"github.com/duxweb/runa/core"
 	goredis "github.com/redis/go-redis/v9"
 )
 
-const defaultRedisPrefix = "runa:cluster"
+const (
+	defaultDriverName  = "redis"
+	defaultSharedName  = "default"
+	defaultConfigPath  = "cluster.redis"
+	defaultRedisAddr   = "127.0.0.1:6379"
+	defaultRedisPrefix = "runa:cluster"
+)
 
 // Option configures a Redis cluster driver.
 type Option interface {
@@ -25,8 +31,21 @@ type redisOptionFunc func(*redisOptions)
 func (fn redisOptionFunc) applyRedis(options *redisOptions) { fn(options) }
 
 type redisOptions struct {
-	prefix string
-	now    func() time.Time
+	name         string
+	prefix       string
+	now          func() time.Time
+	configPath   string
+	useName      string
+	client       *goredis.Client
+	addr         string
+	username     string
+	password     string
+	db           int
+	dialTimeout  time.Duration
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+	poolSize     int
+	minIdle      int
 }
 
 // Prefix sets the Redis key prefix.
@@ -48,26 +67,66 @@ func Clock(fn func() time.Time) Option {
 	})
 }
 
+// Client uses an existing Redis client. The driver will not close injected clients.
+func Client(client *goredis.Client) Option {
+	return redisOptionFunc(func(options *redisOptions) { options.client = client })
+}
+func Addr(value string) Option {
+	return redisOptionFunc(func(options *redisOptions) { options.addr = value })
+}
+func Auth(username string, password string) Option {
+	return redisOptionFunc(func(options *redisOptions) { options.username, options.password = username, password })
+}
+func Password(value string) Option {
+	return redisOptionFunc(func(options *redisOptions) { options.password = value })
+}
+func DB(value int) Option {
+	return redisOptionFunc(func(options *redisOptions) { options.db = value })
+}
+func DialTimeout(value time.Duration) Option {
+	return redisOptionFunc(func(options *redisOptions) { options.dialTimeout = value })
+}
+func ReadTimeout(value time.Duration) Option {
+	return redisOptionFunc(func(options *redisOptions) { options.readTimeout = value })
+}
+func WriteTimeout(value time.Duration) Option {
+	return redisOptionFunc(func(options *redisOptions) { options.writeTimeout = value })
+}
+func PoolSize(value int) Option {
+	return redisOptionFunc(func(options *redisOptions) { options.poolSize = value })
+}
+func MinIdle(value int) Option {
+	return redisOptionFunc(func(options *redisOptions) { options.minIdle = value })
+}
+func Config(path string) Option {
+	return redisOptionFunc(func(options *redisOptions) { options.configPath = path })
+}
+func Use(name string) Option {
+	return redisOptionFunc(func(options *redisOptions) { options.useName = name })
+}
+func Name(value string) Option {
+	return redisOptionFunc(func(options *redisOptions) { options.name = value })
+}
+
 // Driver creates a Redis-backed cluster driver.
 func Driver(client *goredis.Client, items ...Option) cluster.Driver {
-	options := redisOptions{
-		prefix: defaultRedisPrefix,
-		now:    time.Now,
-	}
-	for _, item := range items {
-		if item != nil {
-			item.applyRedis(&options)
-		}
-	}
+	options := defaultOptions()
+	applyOptions(&options, items...)
+	normalizeOptions(&options)
 	return &redisDriver{client: client, options: options}
 }
 
-type redisDriver struct {
-	client  *goredis.Client
-	options redisOptions
+func newDriver(client *goredis.Client, options redisOptions, ownsClient bool) cluster.Driver {
+	return &redisDriver{client: client, options: options, ownsClient: ownsClient}
 }
 
-func (driver *redisDriver) Name() string { return "redis" }
+type redisDriver struct {
+	client     *goredis.Client
+	options    redisOptions
+	ownsClient bool
+}
+
+func (driver *redisDriver) Name() string { return driver.options.name }
 
 func (driver *redisDriver) Register(ctx context.Context, instance cluster.Instance) error {
 	if driver.client == nil {
@@ -154,8 +213,44 @@ func (driver *redisDriver) Instances(ctx context.Context, service string) ([]clu
 	return items, nil
 }
 
-func (driver *redisDriver) Close(context.Context) error { return nil }
+func (driver *redisDriver) Close(context.Context) error {
+	if driver.client == nil || !driver.ownsClient {
+		return nil
+	}
+	return driver.client.Close()
+}
 
 func (driver *redisDriver) instanceKey(id string) string {
 	return driver.options.prefix + ":instance:" + id
+}
+
+func defaultOptions() redisOptions {
+	return redisOptions{name: defaultDriverName, prefix: defaultRedisPrefix, now: core.Now, useName: defaultSharedName, addr: defaultRedisAddr}
+}
+
+func applyOptions(options *redisOptions, items ...Option) {
+	for _, item := range items {
+		if item != nil {
+			item.applyRedis(options)
+		}
+	}
+}
+
+func normalizeOptions(options *redisOptions) {
+	if options.name == "" {
+		options.name = defaultDriverName
+	}
+	if options.prefix == "" {
+		options.prefix = defaultRedisPrefix
+	}
+	options.prefix = strings.TrimRight(options.prefix, ":")
+	if options.now == nil {
+		options.now = core.Now
+	}
+	if options.useName == "" {
+		options.useName = defaultSharedName
+	}
+	if options.addr == "" {
+		options.addr = defaultRedisAddr
+	}
 }

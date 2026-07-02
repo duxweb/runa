@@ -25,6 +25,11 @@ type clusterProvider struct {
 
 func (provider clusterProvider) Name() string { return "cluster" }
 
+func (provider clusterProvider) Init(_ context.Context, ctx runaprovider.Context) error {
+	runaprovider.ProvideValueOnce(ctx, NewDriverRegistry())
+	return nil
+}
+
 func (item clusterProvider) Register(ctx runaprovider.Context) error {
 	opts := item.options
 	var cfg fileConfig
@@ -35,6 +40,12 @@ func (item clusterProvider) Register(ctx runaprovider.Context) error {
 	for _, option := range item.items {
 		if option != nil {
 			option(&opts)
+		}
+	}
+	if opts.driver == nil && opts.driverName != "" {
+		drivers, _ := runaprovider.Invoke[*DriverRegistry](ctx)
+		if drivers != nil {
+			opts.driver = drivers.Driver(opts.driverName)
 		}
 	}
 	if opts.driver == nil {
@@ -138,11 +149,15 @@ func (runtime *Registry) Shutdown(ctx context.Context, app runaprovider.Context)
 	runtime.mu.Lock()
 	cancel := runtime.cancel
 	done := runtime.done
+	stopped := runtime.instance.Status == StatusStopped
 	runtime.cancel = nil
 	runtime.done = nil
 	instanceID := runtime.instance.ID
 	runtime.instance.Status = StatusStopped
 	runtime.mu.Unlock()
+	if cancel == nil && done == nil && stopped {
+		return nil
+	}
 	if cancel != nil {
 		cancel()
 	}
