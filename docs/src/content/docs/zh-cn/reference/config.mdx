@@ -79,6 +79,8 @@ db = 1
 
 Redis 驱动子包也会读取功能配置段，例如 `[cache.redis]`、`[lock.redis]`、`[rate.redis]`、`[queue.redis]`、`[message.redis]`、`[cluster.redis]`、`[ws.redis]`。功能段不存在时，会回退到 `[redis]` 或由 `Use(name)` 选择的 `[redis.<name>]`。
 
+共享 `[redis]` / `[redis.<name>]` 段只表示连接参数。`prefix`、`ttl`、websocket 的 `channel` 或 `presence_prefix` 等能力专属配置应写在功能段或 driver option。
+
 ## AMQP / NATS / MQTT
 
 ```toml

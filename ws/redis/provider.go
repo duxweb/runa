@@ -74,7 +74,7 @@ func (provider *provider) resolve(ctx runaprovider.Context) options {
 	applyOptions(&selector, provider.items...)
 	store, _ := runaprovider.Invoke[*config.Store](ctx)
 	if store != nil {
-		applyRedisConfig(&opts, readRedisConfig(store, sharedRedisPath(selector.useName)))
+		applyRedisConnectionConfig(&opts, readRedisConfig(store, sharedRedisPath(selector.useName)))
 		path := selector.configPath
 		if path == "" {
 			path = defaultConfigPath
@@ -135,6 +135,36 @@ func readRedisConfig(store *config.Store, path string) redisConfig {
 	}
 	_ = store.Bind(path, &item)
 	return item
+}
+
+func applyRedisConnectionConfig(opts *options, item redisConfig) {
+	if item.Addr != nil {
+		opts.addr = *item.Addr
+	}
+	if item.Username != nil {
+		opts.username = *item.Username
+	}
+	if item.Password != nil {
+		opts.password = *item.Password
+	}
+	if item.DB != nil {
+		opts.db = *item.DB
+	}
+	if item.DialTimeout != nil {
+		opts.dialTimeout = *item.DialTimeout
+	}
+	if item.ReadTimeout != nil {
+		opts.readTimeout = *item.ReadTimeout
+	}
+	if item.WriteTimeout != nil {
+		opts.writeTimeout = *item.WriteTimeout
+	}
+	if item.PoolSize != nil {
+		opts.poolSize = *item.PoolSize
+	}
+	if item.MinIdle != nil {
+		opts.minIdle = *item.MinIdle
+	}
 }
 
 func applyRedisConfig(opts *options, item redisConfig) {

@@ -413,6 +413,48 @@ func TestProviderFeatureConfigCanOverrideSharedRedisZeroValues(t *testing.T) {
 	}
 }
 
+func TestProviderIgnoresSharedRedisPrefix(t *testing.T) {
+	server := miniredis.RunT(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	writeConfig(t, root, "redis.toml", "addr = '"+server.Addr()+"'\nprefix = 'shared:bad'\n")
+	writeConfig(t, root, "queue.toml", "[redis]\nprefix = 'feature:queue'\n")
+	app := runa.New(runa.BasePath(root), runa.ConfigPath("config"))
+	app.Install(
+		queue.Provider(
+			queue.RegisterQueue("jobs", queue.Use("redis"), queue.Workers("jobs")),
+			queue.RegisterWorker("jobs"),
+		),
+		Provider(),
+	)
+	app.Module(providerTestModule{})
+	if err := app.Freeze(ctx); err != nil {
+		t.Fatalf("freeze: %v", err)
+	}
+	if _, err := queue.Default().Push(ctx, "jobs", "provider-test", map[string]int{"id": 1}); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	defer client.Close()
+	featureKeys, err := client.Keys(ctx, "feature:queue:*").Result()
+	if err != nil {
+		t.Fatalf("feature keys: %v", err)
+	}
+	sharedKeys, err := client.Keys(ctx, "shared:bad:*").Result()
+	if err != nil {
+		t.Fatalf("shared keys: %v", err)
+	}
+	if len(featureKeys) == 0 {
+		t.Fatal("expected feature queue prefix to be used")
+	}
+	if len(sharedKeys) != 0 {
+		t.Fatalf("shared redis prefix should be ignored, got %#v", sharedKeys)
+	}
+	if err := app.Shutdown(ctx); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+}
+
 func writeConfig(t *testing.T, root string, name string, body string) {
 	t.Helper()
 	path := filepath.Join(root, "config")

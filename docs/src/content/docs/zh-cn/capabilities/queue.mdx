@@ -142,6 +142,8 @@ app.Install(
 
 `queue/redis` 获取 client 的顺序是：`Client(client)` 注入、`Addr(...)` 等显式选项、`[queue.redis]` 功能配置、共享 `[redis]` / `[redis.<name>]` 配置，最后回退到 `127.0.0.1:6379`。`Use(name)` 表示选择共享 Redis 配置名，不再表示选择 `database/redis` 运行时。
 
+共享 `[redis]` 段只表示连接参数。驱动专属 key 前缀要用 `queueredis.Prefix(...)` 或 `[queue.redis].prefix` 设置，不要写在 `[redis].prefix`。
+
 ```toml
 # config/redis.toml
 addr = "127.0.0.1:6379"

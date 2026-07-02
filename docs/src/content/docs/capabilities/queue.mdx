@@ -142,6 +142,8 @@ app.Install(
 
 `queue/redis` resolves the client in this order: `Client(client)`, explicit options such as `Addr(...)`, `[queue.redis]` config, shared `[redis]` / `[redis.<name>]` config, then `127.0.0.1:6379`. `Use(name)` selects the shared Redis config name; it does not select a `database/redis` runtime.
 
+Shared `[redis]` sections are connection-only. Driver-specific key prefixes must be set with `queueredis.Prefix(...)` or `[queue.redis].prefix`, not `[redis].prefix`.
+
 ```toml
 # config/redis.toml
 addr = "127.0.0.1:6379"

@@ -70,6 +70,8 @@ When shown as a full config path, Redis runtime config is `redis.<name>`. Inside
 
 Redis-backed driver packages also read feature-specific sections such as `[cache.redis]`, `[lock.redis]`, `[rate.redis]`, `[queue.redis]`, `[message.redis]`, `[cluster.redis]`, and `[ws.redis]`. If the feature section is missing, they fall back to `[redis]` or `[redis.<name>]` selected by `Use(name)`.
 
+Shared `[redis]` / `[redis.<name>]` sections are connection-only. Capability-specific settings such as `prefix`, `ttl`, websocket `channel`, or `presence_prefix` belong in the feature section or driver options.
+
 ## AMQP / NATS / MQTT
 
 ```toml
