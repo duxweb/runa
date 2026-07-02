@@ -120,7 +120,7 @@ stop_timeout = "30s"
 | `queue.queues.<name>` | `driver`, `workers`, `retry`, `retry_delay`, `timeout`, `retention`, `meta` |
 | `queue.workers.<name>` | `concurrency`, `poll_interval`, `lease`, `stop_timeout`, `meta` |
 
-`retention` enables automatic cleanup of failed jobs for drivers that support `Purge`, including the built-in `memory` driver and `queue/redis`. A value of `0` disables cleanup. The AMQP driver does not expose failed-job listing or purge operations, so retention cleanup is not available there.
+`retention` enables automatic cleanup of failed jobs for drivers that support `Purge`, including the built-in `memory` driver and `queue/redis`. The default retention is `7d`; set `retention = "0"` or `queue.Retention(0)` to disable cleanup. The AMQP driver does not expose failed-job listing or purge operations, so retention cleanup is not available there.
 
 ## Redis driver
 
@@ -141,6 +141,8 @@ app.Install(
 ```
 
 `queue/redis` resolves the client in this order: `Client(client)`, explicit options such as `Addr(...)`, `[queue.redis]` config, shared `[redis]` / `[redis.<name>]` config, then `127.0.0.1:6379`. `Use(name)` selects the shared Redis config name; it does not select a `database/redis` runtime.
+
+For production, use a dedicated Redis instance or set `maxmemory-policy noeviction`. Queue data must not live in a cache Redis configured with `allkeys-lru` or other eviction policies, because Redis may evict job bodies under memory pressure and silently lose work. Keep payloads small as well: store large files or documents elsewhere and enqueue references; a practical target is below `64KB` per job body.
 
 Shared `[redis]` sections are connection-only. Driver-specific key prefixes must be set with `queueredis.Prefix(...)` or `[queue.redis].prefix`, not `[redis].prefix`.
 
@@ -263,9 +265,10 @@ Common rules:
 
 ## High concurrency and production guidance
 
-- **Default `Concurrency = 1`**: each worker runs one job at a time by default. Increase it explicitly with `queue.Concurrency(N)`. IO-heavy workloads can often use higher values, but the downstream service must be able to handle the load.
+- **Default `Concurrency = 10`**: each worker can run up to ten jobs at a time by default. Tune it with `queue.Concurrency(N)`. IO-heavy workloads can often use higher values, but the downstream service must be able to handle the load.
 - **Use Redis or AMQP in production**: the memory driver is in-process and non-durable. It is suitable for development, not multi-instance production.
 - **Retries are built in**: use `queue.Retry(n)` and `queue.RetryDelay(d)`. Failed jobs are released back to the queue until attempts are exhausted, then moved to failed state.
+- **Failed-job retention defaults to 7 days**: drivers with `Purge` support automatically delete old failed jobs. Set `queue.Retention(0)` or a non-positive config value to keep failed jobs indefinitely.
 - **Backpressure is built in**: the worker uses a bounded semaphore based on `Concurrency`, so in-flight jobs are limited. A large backlog should live in Redis or AMQP, not in worker memory.
 - **Graceful shutdown is bounded**: `queue.StopTimeout(d)` controls how long shutdown waits for in-flight jobs before returning an error.
 

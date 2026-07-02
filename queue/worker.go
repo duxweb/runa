@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -159,18 +160,21 @@ func (unit *Unit) loop(ctx context.Context) {
 
 		dispatched := false
 		for _, queueName := range queueNames {
-			for {
-				select {
-				case sem <- struct{}{}:
-				case <-ctx.Done():
-					return
-				}
-				message, driver, err := unit.reserve(ctx, queueName, worker.options.Lease)
-				if err != nil || message == nil {
-					<-sem
-					break
-				}
-				dispatched = true
+			free := reserveSlots(ctx, sem, worker.options.Concurrency)
+			if free == 0 {
+				return
+			}
+			messages, driver, err := unit.reserve(ctx, queueName, free, worker.options.Lease)
+			if err != nil || len(messages) == 0 {
+				releaseSlots(sem, free)
+				continue
+			}
+			dispatched = true
+			unused := free - len(messages)
+			if unused > 0 {
+				releaseSlots(sem, unused)
+			}
+			for _, message := range messages {
 				wait.Add(1)
 				unit.busy.Add(1)
 				go func(message *JobMessage, driver Driver) {
@@ -179,9 +183,6 @@ func (unit *Unit) loop(ctx context.Context) {
 					defer func() { <-sem }()
 					unit.run(ctx, worker, message, driver)
 				}(message, driver)
-				if len(sem) >= worker.options.Concurrency {
-					break
-				}
 			}
 		}
 		if !dispatched {
@@ -198,16 +199,13 @@ func (unit *Unit) loop(ctx context.Context) {
 	}
 }
 
-func (unit *Unit) reserve(ctx context.Context, queueName string, lease time.Duration) (*JobMessage, Driver, error) {
+func (unit *Unit) reserve(ctx context.Context, queueName string, limit int, lease time.Duration) ([]*JobMessage, Driver, error) {
 	_, driver, err := unit.registry.queue(queueName)
 	if err != nil {
 		return nil, nil, err
 	}
-	items, err := driver.Reserve(ctx, queueName, 1, lease)
-	if err != nil || len(items) == 0 {
-		return nil, driver, err
-	}
-	return items[0], driver, nil
+	items, err := driver.Reserve(ctx, queueName, limit, lease)
+	return items, driver, err
 }
 
 func (unit *Unit) run(ctx context.Context, worker workerEntry, message *JobMessage, driver Driver) {
@@ -263,11 +261,11 @@ func (unit *Unit) execute(ctx context.Context, worker workerEntry, message *JobM
 	}
 	defer cancel()
 
-	renewDone := make(chan struct{})
+	stopRenew := func() {}
 	if worker.options.Lease > 0 {
-		go renewLease(jobCtx, renewDone, driver, message.Queue, message.ID, worker.options.Lease)
+		stopRenew = renewLease(jobCtx, driver, message.Queue, message.ID, worker.options.Lease)
 	}
-	defer close(renewDone)
+	defer stopRenew()
 	call := entry.call
 	for i := len(worker.options.Middlewares) - 1; i >= 0; i-- {
 		call = worker.options.Middlewares[i](call)
@@ -356,7 +354,7 @@ func (unit *Unit) sweep(ctx context.Context, queueNames []string, done <-chan st
 	for {
 		select {
 		case <-ticker.C:
-			unit.purgeFailed(ctx, retentions)
+			unit.purgeFailed(ctx, retentions, interval)
 		case <-done:
 			return
 		case <-ctx.Done():
@@ -365,15 +363,28 @@ func (unit *Unit) sweep(ctx context.Context, queueNames []string, done <-chan st
 	}
 }
 
-func (unit *Unit) purgeFailed(ctx context.Context, retentions map[string]time.Duration) {
+func (unit *Unit) purgeFailed(ctx context.Context, retentions map[string]time.Duration, lockTTL time.Duration) {
 	for queueName, retention := range retentions {
 		_, driver, err := unit.registry.queue(queueName)
 		if err != nil {
 			continue
 		}
+		if locker, ok := driver.(SweepLocker); ok {
+			locked, err := locker.LockSweep(ctx, queueName, lockTTL)
+			if err != nil {
+				queueLogger().WarnContext(ctx, "queue failed job purge lock failed", "queue", queueName, "retention", retention, "err", err)
+				continue
+			}
+			if !locked {
+				continue
+			}
+		}
 		olderThan := core.Now().Add(-retention)
 		count, err := driver.Purge(ctx, queueName, StateFailed, olderThan)
 		if err != nil {
+			if errors.Is(err, ErrUnsupported) {
+				continue
+			}
 			queueLogger().WarnContext(ctx, "queue failed job purge failed", "queue", queueName, "retention", retention, "err", err)
 			continue
 		}
@@ -393,21 +404,68 @@ func queueLogger() *slog.Logger {
 	return runlog.Channel(nil, runlog.Queue)
 }
 
-func renewLease(ctx context.Context, done <-chan struct{}, driver Driver, queueName string, id string, lease time.Duration) {
+func reserveSlots(ctx context.Context, sem chan struct{}, limit int) int {
+	free := 0
+	for free < limit {
+		select {
+		case sem <- struct{}{}:
+			free++
+		default:
+			if free > 0 {
+				return free
+			}
+			select {
+			case sem <- struct{}{}:
+				return 1
+			case <-ctx.Done():
+				return 0
+			}
+		}
+	}
+	return free
+}
+
+func releaseSlots(sem chan struct{}, count int) {
+	for range count {
+		<-sem
+	}
+}
+
+func renewLease(ctx context.Context, driver Driver, queueName string, id string, lease time.Duration) func() {
 	interval := lease / 2
 	if interval <= 0 {
 		interval = time.Second
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			_ = driver.Renew(ctx, queueName, id, lease)
-		case <-done:
+	var mu sync.Mutex
+	stopped := false
+	var timer *time.Timer
+	var renew func()
+	renew = func() {
+		mu.Lock()
+		if stopped {
+			mu.Unlock()
 			return
+		}
+		mu.Unlock()
+		select {
 		case <-ctx.Done():
 			return
+		default:
+		}
+		_ = driver.Renew(ctx, queueName, id, lease)
+		mu.Lock()
+		defer mu.Unlock()
+		if !stopped {
+			timer = time.AfterFunc(interval, renew)
+		}
+	}
+	timer = time.AfterFunc(interval, renew)
+	return func() {
+		mu.Lock()
+		defer mu.Unlock()
+		stopped = true
+		if timer != nil {
+			timer.Stop()
 		}
 	}
 }

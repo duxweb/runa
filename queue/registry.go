@@ -23,6 +23,8 @@ const (
 	DefaultRetryDelay   = time.Second
 	DefaultPollInterval = 100 * time.Millisecond
 	DefaultLease        = 30 * time.Second
+	DefaultRetention    = 7 * 24 * time.Hour
+	DefaultConcurrency  = 10
 	DefaultStopTimeout  = 30 * time.Second
 )
 
@@ -122,6 +124,7 @@ func applyQueueOptions(options ...QueueOption) QueueOptions {
 		Driver:     DefaultDriver,
 		Retry:      DefaultRetry,
 		RetryDelay: DefaultRetryDelay,
+		Retention:  DefaultRetention,
 		Meta:       make(map[string]any),
 	}
 	for _, option := range options {
@@ -135,12 +138,15 @@ func applyQueueOptions(options ...QueueOption) QueueOptions {
 	if opts.RetryDelay <= 0 {
 		opts.RetryDelay = DefaultRetryDelay
 	}
+	if !opts.retentionSet {
+		opts.Retention = DefaultRetention
+	}
 	return opts
 }
 
 func applyWorkerOptions(options ...WorkerOption) WorkerOptions {
 	opts := WorkerOptions{
-		Concurrency:  1,
+		Concurrency:  DefaultConcurrency,
 		PollInterval: DefaultPollInterval,
 		Lease:        DefaultLease,
 		StopTimeout:  DefaultStopTimeout,
@@ -152,7 +158,7 @@ func applyWorkerOptions(options ...WorkerOption) WorkerOptions {
 		}
 	}
 	if opts.Concurrency <= 0 {
-		opts.Concurrency = 1
+		opts.Concurrency = DefaultConcurrency
 	}
 	if opts.PollInterval <= 0 {
 		opts.PollInterval = DefaultPollInterval
@@ -298,8 +304,12 @@ func (registry *Registry) PushMessage(ctx context.Context, queueName string, nam
 	if retryDelay == 0 {
 		retryDelay = queue.options.RetryDelay
 	}
+	id, err := registry.nextID()
+	if err != nil {
+		return "", err
+	}
 	message := &JobMessage{
-		ID:             registry.nextID(),
+		ID:             id,
 		Queue:          queue.name,
 		Name:           name,
 		Payload:        append([]byte(nil), payload...),
@@ -594,9 +604,13 @@ func (registry *Registry) workerQueueNamesLocked(name string) []string {
 	return names
 }
 
-func (registry *Registry) nextID() string {
+func (registry *Registry) nextID() (string, error) {
 	id := registry.ids.Add(1)
-	return fmt.Sprintf("job-%d-%d", core.Now().UnixNano(), id)
+	suffix, err := randomHex(8)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("job-%d-%d-%s", core.Now().UnixNano(), id, suffix), nil
 }
 
 type queueEntry struct {

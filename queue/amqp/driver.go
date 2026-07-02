@@ -3,7 +3,6 @@ package amqp
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -13,7 +12,7 @@ import (
 	amqp091 "github.com/rabbitmq/amqp091-go"
 )
 
-var ErrUnsupported = errors.New("amqp queue driver does not support this operation")
+var ErrUnsupported = queue.ErrUnsupported
 
 // New creates an AMQP queue driver.
 //

@@ -67,7 +67,11 @@ func (driver *memoryDriver) Push(ctx context.Context, queueName string, job *Job
 	item.Queue = queueName
 	item.UniqueStrategy = normalizeUniqueStrategy(item.Unique, item.UniqueStrategy)
 	if item.ID == "" {
-		item.ID = fmt.Sprintf("mem-%d", core.Now().UnixNano())
+		suffix, err := randomHex(8)
+		if err != nil {
+			return "", err
+		}
+		item.ID = fmt.Sprintf("mem-%d-%s", now.UnixNano(), suffix)
 	}
 	if item.CreatedAt.IsZero() {
 		item.CreatedAt = now
@@ -189,7 +193,7 @@ func (driver *memoryDriver) Renew(ctx context.Context, queueName string, id stri
 	defer driver.mu.Unlock()
 	item := driver.reserved[queueName][id]
 	if item == nil {
-		return fmt.Errorf("job %s is not reserved", id)
+		return nil
 	}
 	now := core.Now()
 	item.ReservedUntil = now.Add(lease)

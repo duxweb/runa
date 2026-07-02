@@ -2,6 +2,8 @@ package redis
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -27,7 +29,19 @@ type driver struct {
 
 func (driver *driver) Name() string { return driver.options.driverName }
 
+const (
+	maxReserveLimit = 128
+	requeueLimit    = 128
+	purgeBatchSize  = 1000
+)
+
 var reserveScript = goredis.NewScript(`
+local expired = redis.call('ZRANGEBYSCORE', KEYS[2], '-inf', ARGV[1], 'LIMIT', 0, tonumber(ARGV[4]))
+for _, id in ipairs(expired) do
+	if redis.call('ZREM', KEYS[2], id) == 1 then
+		redis.call('ZADD', KEYS[1], ARGV[1], id)
+	end
+end
 local ids = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, tonumber(ARGV[2]))
 local claimed = {}
 for _, id in ipairs(ids) do
@@ -57,7 +71,11 @@ func (driver *driver) Push(ctx context.Context, queueName string, job *queue.Job
 	item.Queue = queueName
 	now := driver.options.now()
 	if item.ID == "" {
-		item.ID = fmt.Sprintf("redis-%d", now.UnixNano())
+		suffix, err := randomHex(8)
+		if err != nil {
+			return "", err
+		}
+		item.ID = fmt.Sprintf("redis-%d-%s", now.UnixNano(), suffix)
 	}
 	if item.CreatedAt.IsZero() {
 		item.CreatedAt = now
@@ -100,30 +118,51 @@ func (driver *driver) Reserve(ctx context.Context, queueName string, limit int, 
 	if limit <= 0 {
 		limit = 1
 	}
+	if limit > maxReserveLimit {
+		limit = maxReserveLimit
+	}
 	if lease <= 0 {
 		lease = queue.DefaultLease
 	}
 	now := driver.options.now()
-	if err := driver.requeueExpired(ctx, queueName, now); err != nil {
-		return nil, err
-	}
 	reservedUntil := now.Add(lease)
+	pendingKey := driver.stateKey(queueName, queue.StatePending)
+	reservedKey := driver.stateKey(queueName, queue.StateReserved)
 	ids, err := reserveScript.Run(ctx, driver.client,
 		[]string{
-			driver.stateKey(queueName, queue.StatePending),
-			driver.stateKey(queueName, queue.StateReserved),
+			pendingKey,
+			reservedKey,
 		},
 		scoreString(now),
 		limit,
 		score(reservedUntil),
+		requeueLimit,
 	).StringSlice()
 	if err != nil {
 		return nil, err
 	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	values, err := driver.client.MGet(ctx, driver.jobKeys(ids)...).Result()
+	if err != nil {
+		return nil, err
+	}
 	items := make([]*queue.JobMessage, 0, len(ids))
-	for _, id := range ids {
-		item, err := driver.get(ctx, id)
+	missing := make([]string, 0)
+	pipe := driver.client.TxPipeline()
+	commands := 0
+	for index, id := range ids {
+		raw := values[index]
+		if raw == nil {
+			missing = append(missing, id)
+			continue
+		}
+		item, err := decodeJob(raw)
 		if err != nil {
+			missing = append(missing, id)
+			pipe.Del(ctx, driver.jobKey(id))
+			commands++
 			continue
 		}
 		item.Attempt++
@@ -133,15 +172,24 @@ func (driver *driver) Reserve(ctx context.Context, queueName string, limit int, 
 		if err != nil {
 			return nil, err
 		}
-		pipe := driver.client.TxPipeline()
 		pipe.Set(ctx, driver.jobKey(id), body, 0)
+		commands++
 		if driver.shouldDeleteUniqueUntilStart(item) {
 			driver.deleteUnique(pipe, ctx, driver.uniqueKey(item.Queue, item.Name, item.Unique), item.ID)
+			commands++
 		}
+		items = append(items, item)
+	}
+	if len(missing) > 0 {
+		values := anySlice(missing)
+		pipe.ZRem(ctx, pendingKey, values...)
+		pipe.ZRem(ctx, reservedKey, values...)
+		commands += 2
+	}
+	if commands > 0 {
 		if _, err := pipe.Exec(ctx); err != nil {
 			return nil, err
 		}
-		items = append(items, item)
 	}
 	return items, nil
 }
@@ -212,22 +260,11 @@ func (driver *driver) Renew(ctx context.Context, queueName string, id string, le
 	if lease <= 0 {
 		lease = queue.DefaultLease
 	}
-	item, err := driver.get(ctx, id)
-	if err != nil {
-		return err
-	}
 	now := driver.options.now()
-	item.ReservedUntil = now.Add(lease)
-	item.UpdatedAt = now
-	body, err := json.Marshal(item)
-	if err != nil {
-		return err
-	}
-	pipe := driver.client.TxPipeline()
-	pipe.ZAdd(ctx, driver.stateKey(queueName, queue.StateReserved), goredis.Z{Score: score(item.ReservedUntil), Member: id})
-	pipe.Set(ctx, driver.jobKey(id), body, 0)
-	_, err = pipe.Exec(ctx)
-	return err
+	return driver.client.ZAddArgs(ctx, driver.stateKey(queueName, queue.StateReserved), goredis.ZAddArgs{
+		XX:      true,
+		Members: []goredis.Z{{Score: score(now.Add(lease)), Member: id}},
+	}).Err()
 }
 
 func (driver *driver) Delete(ctx context.Context, queueName string, id string) error {
@@ -239,30 +276,40 @@ func (driver *driver) Purge(ctx context.Context, queueName string, state queue.J
 		return 0, nil
 	}
 	key := driver.stateKey(queueName, state)
-	ids, err := driver.client.ZRangeByScore(ctx, key, &goredis.ZRangeBy{
-		Min: "-inf",
-		Max: "(" + scoreString(olderThan),
-	}).Result()
-	if err != nil {
-		return 0, err
-	}
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	pipe := driver.client.TxPipeline()
-	pipe.ZRem(ctx, key, anySlice(ids)...)
-	for _, id := range ids {
-		if item, err := driver.get(ctx, id); err == nil {
-			if unique := driver.uniqueKey(item.Queue, item.Name, item.Unique); unique != "" {
-				driver.deleteUnique(pipe, ctx, unique, item.ID)
-			}
+	var total int64
+	for {
+		ids, err := driver.client.ZRangeByScore(ctx, key, &goredis.ZRangeBy{
+			Min:   "-inf",
+			Max:   "(" + scoreString(olderThan),
+			Count: purgeBatchSize,
+		}).Result()
+		if err != nil {
+			return total, err
 		}
-		pipe.Del(ctx, driver.jobKey(id))
+		if len(ids) == 0 {
+			return total, nil
+		}
+		values, err := driver.client.MGet(ctx, driver.jobKeys(ids)...).Result()
+		if err != nil {
+			return total, err
+		}
+		pipe := driver.client.TxPipeline()
+		pipe.ZRem(ctx, key, anySlice(ids)...)
+		for index, id := range ids {
+			if values[index] != nil {
+				if item, err := decodeJob(values[index]); err == nil {
+					if unique := driver.uniqueKey(item.Queue, item.Name, item.Unique); unique != "" {
+						driver.deleteUnique(pipe, ctx, unique, item.ID)
+					}
+				}
+			}
+			pipe.Del(ctx, driver.jobKey(id))
+		}
+		if _, err := pipe.Exec(ctx); err != nil {
+			return total, err
+		}
+		total += int64(len(ids))
 	}
-	if _, err := pipe.Exec(ctx); err != nil {
-		return 0, err
-	}
-	return int64(len(ids)), nil
 }
 
 func (driver *driver) Count(ctx context.Context, queueName string, state queue.JobState) (int64, error) {
@@ -320,6 +367,13 @@ func (driver *driver) Close(context.Context) error {
 		return nil
 	}
 	return driver.client.Close()
+}
+
+func (driver *driver) LockSweep(ctx context.Context, queueName string, ttl time.Duration) (bool, error) {
+	if ttl <= 0 {
+		ttl = time.Minute
+	}
+	return driver.client.SetNX(ctx, driver.sweepKey(queueName), "1", ttl).Result()
 }
 
 func (driver *driver) Register(ctx context.Context, worker queue.WorkerInstance) error {
@@ -382,37 +436,6 @@ func (driver *driver) Instances(ctx context.Context, workerName string) ([]queue
 	return items, nil
 }
 
-func (driver *driver) requeueExpired(ctx context.Context, queueName string, now time.Time) error {
-	ids, err := driver.client.ZRangeByScore(ctx, driver.stateKey(queueName, queue.StateReserved), &goredis.ZRangeBy{
-		Min: "-inf",
-		Max: scoreString(now),
-	}).Result()
-	if err != nil {
-		return err
-	}
-	for _, id := range ids {
-		item, err := driver.get(ctx, id)
-		if err != nil {
-			continue
-		}
-		item.ReservedUntil = time.Time{}
-		item.RunAt = now
-		item.UpdatedAt = now
-		body, err := json.Marshal(item)
-		if err != nil {
-			return err
-		}
-		pipe := driver.client.TxPipeline()
-		pipe.ZRem(ctx, driver.stateKey(queueName, queue.StateReserved), id)
-		pipe.ZAdd(ctx, driver.stateKey(queueName, queue.StatePending), goredis.Z{Score: score(now), Member: id})
-		pipe.Set(ctx, driver.jobKey(id), body, 0)
-		if _, err := pipe.Exec(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (driver *driver) get(ctx context.Context, id string) (*queue.JobMessage, error) {
 	raw, err := driver.client.Get(ctx, driver.jobKey(id)).Bytes()
 	if err != nil {
@@ -429,8 +452,20 @@ func (driver *driver) jobKey(id string) string {
 	return driver.options.prefix + ":job:" + id
 }
 
+func (driver *driver) jobKeys(ids []string) []string {
+	keys := make([]string, len(ids))
+	for index, id := range ids {
+		keys[index] = driver.jobKey(id)
+	}
+	return keys
+}
+
 func (driver *driver) stateKey(queueName string, state queue.JobState) string {
 	return driver.options.prefix + ":queue:" + queueName + ":" + string(state)
+}
+
+func (driver *driver) sweepKey(queueName string) string {
+	return driver.options.prefix + ":sweep:" + queueName
 }
 
 func (driver *driver) uniqueKey(queueName string, jobName string, unique string) string {
@@ -485,6 +520,34 @@ func anySlice(values []string) []any {
 		items[index] = value
 	}
 	return items
+}
+
+func randomHex(byteCount int) (string, error) {
+	if byteCount <= 0 {
+		byteCount = 8
+	}
+	body := make([]byte, byteCount)
+	if _, err := rand.Read(body); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(body), nil
+}
+
+func decodeJob(raw any) (*queue.JobMessage, error) {
+	var body []byte
+	switch value := raw.(type) {
+	case string:
+		body = []byte(value)
+	case []byte:
+		body = value
+	default:
+		return nil, fmt.Errorf("unsupported redis job body type %T", raw)
+	}
+	var item queue.JobMessage
+	if err := json.Unmarshal(body, &item); err != nil {
+		return nil, err
+	}
+	return &item, nil
 }
 
 func (driver *driver) workersKey() string {

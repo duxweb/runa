@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -47,9 +48,54 @@ func TestMemoryDriverLifecycle(t *testing.T) {
 	if err := driver.Ack(ctx, "default", id); err != nil {
 		t.Fatalf("ack: %v", err)
 	}
+	if err := driver.Renew(ctx, "default", id, time.Second); err != nil {
+		t.Fatalf("renew after ack: %v", err)
+	}
 	pending, _ = driver.Count(ctx, "default", StatePending)
 	if pending != 0 {
 		t.Fatalf("pending after ack = %d", pending)
+	}
+}
+
+func TestMemoryDriverConcurrentPushIDsAreUnique(t *testing.T) {
+	ctx := context.Background()
+	driver := MemoryDriver()
+	const total = 10000
+	const workers = 40
+	ids := make(chan string, total)
+	var wait sync.WaitGroup
+	for worker := range workers {
+		wait.Add(1)
+		go func(worker int) {
+			defer wait.Done()
+			for index := range total / workers {
+				id, err := driver.Push(ctx, "jobs", &JobMessage{Name: "sync", Payload: []byte(fmt.Sprintf(`{"worker":%d,"index":%d}`, worker, index))})
+				if err != nil {
+					t.Errorf("push: %v", err)
+					return
+				}
+				ids <- id
+			}
+		}(worker)
+	}
+	wait.Wait()
+	close(ids)
+	seen := make(map[string]struct{}, total)
+	for id := range ids {
+		if _, ok := seen[id]; ok {
+			t.Fatalf("duplicate id %q", id)
+		}
+		seen[id] = struct{}{}
+	}
+	if len(seen) != total {
+		t.Fatalf("ids = %d want %d", len(seen), total)
+	}
+	pending, err := driver.Count(ctx, "jobs", StatePending)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if pending != total {
+		t.Fatalf("pending = %d want %d", pending, total)
 	}
 }
 
@@ -358,7 +404,7 @@ func TestWorkerDoesNotPurgeFailedJobsWithoutRetention(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	registry := New()
-	registry.Queue("jobs", Workers("jobs"))
+	registry.Queue("jobs", Retention(0), Workers("jobs"))
 	registry.Worker("jobs", PollInterval(time.Millisecond), Lease(50*time.Millisecond))
 	done := make(chan struct{})
 	registry.Job[memoryPayload]("always-fail", func(ctx context.Context, job *Job[memoryPayload]) error {
@@ -385,6 +431,21 @@ func TestWorkerDoesNotPurgeFailedJobsWithoutRetention(t *testing.T) {
 	failed, _ := registry.driver(DefaultDriver).Count(ctx, "jobs", StateFailed)
 	if failed != 1 {
 		t.Fatalf("failed without retention = %d", failed)
+	}
+}
+
+func TestQueueDefaults(t *testing.T) {
+	queueOptions := applyQueueOptions()
+	if queueOptions.Retention != DefaultRetention {
+		t.Fatalf("retention = %s want %s", queueOptions.Retention, DefaultRetention)
+	}
+	disabled := applyQueueOptions(Retention(0))
+	if disabled.Retention != 0 {
+		t.Fatalf("disabled retention = %s", disabled.Retention)
+	}
+	workerOptions := applyWorkerOptions()
+	if workerOptions.Concurrency != DefaultConcurrency {
+		t.Fatalf("concurrency = %d want %d", workerOptions.Concurrency, DefaultConcurrency)
 	}
 }
 
@@ -479,6 +540,117 @@ func TestWorkerConcurrency(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("jobs not executed")
 	}
+}
+
+func TestWorkerReservesByAvailableSlots(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	driver := &batchReserveDriver{total: 20}
+	registry := New()
+	registry.RegisterDriver("batch", driver)
+	registry.Queue("jobs", Use("batch"), Workers("jobs"))
+	registry.Worker("jobs", Concurrency(10), PollInterval(time.Millisecond))
+	done := make(chan struct{})
+	var once sync.Once
+	var mu sync.Mutex
+	processed := 0
+	registry.Job[memoryPayload]("batch", func(ctx context.Context, job *Job[memoryPayload]) error {
+		mu.Lock()
+		processed++
+		if processed == 20 {
+			once.Do(func() { close(done) })
+		}
+		mu.Unlock()
+		return nil
+	})
+	if err := registry.Freeze(); err != nil {
+		t.Fatalf("freeze: %v", err)
+	}
+	unit := NewUnit(registry, "jobs")
+	if err := unit.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer unit.Stop(context.Background())
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("jobs not executed")
+	}
+	driver.mu.Lock()
+	maxLimit := driver.maxLimit
+	driver.mu.Unlock()
+	if maxLimit != 10 {
+		t.Fatalf("reserve limit = %d want 10", maxLimit)
+	}
+}
+
+type batchReserveDriver struct {
+	mu       sync.Mutex
+	next     int
+	total    int
+	maxLimit int
+}
+
+func (driver *batchReserveDriver) Name() string { return "batch" }
+
+func (driver *batchReserveDriver) Push(context.Context, string, *JobMessage) (string, error) {
+	return "", nil
+}
+
+func (driver *batchReserveDriver) Reserve(ctx context.Context, queueName string, limit int, lease time.Duration) ([]*JobMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	driver.mu.Lock()
+	defer driver.mu.Unlock()
+	if limit > driver.maxLimit {
+		driver.maxLimit = limit
+	}
+	if driver.next >= driver.total {
+		return nil, nil
+	}
+	items := make([]*JobMessage, 0, limit)
+	for len(items) < limit && driver.next < driver.total {
+		driver.next++
+		items = append(items, &JobMessage{ID: fmt.Sprintf("job-%d", driver.next), Queue: queueName, Name: "batch", Attempt: 1})
+	}
+	return items, nil
+}
+
+func (driver *batchReserveDriver) Ack(context.Context, string, string) error {
+	return nil
+}
+
+func (driver *batchReserveDriver) Release(context.Context, string, string, time.Duration, string) error {
+	return nil
+}
+
+func (driver *batchReserveDriver) Fail(context.Context, string, string, string) error {
+	return nil
+}
+
+func (driver *batchReserveDriver) Renew(context.Context, string, string, time.Duration) error {
+	return nil
+}
+
+func (driver *batchReserveDriver) Delete(context.Context, string, string) error {
+	return nil
+}
+
+func (driver *batchReserveDriver) Purge(context.Context, string, JobState, time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (driver *batchReserveDriver) Count(context.Context, string, JobState) (int64, error) {
+	return 0, nil
+}
+
+func (driver *batchReserveDriver) List(context.Context, string, JobQuery) ([]*JobMessage, error) {
+	return nil, nil
+}
+
+func (driver *batchReserveDriver) Close(context.Context) error {
+	return nil
 }
 
 func workerInfoByName(items []WorkerInfo, name string) WorkerInfo {

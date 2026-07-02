@@ -2,8 +2,11 @@ package redis
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -64,6 +67,50 @@ func TestRedisDriverLifecycle(t *testing.T) {
 	failed, _ = driver.Count(ctx, "jobs", queue.StateFailed)
 	if failed != 0 {
 		t.Fatalf("failed after delete = %d", failed)
+	}
+}
+
+func TestRedisDriverConcurrentPushIDsAreUnique(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	driver := Driver(client, Prefix("unique-ids")).(queue.Driver)
+	ctx := context.Background()
+	const total = 10000
+	const workers = 40
+	ids := make(chan string, total)
+	var wait sync.WaitGroup
+	for worker := range workers {
+		wait.Add(1)
+		go func(worker int) {
+			defer wait.Done()
+			for index := range total / workers {
+				id, err := driver.Push(ctx, "jobs", &queue.JobMessage{Name: "sync", Payload: []byte(fmt.Sprintf(`{"worker":%d,"index":%d}`, worker, index))})
+				if err != nil {
+					t.Errorf("push: %v", err)
+					return
+				}
+				ids <- id
+			}
+		}(worker)
+	}
+	wait.Wait()
+	close(ids)
+	seen := make(map[string]struct{}, total)
+	for id := range ids {
+		if _, ok := seen[id]; ok {
+			t.Fatalf("duplicate id %q", id)
+		}
+		seen[id] = struct{}{}
+	}
+	if len(seen) != total {
+		t.Fatalf("ids = %d want %d", len(seen), total)
+	}
+	pending, err := driver.Count(ctx, "jobs", queue.StatePending)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if pending != total {
+		t.Fatalf("pending = %d want %d", pending, total)
 	}
 }
 
@@ -195,6 +242,225 @@ func TestRedisReserveOnlyReturnsClaimedJobs(t *testing.T) {
 	}
 	if len(second) != 0 {
 		t.Fatalf("second = %#v", second)
+	}
+}
+
+func TestRedisReserveBatchAndConcurrentClaim(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	firstDriver := Driver(client, Prefix("batch")).(queue.Driver)
+	secondDriver := Driver(client, Prefix("batch")).(queue.Driver)
+	ctx := context.Background()
+	for index := range 500 {
+		if _, err := firstDriver.Push(ctx, "jobs", &queue.JobMessage{ID: fmt.Sprintf("job-%d", index), Queue: "jobs", Name: "mail", RunAt: time.Now()}); err != nil {
+			t.Fatalf("push %d: %v", index, err)
+		}
+	}
+	first, err := firstDriver.Reserve(ctx, "jobs", 50, time.Second)
+	if err != nil {
+		t.Fatalf("first reserve: %v", err)
+	}
+	if len(first) != 50 {
+		t.Fatalf("first reserve len = %d want 50", len(first))
+	}
+	seen := make(map[string]struct{}, len(first))
+	for _, item := range first {
+		if _, ok := seen[item.ID]; ok {
+			t.Fatalf("duplicate first id %q", item.ID)
+		}
+		seen[item.ID] = struct{}{}
+	}
+	var wait sync.WaitGroup
+	results := make(chan []*queue.JobMessage, 2)
+	for _, item := range []queue.Driver{firstDriver, secondDriver} {
+		wait.Add(1)
+		go func(driver queue.Driver) {
+			defer wait.Done()
+			items, err := driver.Reserve(ctx, "jobs", 50, time.Second)
+			if err != nil {
+				t.Errorf("reserve: %v", err)
+				return
+			}
+			results <- items
+		}(item)
+	}
+	wait.Wait()
+	close(results)
+	for items := range results {
+		for _, item := range items {
+			if _, ok := seen[item.ID]; ok {
+				t.Fatalf("job consumed twice: %q", item.ID)
+			}
+			seen[item.ID] = struct{}{}
+		}
+	}
+}
+
+func TestRedisReserveRequeuesExpiredAndIncrementsAttempt(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	driver := Driver(client, Prefix("expired")).(queue.Driver)
+	ctx := context.Background()
+	id, err := driver.Push(ctx, "jobs", &queue.JobMessage{Queue: "jobs", Name: "mail", RunAt: time.Now()})
+	if err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	first, err := driver.Reserve(ctx, "jobs", 1, 10*time.Millisecond)
+	if err != nil || len(first) != 1 {
+		t.Fatalf("first reserve = %#v err=%v", first, err)
+	}
+	time.Sleep(15 * time.Millisecond)
+	second, err := driver.Reserve(ctx, "jobs", 1, time.Second)
+	if err != nil || len(second) != 1 {
+		t.Fatalf("second reserve = %#v err=%v", second, err)
+	}
+	if second[0].ID != id || second[0].Attempt != 2 {
+		t.Fatalf("second item = %#v", second[0])
+	}
+}
+
+func TestRedisReserveRemovesOrphanIDs(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	item := Driver(client, Prefix("orphan")).(*driver)
+	ctx := context.Background()
+	if err := client.ZAdd(ctx, item.stateKey("jobs", queue.StateReserved), goredis.Z{Score: score(time.Now().Add(-time.Second)), Member: "missing"}).Err(); err != nil {
+		t.Fatalf("zadd orphan: %v", err)
+	}
+	items, err := item.Reserve(ctx, "jobs", 1, time.Second)
+	if err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("items = %#v", items)
+	}
+	reserved, err := client.ZCard(ctx, item.stateKey("jobs", queue.StateReserved)).Result()
+	if err != nil {
+		t.Fatalf("zcard reserved: %v", err)
+	}
+	pending, err := client.ZCard(ctx, item.stateKey("jobs", queue.StatePending)).Result()
+	if err != nil {
+		t.Fatalf("zcard pending: %v", err)
+	}
+	if reserved != 0 || pending != 0 {
+		t.Fatalf("orphan remains reserved=%d pending=%d", reserved, pending)
+	}
+}
+
+func TestRedisReserveRemovesCorruptBodiesWithoutPoisoningBatch(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	item := Driver(client, Prefix("corrupt")).(*driver)
+	ctx := context.Background()
+	if err := client.Set(ctx, item.jobKey("bad"), "{", 0).Err(); err != nil {
+		t.Fatalf("set corrupt body: %v", err)
+	}
+	if err := client.ZAdd(ctx, item.stateKey("jobs", queue.StatePending), goredis.Z{Score: score(time.Now()), Member: "bad"}).Err(); err != nil {
+		t.Fatalf("zadd corrupt id: %v", err)
+	}
+	if _, err := item.Push(ctx, "jobs", &queue.JobMessage{ID: "good", Queue: "jobs", Name: "sync", RunAt: time.Now()}); err != nil {
+		t.Fatalf("push good: %v", err)
+	}
+	items, err := item.Reserve(ctx, "jobs", 2, time.Second)
+	if err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != "good" {
+		t.Fatalf("items = %#v", items)
+	}
+	if exists, err := client.Exists(ctx, item.jobKey("bad")).Result(); err != nil || exists != 0 {
+		t.Fatalf("corrupt body exists=%d err=%v", exists, err)
+	}
+	pending, err := client.ZCard(ctx, item.stateKey("jobs", queue.StatePending)).Result()
+	if err != nil {
+		t.Fatalf("zcard pending: %v", err)
+	}
+	reserved, err := client.ZCard(ctx, item.stateKey("jobs", queue.StateReserved)).Result()
+	if err != nil {
+		t.Fatalf("zcard reserved: %v", err)
+	}
+	if pending != 0 || reserved != 1 {
+		t.Fatalf("unexpected states pending=%d reserved=%d", pending, reserved)
+	}
+}
+
+func TestRedisPurgeFailedJobsInBatches(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	item := Driver(client, Prefix("purge-batch")).(*driver)
+	ctx := context.Background()
+	now := time.Now().Add(-time.Hour)
+	for index := range 5000 {
+		id := fmt.Sprintf("failed-%d", index)
+		body, err := json.Marshal(&queue.JobMessage{ID: id, Queue: "jobs", Name: "sync", UpdatedAt: now})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if err := client.Set(ctx, item.jobKey(id), body, 0).Err(); err != nil {
+			t.Fatalf("set: %v", err)
+		}
+		if err := client.ZAdd(ctx, item.stateKey("jobs", queue.StateFailed), goredis.Z{Score: score(now), Member: id}).Err(); err != nil {
+			t.Fatalf("zadd: %v", err)
+		}
+	}
+	count, err := item.Purge(ctx, "jobs", queue.StateFailed, time.Now())
+	if err != nil {
+		t.Fatalf("purge: %v", err)
+	}
+	if count != 5000 {
+		t.Fatalf("purged = %d want 5000", count)
+	}
+	failed, err := item.Count(ctx, "jobs", queue.StateFailed)
+	if err != nil {
+		t.Fatalf("count failed: %v", err)
+	}
+	if failed != 0 {
+		t.Fatalf("failed after purge = %d", failed)
+	}
+}
+
+func TestRedisRenewDoesNotReviveAckedJob(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	driver := Driver(client, Prefix("renew")).(queue.Driver)
+	ctx := context.Background()
+	id, err := driver.Push(ctx, "jobs", &queue.JobMessage{Queue: "jobs", Name: "mail", RunAt: time.Now()})
+	if err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	if _, err := driver.Reserve(ctx, "jobs", 1, time.Second); err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	if err := driver.Ack(ctx, "jobs", id); err != nil {
+		t.Fatalf("ack: %v", err)
+	}
+	if err := driver.Renew(ctx, "jobs", id, time.Second); err != nil {
+		t.Fatalf("renew after ack: %v", err)
+	}
+	reserved, err := driver.Count(ctx, "jobs", queue.StateReserved)
+	if err != nil {
+		t.Fatalf("count reserved: %v", err)
+	}
+	if reserved != 0 {
+		t.Fatalf("reserved after ack+renew = %d", reserved)
+	}
+}
+
+func TestRedisSweepLock(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	driver := Driver(client, Prefix("sweep")).(*driver)
+	ctx := context.Background()
+	locked, err := driver.LockSweep(ctx, "jobs", time.Second)
+	if err != nil || !locked {
+		t.Fatalf("first lock = %v err=%v", locked, err)
+	}
+	locked, err = driver.LockSweep(ctx, "jobs", time.Second)
+	if err != nil {
+		t.Fatalf("second lock: %v", err)
+	}
+	if locked {
+		t.Fatal("second lock should be skipped")
 	}
 }
 

@@ -28,13 +28,14 @@ type PushOption interface {
 
 // QueueOptions stores queue settings.
 type QueueOptions struct {
-	Driver     string
-	Workers    []string
-	Retry      int
-	RetryDelay time.Duration
-	Timeout    time.Duration
-	Retention  time.Duration
-	Meta       core.Map
+	Driver       string
+	Workers      []string
+	Retry        int
+	RetryDelay   time.Duration
+	Timeout      time.Duration
+	Retention    time.Duration
+	Meta         core.Map
+	retentionSet bool
 }
 
 // WorkerOptions stores worker settings.
@@ -119,7 +120,10 @@ func (option timeoutOption) ApplyPush(options *PushOptions)   { options.Timeout 
 
 // Retention sets failed job retention.
 func Retention(duration time.Duration) QueueOption {
-	return optionFunc(func(options *QueueOptions) { options.Retention = duration })
+	return optionFunc(func(options *QueueOptions) {
+		options.Retention = duration
+		options.retentionSet = true
+	})
 }
 
 // Workers binds this queue to worker names.

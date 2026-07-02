@@ -117,6 +117,11 @@ type WorkerState interface {
 	Instances(ctx context.Context, worker string) ([]WorkerInstance, error)
 }
 
+// SweepLocker coordinates failed-job cleanup across distributed workers.
+type SweepLocker interface {
+	LockSweep(ctx context.Context, queue string, ttl time.Duration) (bool, error)
+}
+
 // QueueInfo describes one configured queue and its current driver state.
 type QueueInfo struct {
 	Name     string

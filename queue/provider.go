@@ -185,13 +185,13 @@ func isEventMessage(message task.Message) bool {
 }
 
 type queueConfig struct {
-	Driver     string        `toml:"driver"`
-	Workers    []string      `toml:"workers"`
-	Retry      int           `toml:"retry"`
-	RetryDelay time.Duration `toml:"retry_delay"`
-	Timeout    time.Duration `toml:"timeout"`
-	Retention  time.Duration `toml:"retention"`
-	Meta       core.Map      `toml:"meta"`
+	Driver     string         `toml:"driver"`
+	Workers    []string       `toml:"workers"`
+	Retry      int            `toml:"retry"`
+	RetryDelay time.Duration  `toml:"retry_delay"`
+	Timeout    time.Duration  `toml:"timeout"`
+	Retention  *time.Duration `toml:"retention"`
+	Meta       core.Map       `toml:"meta"`
 }
 
 type workerConfig struct {
@@ -224,8 +224,8 @@ func configQueueOptions(store *config.Store, name string) []QueueOption {
 	if item.Timeout > 0 {
 		options = append(options, Timeout(item.Timeout))
 	}
-	if item.Retention > 0 {
-		options = append(options, Retention(item.Retention))
+	if item.Retention != nil {
+		options = append(options, Retention(*item.Retention))
 	}
 	for key, value := range item.Meta {
 		options = append(options, Meta(key, value))
