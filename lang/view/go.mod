@@ -3,9 +3,9 @@ module github.com/duxweb/runa/lang/view
 go 1.27rc1
 
 require (
-	github.com/duxweb/runa v0.1.1
-	github.com/duxweb/runa/lang v0.1.1
-	github.com/duxweb/runa/view v0.1.1
+	github.com/duxweb/runa v0.1.2
+	github.com/duxweb/runa/lang v0.1.2
+	github.com/duxweb/runa/view v0.1.2
 )
 
 require (

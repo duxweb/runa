@@ -4,24 +4,24 @@ go 1.27rc1
 
 require (
 	github.com/duxweb/oro v0.1.0
-	github.com/duxweb/runa v0.1.1
-	github.com/duxweb/runa/crud v0.1.1
-	github.com/duxweb/runa/resource v0.1.1
-	github.com/duxweb/runa/route v0.1.1
+	github.com/duxweb/runa v0.1.2
+	github.com/duxweb/runa/crud v0.1.2
+	github.com/duxweb/runa/resource v0.1.2
+	github.com/duxweb/runa/route v0.1.2
 	modernc.org/sqlite v1.53.0
 )
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/duxweb/runa/auth v0.1.1 // indirect
-	github.com/duxweb/runa/cache v0.1.1 // indirect
-	github.com/duxweb/runa/lang v0.1.1 // indirect
-	github.com/duxweb/runa/log v0.1.1 // indirect
-	github.com/duxweb/runa/scope v0.1.1 // indirect
-	github.com/duxweb/runa/session v0.1.1 // indirect
-	github.com/duxweb/runa/storage v0.1.1 // indirect
-	github.com/duxweb/runa/validate v0.1.1 // indirect
+	github.com/duxweb/runa/auth v0.1.2 // indirect
+	github.com/duxweb/runa/cache v0.1.2 // indirect
+	github.com/duxweb/runa/lang v0.1.2 // indirect
+	github.com/duxweb/runa/log v0.1.2 // indirect
+	github.com/duxweb/runa/scope v0.1.2 // indirect
+	github.com/duxweb/runa/session v0.1.2 // indirect
+	github.com/duxweb/runa/storage v0.1.2 // indirect
+	github.com/duxweb/runa/validate v0.1.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect

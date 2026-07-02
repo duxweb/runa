@@ -2,6 +2,19 @@
 
 English | [简体中文](CHANGELOG.zh-CN.md)
 
+## v0.1.2 - 2026-07-02
+
+### Changed
+
+- Optimized the Redis queue driver storage format from whole-job JSON strings to Redis hashes, so state transitions update only mutable fields.
+- Reduced Redis queue hot-path round trips: Reserve now claims and updates jobs in Lua, Ack and Fail run as single Lua scripts, Release updates fields without reading the full body, and List/Purge use batched hash reads.
+- Added opt-in real Redis benchmarks for queue push, reserve/ack, and worker throughput via `RUNA_REDIS_BENCH_ADDR`.
+
+### Fixed
+
+- Preserved corrupt-job self-healing for Redis queues without poisoning an entire reserved batch.
+- Kept `queue.Driver`, `queue.JobMessage`, and worker APIs unchanged while moving Redis job bodies to hash storage.
+
 ## v0.1.1 - 2026-07-01
 
 ### Changed

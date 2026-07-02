@@ -3,22 +3,22 @@ module github.com/duxweb/runa/crud/excelize
 go 1.27rc1
 
 require (
-	github.com/duxweb/runa v0.1.1
-	github.com/duxweb/runa/crud v0.1.1
-	github.com/duxweb/runa/resource v0.1.1
-	github.com/duxweb/runa/route v0.1.1
+	github.com/duxweb/runa v0.1.2
+	github.com/duxweb/runa/crud v0.1.2
+	github.com/duxweb/runa/resource v0.1.2
+	github.com/duxweb/runa/route v0.1.2
 	github.com/xuri/excelize/v2 v2.10.1
 )
 
 require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
-	github.com/duxweb/runa/auth v0.1.1 // indirect
-	github.com/duxweb/runa/cache v0.1.1 // indirect
-	github.com/duxweb/runa/log v0.1.1 // indirect
-	github.com/duxweb/runa/scope v0.1.1 // indirect
-	github.com/duxweb/runa/session v0.1.1 // indirect
-	github.com/duxweb/runa/storage v0.1.1 // indirect
-	github.com/duxweb/runa/validate v0.1.1 // indirect
+	github.com/duxweb/runa/auth v0.1.2 // indirect
+	github.com/duxweb/runa/cache v0.1.2 // indirect
+	github.com/duxweb/runa/log v0.1.2 // indirect
+	github.com/duxweb/runa/scope v0.1.2 // indirect
+	github.com/duxweb/runa/session v0.1.2 // indirect
+	github.com/duxweb/runa/storage v0.1.2 // indirect
+	github.com/duxweb/runa/validate v0.1.2 // indirect
 	github.com/richardlehane/mscfb v1.0.6 // indirect
 	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/samber/do/v2 v2.0.0 // indirect

@@ -2,6 +2,19 @@
 
 [English](CHANGELOG.md) | 简体中文
 
+## v0.1.2 - 2026-07-02
+
+### 变更
+
+- 将 Redis queue 驱动的 job 存储从整段 JSON String 优化为 Redis Hash，状态流转只更新可变字段。
+- 降低 Redis queue 热路径 RTT：Reserve 在 Lua 内完成 claim 与字段更新，Ack 和 Fail 改为单 Lua 脚本，Release 无需读取整段 body，List/Purge 使用批量 Hash 读取。
+- 新增真实 Redis 基准测试，可通过 `RUNA_REDIS_BENCH_ADDR` 启用 queue push、reserve/ack 和 worker throughput benchmark。
+
+### 修复
+
+- 保留 Redis queue 坏 body 自愈能力，避免单条坏数据毒化整批 reserved job。
+- 在 Redis job body 改为 Hash 存储的同时，保持 `queue.Driver`、`queue.JobMessage` 和 worker API 不变。
+
 ## v0.1.1 - 2026-07-01
 
 ### 变更

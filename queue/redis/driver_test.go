@@ -2,7 +2,6 @@ package redis
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -352,8 +351,17 @@ func TestRedisReserveRemovesCorruptBodiesWithoutPoisoningBatch(t *testing.T) {
 	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
 	item := Driver(client, Prefix("corrupt")).(*driver)
 	ctx := context.Background()
-	if err := client.Set(ctx, item.jobKey("bad"), "{", 0).Err(); err != nil {
-		t.Fatalf("set corrupt body: %v", err)
+	if err := client.HSet(ctx, item.jobKey("bad"), map[string]any{
+		jobFieldBody:           "{",
+		jobFieldQueue:          "jobs",
+		jobFieldName:           "sync",
+		jobFieldUnique:         "",
+		jobFieldUniqueStrategy: "",
+		jobFieldAttempt:        0,
+		jobFieldRunAt:          scoreString(time.Now()),
+		jobFieldUpdatedAt:      scoreString(time.Now()),
+	}).Err(); err != nil {
+		t.Fatalf("hset corrupt body: %v", err)
 	}
 	if err := client.ZAdd(ctx, item.stateKey("jobs", queue.StatePending), goredis.Z{Score: score(time.Now()), Member: "bad"}).Err(); err != nil {
 		t.Fatalf("zadd corrupt id: %v", err)
@@ -392,12 +400,12 @@ func TestRedisPurgeFailedJobsInBatches(t *testing.T) {
 	now := time.Now().Add(-time.Hour)
 	for index := range 5000 {
 		id := fmt.Sprintf("failed-%d", index)
-		body, err := json.Marshal(&queue.JobMessage{ID: id, Queue: "jobs", Name: "sync", UpdatedAt: now})
+		fields, err := jobHashFields(&queue.JobMessage{ID: id, Queue: "jobs", Name: "sync", UpdatedAt: now})
 		if err != nil {
-			t.Fatalf("marshal: %v", err)
+			t.Fatalf("hash fields: %v", err)
 		}
-		if err := client.Set(ctx, item.jobKey(id), body, 0).Err(); err != nil {
-			t.Fatalf("set: %v", err)
+		if err := client.HSet(ctx, item.jobKey(id), fields).Err(); err != nil {
+			t.Fatalf("hset: %v", err)
 		}
 		if err := client.ZAdd(ctx, item.stateKey("jobs", queue.StateFailed), goredis.Z{Score: score(now), Member: id}).Err(); err != nil {
 			t.Fatalf("zadd: %v", err)
@@ -417,6 +425,46 @@ func TestRedisPurgeFailedJobsInBatches(t *testing.T) {
 	if failed != 0 {
 		t.Fatalf("failed after purge = %d", failed)
 	}
+}
+
+func TestRedisJobBodyIsHashAndStableAcrossStateTransitions(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: server.Addr()})
+	driver := Driver(client, Prefix("hash")).(*driver)
+	ctx := context.Background()
+	id, err := driver.Push(ctx, "jobs", &queue.JobMessage{ID: "job-1", Queue: "jobs", Name: "sync", Unique: "stable", UniqueStrategy: string(queue.UniqueStrategyUntilDone), RunAt: time.Now()})
+	if err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	key := driver.jobKey(id)
+	keyType, err := client.Type(ctx, key).Result()
+	if err != nil {
+		t.Fatalf("type: %v", err)
+	}
+	if keyType != "hash" {
+		t.Fatalf("job key type = %q want hash", keyType)
+	}
+	body, err := client.HGet(ctx, key, jobFieldBody).Bytes()
+	if err != nil {
+		t.Fatalf("hget body: %v", err)
+	}
+	if _, err := driver.Reserve(ctx, "jobs", 1, time.Second); err != nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	assertRedisBodyUnchanged(t, client, key, body)
+	if err := driver.Release(ctx, "jobs", id, time.Millisecond, "retry"); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	assertRedisBodyUnchanged(t, client, key, body)
+	time.Sleep(2 * time.Millisecond)
+	if _, err := driver.Reserve(ctx, "jobs", 1, time.Second); err != nil {
+		t.Fatalf("reserve retry: %v", err)
+	}
+	assertRedisBodyUnchanged(t, client, key, body)
+	if err := driver.Fail(ctx, "jobs", id, "failed"); err != nil {
+		t.Fatalf("fail: %v", err)
+	}
+	assertRedisBodyUnchanged(t, client, key, body)
 }
 
 func TestRedisRenewDoesNotReviveAckedJob(t *testing.T) {
@@ -729,6 +777,17 @@ func writeConfig(t *testing.T, root string, name string, body string) {
 	}
 	if err := os.WriteFile(filepath.Join(path, name), []byte(body), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
+	}
+}
+
+func assertRedisBodyUnchanged(t *testing.T, client *goredis.Client, key string, want []byte) {
+	t.Helper()
+	got, err := client.HGet(context.Background(), key, jobFieldBody).Bytes()
+	if err != nil {
+		t.Fatalf("hget body: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("job body was rewritten\ngot:  %s\nwant: %s", got, want)
 	}
 }
 
