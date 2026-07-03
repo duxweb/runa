@@ -31,6 +31,7 @@ type Disk interface {
 	Exists(ctx context.Context, path string) (bool, error)
 	Size(ctx context.Context, path string) (int64, error)
 	Info(ctx context.Context, path string) (FileInfo, error)
+	List(ctx context.Context, prefix string, options ...ListOption) (FileList, error)
 	Copy(ctx context.Context, from string, to string, options ...FileOption) error
 	Move(ctx context.Context, from string, to string, options ...FileOption) error
 
@@ -48,11 +49,22 @@ type Driver interface {
 	Delete(ctx context.Context, paths ...string) error
 	Exists(ctx context.Context, path string) (bool, error)
 	Info(ctx context.Context, path string) (FileInfo, error)
+	List(ctx context.Context, prefix string, options ListOptions) (FileList, error)
 	URL(ctx context.Context, path string, options URLOptions) (string, error)
 	TempURL(ctx context.Context, path string, ttl time.Duration, options URLOptions) (string, error)
 	SignPut(ctx context.Context, path string, ttl time.Duration, options FileOptions) (SignedURL, error)
 	SignPost(ctx context.Context, path string, ttl time.Duration, options FileOptions) (SignedPost, error)
 	Close(ctx context.Context) error
+}
+
+// CopyDriver is implemented by drivers that can copy objects without routing data through the app.
+type CopyDriver interface {
+	Copy(ctx context.Context, from string, to string, options FileOptions) error
+}
+
+// MoveDriver is implemented by drivers that can move objects without routing data through the app.
+type MoveDriver interface {
+	Move(ctx context.Context, from string, to string, options FileOptions) error
 }
 
 // FileInfo describes one stored object.
@@ -63,6 +75,14 @@ type FileInfo struct {
 	ETag         string
 	LastModified time.Time
 	Meta         core.Map
+}
+
+// FileList stores one page of listed objects.
+type FileList struct {
+	Items      []FileInfo
+	Cursor     string
+	HasMore    bool
+	CommonDirs []string
 }
 
 // SignedURL describes a pre-signed request URL.

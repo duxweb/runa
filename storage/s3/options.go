@@ -1,6 +1,9 @@
 package s3
 
-import "github.com/aws/aws-sdk-go-v2/service/s3"
+import (
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+)
 
 // Option configures an S3-compatible storage driver.
 type Option func(*options)
@@ -16,11 +19,14 @@ type options struct {
 	domain       string
 	urlPrefix    string
 	pathStyle    bool
+	configPath   string
+	useName      string
 	client       *s3.Client
+	uploader     *manager.Uploader
 	presigner    *s3.PresignClient
 }
 
-func defaultOptions() options { return options{name: "s3", region: "auto"} }
+func defaultOptions() options { return options{name: "s3", useName: "default"} }
 
 // Name sets driver name metadata.
 func Name(value string) Option { return func(options *options) { options.name = value } }
@@ -54,8 +60,27 @@ func URLPrefix(value string) Option { return func(options *options) { options.ur
 // PathStyle forces path-style addressing for MinIO-like services.
 func PathStyle(value bool) Option { return func(options *options) { options.pathStyle = value } }
 
+// Config sets the feature-specific config path. Defaults to storage.s3.
+func Config(path string) Option {
+	return func(options *options) { options.configPath = path }
+}
+
+// Use selects the shared s3 config name used by Provider.
+func Use(name string) Option {
+	return func(options *options) {
+		if name != "" {
+			options.useName = name
+		}
+	}
+}
+
 // Client uses an existing AWS S3 client.
 func Client(client *s3.Client) Option { return func(options *options) { options.client = client } }
+
+// Uploader uses an existing AWS S3 multipart uploader.
+func Uploader(uploader *manager.Uploader) Option {
+	return func(options *options) { options.uploader = uploader }
+}
 
 // Presigner uses an existing S3 presign client.
 func Presigner(client *s3.PresignClient) Option {

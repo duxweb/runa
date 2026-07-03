@@ -3,8 +3,8 @@ module github.com/duxweb/runa/message/nats
 go 1.27rc1
 
 require (
-	github.com/duxweb/runa v0.1.2
-	github.com/duxweb/runa/message v0.1.2
+	github.com/duxweb/runa v0.1.3
+	github.com/duxweb/runa/message v0.1.3
 	github.com/nats-io/nats.go v1.52.0
 )
 

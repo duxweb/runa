@@ -5,13 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 	"github.com/duxweb/runa/core"
 	"github.com/duxweb/runa/storage"
@@ -20,20 +26,32 @@ import (
 // Driver creates an S3-compatible storage driver.
 func Driver(items ...Option) storage.Driver {
 	opts := defaultOptions()
-	for _, item := range items {
-		if item != nil {
-			item(&opts)
-		}
-	}
-	if opts.name == "" {
-		opts.name = "s3"
-	}
-	if opts.region == "" {
-		opts.region = "auto"
-	}
+	applyOptions(&opts, items...)
+	normalizeOptions(&opts)
+	return newDriver(opts)
+}
+
+func newDriver(opts options) storage.Driver {
 	client := opts.client
+	uploader := opts.uploader
 	if client == nil {
-		cfg := aws.Config{Region: opts.region}
+		loadOptions := []func(*awsconfig.LoadOptions) error{}
+		if opts.region != "" {
+			loadOptions = append(loadOptions, awsconfig.WithRegion(opts.region))
+		}
+		if opts.endpoint != "" {
+			loadOptions = append(loadOptions, awsconfig.WithRequestChecksumCalculation(aws.RequestChecksumCalculationWhenRequired))
+		}
+		cfg, err := awsconfig.LoadDefaultConfig(context.Background(), loadOptions...)
+		if err != nil {
+			cfg = aws.Config{Region: opts.region}
+		}
+		if cfg.Region == "" && opts.endpoint != "" {
+			cfg.Region = "auto"
+		}
+		if opts.endpoint != "" {
+			cfg.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		}
 		if opts.accessKey != "" || opts.secretKey != "" || opts.sessionToken != "" {
 			cfg.Credentials = credentials.NewStaticCredentialsProvider(opts.accessKey, opts.secretKey, opts.sessionToken)
 		}
@@ -44,16 +62,20 @@ func Driver(items ...Option) storage.Driver {
 			options.UsePathStyle = opts.pathStyle
 		})
 	}
+	if uploader == nil && client != nil {
+		uploader = manager.NewUploader(client)
+	}
 	presigner := opts.presigner
 	if presigner == nil && client != nil {
 		presigner = awss3.NewPresignClient(client)
 	}
-	return &driver{options: opts, client: client, presigner: presigner}
+	return &driver{options: opts, client: client, uploader: uploader, presigner: presigner}
 }
 
 type driver struct {
 	options   options
 	client    *awss3.Client
+	uploader  *manager.Uploader
 	presigner *awss3.PresignClient
 }
 
@@ -70,6 +92,15 @@ func (driver *driver) Put(ctx context.Context, path string, body io.Reader, opti
 	input := &awss3.PutObjectInput{Bucket: aws.String(driver.options.bucket), Key: aws.String(key), Body: body}
 	if options.ContentType != "" {
 		input.ContentType = aws.String(options.ContentType)
+	} else if value := mime.TypeByExtension(filepath.Ext(key)); value != "" {
+		input.ContentType = aws.String(value)
+	}
+	if len(options.Meta) > 0 {
+		input.Metadata = stringMeta(options.Meta)
+	}
+	if driver.uploader != nil {
+		_, err = driver.uploader.Upload(core.NormalizeContext(ctx), input)
+		return err
 	}
 	_, err = driver.client.PutObject(core.NormalizeContext(ctx), input)
 	return err
@@ -87,7 +118,10 @@ func (driver *driver) Get(ctx context.Context, path string) (io.ReadCloser, stor
 	if err != nil {
 		return nil, storage.FileInfo{}, err
 	}
-	info := storage.FileInfo{Path: key, Size: aws.ToInt64(out.ContentLength), ContentType: aws.ToString(out.ContentType), ETag: strings.Trim(aws.ToString(out.ETag), `"`), LastModified: aws.ToTime(out.LastModified), Meta: make(core.Map)}
+	info := storage.FileInfo{Path: key, Size: aws.ToInt64(out.ContentLength), ContentType: aws.ToString(out.ContentType), ETag: strings.Trim(aws.ToString(out.ETag), `"`), LastModified: aws.ToTime(out.LastModified), Meta: core.Map{}}
+	for key, value := range out.Metadata {
+		info.Meta[key] = value
+	}
 	return out.Body, info, nil
 }
 
@@ -95,12 +129,40 @@ func (driver *driver) Delete(ctx context.Context, paths ...string) error {
 	if err := driver.ready(); err != nil {
 		return err
 	}
+	keys := make([]types.ObjectIdentifier, 0, len(paths))
 	for _, path := range paths {
 		key, err := cleanPath(path)
 		if err != nil {
 			return err
 		}
-		if _, err := driver.client.DeleteObject(core.NormalizeContext(ctx), &awss3.DeleteObjectInput{Bucket: aws.String(driver.options.bucket), Key: aws.String(key)}); err != nil {
+		keys = append(keys, types.ObjectIdentifier{Key: aws.String(key)})
+	}
+	ctx = core.NormalizeContext(ctx)
+	if driver.options.endpoint != "" {
+		for _, key := range keys {
+			if _, err := driver.client.DeleteObject(ctx, &awss3.DeleteObjectInput{Bucket: aws.String(driver.options.bucket), Key: key.Key}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for len(keys) > 0 {
+		batchSize := 1000
+		if len(keys) < batchSize {
+			batchSize = len(keys)
+		}
+		batch := keys[:batchSize]
+		keys = keys[batchSize:]
+		if len(batch) == 1 {
+			if _, err := driver.client.DeleteObject(ctx, &awss3.DeleteObjectInput{Bucket: aws.String(driver.options.bucket), Key: batch[0].Key}); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := driver.client.DeleteObjects(ctx, &awss3.DeleteObjectsInput{
+			Bucket: aws.String(driver.options.bucket),
+			Delete: &types.Delete{Objects: batch, Quiet: aws.Bool(true)},
+		}); err != nil {
 			return err
 		}
 	}
@@ -130,7 +192,92 @@ func (driver *driver) Info(ctx context.Context, path string) (storage.FileInfo, 
 	if err != nil {
 		return storage.FileInfo{}, err
 	}
-	return storage.FileInfo{Path: key, Size: aws.ToInt64(out.ContentLength), ContentType: aws.ToString(out.ContentType), ETag: strings.Trim(aws.ToString(out.ETag), `"`), LastModified: aws.ToTime(out.LastModified), Meta: make(core.Map)}, nil
+	info := storage.FileInfo{Path: key, Size: aws.ToInt64(out.ContentLength), ContentType: aws.ToString(out.ContentType), ETag: strings.Trim(aws.ToString(out.ETag), `"`), LastModified: aws.ToTime(out.LastModified), Meta: core.Map{}}
+	for key, value := range out.Metadata {
+		info.Meta[key] = value
+	}
+	return info, nil
+}
+
+func (driver *driver) List(ctx context.Context, prefix string, options storage.ListOptions) (storage.FileList, error) {
+	if err := driver.ready(); err != nil {
+		return storage.FileList{}, err
+	}
+	cleanedPrefix := cleanPrefix(prefix)
+	limit := options.Limit
+	if limit <= 0 || limit > 1000 {
+		limit = 1000
+	}
+	input := &awss3.ListObjectsV2Input{
+		Bucket:            aws.String(driver.options.bucket),
+		Prefix:            aws.String(cleanedPrefix),
+		MaxKeys:           aws.Int32(limit),
+		ContinuationToken: emptyStringNil(options.Cursor),
+	}
+	if !options.Recursive {
+		input.Delimiter = aws.String("/")
+	}
+	out, err := driver.client.ListObjectsV2(core.NormalizeContext(ctx), input)
+	if err != nil {
+		return storage.FileList{}, err
+	}
+	list := storage.FileList{Items: make([]storage.FileInfo, 0, len(out.Contents)), Cursor: aws.ToString(out.NextContinuationToken), HasMore: aws.ToBool(out.IsTruncated)}
+	for _, item := range out.Contents {
+		key := aws.ToString(item.Key)
+		if key == "" || strings.HasSuffix(key, "/") {
+			continue
+		}
+		list.Items = append(list.Items, storage.FileInfo{
+			Path:         key,
+			Size:         aws.ToInt64(item.Size),
+			ContentType:  contentType(key),
+			ETag:         strings.Trim(aws.ToString(item.ETag), `"`),
+			LastModified: aws.ToTime(item.LastModified),
+			Meta:         core.Map{},
+		})
+	}
+	for _, prefix := range out.CommonPrefixes {
+		if value := aws.ToString(prefix.Prefix); value != "" {
+			list.CommonDirs = append(list.CommonDirs, strings.TrimSuffix(value, "/"))
+		}
+	}
+	return list, nil
+}
+
+func (driver *driver) Copy(ctx context.Context, from string, to string, options storage.FileOptions) error {
+	if err := driver.ready(); err != nil {
+		return err
+	}
+	fromKey, err := cleanPath(from)
+	if err != nil {
+		return err
+	}
+	toKey, err := cleanPath(to)
+	if err != nil {
+		return err
+	}
+	input := &awss3.CopyObjectInput{
+		Bucket:     aws.String(driver.options.bucket),
+		Key:        aws.String(toKey),
+		CopySource: aws.String(copySource(driver.options.bucket, fromKey)),
+	}
+	if options.ContentType != "" {
+		input.ContentType = aws.String(options.ContentType)
+		input.MetadataDirective = types.MetadataDirectiveReplace
+	}
+	if len(options.Meta) > 0 {
+		input.Metadata = stringMeta(options.Meta)
+		input.MetadataDirective = types.MetadataDirectiveReplace
+	}
+	_, err = driver.client.CopyObject(core.NormalizeContext(ctx), input)
+	return err
+}
+
+func (driver *driver) Move(ctx context.Context, from string, to string, options storage.FileOptions) error {
+	if err := driver.Copy(ctx, from, to, options); err != nil {
+		return err
+	}
+	return driver.Delete(ctx, from)
 }
 
 func (driver *driver) URL(ctx context.Context, path string, options storage.URLOptions) (string, error) {
@@ -248,6 +395,17 @@ func cleanPath(value string) (string, error) {
 	return value, nil
 }
 
+func cleanPrefix(value string) string {
+	value = strings.Trim(strings.ReplaceAll(strings.TrimSpace(value), "\\", "/"), "/")
+	if value == "" || value == "." {
+		return ""
+	}
+	if strings.HasPrefix(value, "../") || strings.Contains(value, "/../") || value == ".." {
+		return ""
+	}
+	return strings.TrimSuffix(value, "/") + "/"
+}
+
 func joinURL(domain string, parts ...string) string {
 	domain = strings.TrimRight(strings.TrimSpace(domain), "/")
 	clean := make([]string, 0, len(parts))
@@ -265,6 +423,39 @@ func joinURL(domain string, parts ...string) string {
 		return domain
 	}
 	return domain + "/" + path
+}
+
+func contentType(name string) string {
+	if value := mime.TypeByExtension(filepath.Ext(name)); value != "" {
+		return value
+	}
+	return core.MIMEOctetStream
+}
+
+func stringMeta(meta core.Map) map[string]string {
+	if len(meta) == 0 {
+		return nil
+	}
+	output := make(map[string]string, len(meta))
+	for key, value := range meta {
+		if key == "" || value == nil {
+			continue
+		}
+		output[key] = fmt.Sprint(value)
+	}
+	return output
+}
+
+func emptyStringNil(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return aws.String(value)
+}
+
+func copySource(bucket string, key string) string {
+	escaped := (&url.URL{Path: bucket + "/" + key}).EscapedPath()
+	return strings.ReplaceAll(escaped, "+", "%2B")
 }
 
 func ctxErr(ctx context.Context) error {

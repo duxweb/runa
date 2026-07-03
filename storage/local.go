@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"net/http"
 	"net/url"
@@ -127,6 +128,118 @@ func (driver *localDriver) Info(ctx context.Context, path string) (FileInfo, err
 		return FileInfo{}, err
 	}
 	return driver.fileInfo(path, info), nil
+}
+
+func (driver *localDriver) List(ctx context.Context, prefix string, options ListOptions) (FileList, error) {
+	ctx = core.NormalizeContext(ctx)
+	if err := ctx.Err(); err != nil {
+		return FileList{}, err
+	}
+	cleanedPrefix := cleanPrefix(prefix)
+	root := driver.root
+	if cleanedPrefix != "" {
+		fullPath, err := driver.fullPath(cleanedPrefix)
+		if err != nil {
+			return FileList{}, err
+		}
+		root = fullPath
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return FileList{}, nil
+		}
+		return FileList{}, err
+	}
+	limit := options.Limit
+	if limit <= 0 {
+		limit = 1000
+	}
+	items := make([]FileInfo, 0)
+	commonDirs := make([]string, 0)
+	if options.Recursive {
+		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if path == root {
+				return nil
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			itemPath := filepath.ToSlash(rel)
+			if cleanedPrefix != "" {
+				itemPath = cleanedPrefix + "/" + itemPath
+			}
+			items = append(items, driver.fileInfo(itemPath, info))
+			return nil
+		})
+		if err != nil {
+			return FileList{}, err
+		}
+		return pageFileList(items, commonDirs, options.Cursor, limit), nil
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		path := name
+		if cleanedPrefix != "" {
+			path = cleanedPrefix + "/" + name
+		}
+		if entry.IsDir() {
+			commonDirs = append(commonDirs, path)
+		} else {
+			info, err := entry.Info()
+			if err != nil {
+				return FileList{}, err
+			}
+			items = append(items, driver.fileInfo(path, info))
+		}
+	}
+	return pageFileList(items, commonDirs, options.Cursor, limit), nil
+}
+
+func (driver *localDriver) Copy(ctx context.Context, from string, to string, options FileOptions) error {
+	reader, info, err := driver.Get(ctx, from)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	options = fileOptionsWithContentType(options, info.ContentType)
+	return driver.Put(ctx, to, reader, options)
+}
+
+func (driver *localDriver) Move(ctx context.Context, from string, to string, options FileOptions) error {
+	ctx = core.NormalizeContext(ctx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	fromPath, err := driver.fullPath(from)
+	if err != nil {
+		return err
+	}
+	toPath, err := driver.fullPath(to)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(toPath), 0o755); err != nil {
+		return err
+	}
+	if err := os.Rename(fromPath, toPath); err == nil {
+		return nil
+	}
+	if err := driver.Copy(ctx, from, to, options); err != nil {
+		return err
+	}
+	return driver.Delete(ctx, from)
 }
 
 func (driver *localDriver) URL(ctx context.Context, path string, options URLOptions) (string, error) {
@@ -299,6 +412,29 @@ func (driver *localDriver) fileInfo(path string, info os.FileInfo) FileInfo {
 		LastModified: info.ModTime(),
 		Meta:         make(core.Map),
 	}
+}
+
+func pageFileList(items []FileInfo, commonDirs []string, cursor string, limit int32) FileList {
+	output := FileList{Items: make([]FileInfo, 0, len(items)), CommonDirs: make([]string, 0, len(commonDirs))}
+	started := cursor == ""
+	for _, item := range items {
+		if !started {
+			if item.Path <= cursor {
+				continue
+			}
+			started = true
+		}
+		output.Items = append(output.Items, item)
+		if int32(len(output.Items)) >= limit {
+			output.Cursor = item.Path
+			output.HasMore = true
+			return output
+		}
+	}
+	if cursor == "" {
+		output.CommonDirs = append(output.CommonDirs, commonDirs...)
+	}
+	return output
 }
 
 func (driver *localDriver) sign(method string, path string, expires int64, contentType string) string {

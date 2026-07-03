@@ -97,20 +97,127 @@ public = false
 
 ## S3 驱动
 
+同时安装 storage provider 和 S3 驱动 provider。`s3storage.Provider(...)` 会注册名为 `s3` 的驱动，磁盘可以通过配置里的 `driver = "s3"` 或代码里的 `storage.Use("s3")` 使用它。
+
 ```go
 import s3storage "github.com/duxweb/runa/storage/s3"
 
-app.Install(storage.Provider(
-    storage.RegisterDriver("s3", s3storage.Driver(
+app.Install(
+    storage.Provider(storage.RegisterDisk("cloud", storage.Use("s3"), storage.Public())),
+    s3storage.Provider(
         s3storage.Bucket("app"),
         s3storage.Region("us-east-1"),
         s3storage.Endpoint("https://s3.example.com"),
         s3storage.Credentials("access", "secret"),
         s3storage.PathStyle(true),
-    )),
-    storage.RegisterDisk("cloud", storage.Use("s3"), storage.Public()),
-))
+    ),
+)
 ```
+
+纯配置接入：
+
+```toml
+[storage.disks.cloud]
+driver = "s3"
+prefix = "uploads"
+public = true
+
+[storage.s3]
+bucket = "app"
+region = "us-east-1"
+endpoint = "https://s3.example.com"
+access_key = "access"
+secret_key = "secret"
+path_style = true
+domain = "https://cdn.example.com"
+url_prefix = "/files"
+```
+
+`storage.s3` 会覆盖共享 `[s3]` 连接配置。需要多套 S3 兼容连接时，可以写 `[s3.<name>]`，再用 `s3storage.Use(name)` 选择。没有显式配置静态 AK/SK 时，S3 驱动会走 AWS SDK 默认凭证链，包括环境变量、共享配置文件和 IAM Role。MinIO、R2、OSS 等 S3 兼容服务按需配置 `endpoint` 和 `path_style`。
+
+当配置了 `endpoint` 时，驱动会把目标视为通用 S3 兼容服务。代码不会识别或分支判断 OSS、COS、R2、MinIO 等具体厂商，而是启用厂商无关的兼容策略：请求 checksum 计算降到 `when_required`，复制源路径对中文和保留字符做 URL 编码，删除使用逐个 `DeleteObject` 而不是批量删除。这样可以避开 S3 兼容服务常见的 checksum、复制源路径和 `Content-MD5` 差异；未配置 `endpoint` 的原生 AWS S3 仍保持 SDK 默认行为。
+
+### S3 兼容云配置菜谱
+
+这些配置都配合上面的 `s3storage.Provider(...)` 和 `[storage.disks.<name>]` 使用。
+
+```toml
+# MinIO
+[storage.s3]
+bucket = "app"
+region = "us-east-1"
+endpoint = "http://127.0.0.1:9000"
+access_key = "minioadmin"
+secret_key = "minioadmin"
+path_style = true
+
+# Cloudflare R2
+[storage.s3]
+bucket = "app"
+region = "auto"
+endpoint = "https://<account-id>.r2.cloudflarestorage.com"
+access_key = "<access-key-id>"
+secret_key = "<secret-access-key>"
+path_style = true
+
+# 阿里云 OSS
+[storage.s3]
+bucket = "app"
+region = "oss-cn-hangzhou"
+endpoint = "https://oss-cn-hangzhou.aliyuncs.com"
+access_key = "<access-key-id>"
+secret_key = "<access-key-secret>"
+path_style = false
+
+# 腾讯云 COS
+[storage.s3]
+bucket = "app-1250000000"
+region = "ap-guangzhou"
+endpoint = "https://cos.ap-guangzhou.myqcloud.com"
+access_key = "<secret-id>"
+secret_key = "<secret-key>"
+path_style = false
+
+# 七牛 Kodo S3
+[storage.s3]
+bucket = "app"
+region = "z0"
+endpoint = "https://s3-cn-east-1.qiniucs.com"
+access_key = "<access-key>"
+secret_key = "<secret-key>"
+path_style = true
+
+# 火山引擎 TOS
+[storage.s3]
+bucket = "app"
+region = "cn-beijing"
+endpoint = "https://tos-s3-cn-beijing.volces.com"
+access_key = "<access-key>"
+secret_key = "<secret-key>"
+path_style = false
+
+# 华为云 OBS
+[storage.s3]
+bucket = "app"
+region = "cn-north-4"
+endpoint = "https://obs.cn-north-4.myhuaweicloud.com"
+access_key = "<access-key>"
+secret_key = "<secret-key>"
+path_style = false
+```
+
+| 服务 | CRUD | TempURL | SignPut | SignPost |
+| --- | --- | --- | --- | --- |
+| AWS S3 | 支持 | 支持 | 支持 | 支持 |
+| MinIO | 支持 | 支持 | 支持 | 通常支持 |
+| Cloudflare R2 | 支持 | 支持 | 支持 | 通常支持 |
+| 阿里云 OSS S3 | 支持 | 支持 | 支持 | 部分支持 |
+| 腾讯云 COS S3 | 支持 | 支持 | 支持 | 通常支持 |
+| 七牛 Kodo S3 | 支持 | 支持 | 支持 | 部分支持 |
+| 火山 TOS S3 | 支持 | 支持 | 支持 | 部分支持 |
+| 华为 OBS S3 | 支持 | 支持 | 支持 | 部分支持 |
+
+浏览器直传优先使用 `SignPut`，除非你已经确认目标云的 SigV4 POST policy 完整可用。上传回调、上传 token、持久化处理、图片处理参数等属于厂商原生能力，不在 S3 协议里；只有真实业务需要这些 native-only 能力时，才值得新增对应厂商驱动子模块。
 
 ## 常用 API
 
@@ -119,13 +226,17 @@ disk := storage.Default().MustOf("public")
 
 _ = disk.PutString(ctx, "avatars/1.txt", "hello", storage.ContentType("text/plain"))
 body, err := disk.GetString(ctx, "avatars/1.txt")
+files, err := disk.List(ctx, "avatars", storage.Limit(100), storage.Recursive())
 exists, err := disk.Exists(ctx, "avatars/1.txt")
 url, err := disk.URL(ctx, "avatars/1.txt")
 _ = body
+_ = files
 _ = exists
 _ = url
 _ = err
 ```
+
+`List` 返回一页结果，包含 `Items`、`CommonDirs`、`Cursor` 和 `HasMore`。继续翻页时传入 `storage.Cursor(previous.Cursor)`。
 
 ## 常见错误
 
@@ -150,3 +261,4 @@ _ = err
 - `storage.RegisterDisk(name, options...)` 注册磁盘
 - `registry.MustOf(name)` 获取磁盘
 - `storage.LocalDriver(...)` 创建本地驱动
+- `s3storage.Provider(...)` 从选项或配置注册 S3 兼容驱动

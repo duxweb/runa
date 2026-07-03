@@ -86,20 +86,127 @@ public = false
 
 ## S3 driver
 
+Install both the storage provider and the S3 driver provider. `s3storage.Provider(...)` registers a driver named `s3`; disks can then use `driver = "s3"` from config or `storage.Use("s3")` from code.
+
 ```go
 import s3storage "github.com/duxweb/runa/storage/s3"
 
-app.Install(storage.Provider(
-    storage.RegisterDriver("s3", s3storage.Driver(
+app.Install(
+    storage.Provider(storage.RegisterDisk("cloud", storage.Use("s3"), storage.Public())),
+    s3storage.Provider(
         s3storage.Bucket("app"),
         s3storage.Region("us-east-1"),
         s3storage.Endpoint("https://s3.example.com"),
         s3storage.Credentials("access", "secret"),
         s3storage.PathStyle(true),
-    )),
-    storage.RegisterDisk("cloud", storage.Use("s3"), storage.Public()),
-))
+    ),
+)
 ```
+
+Config-only setup:
+
+```toml
+[storage.disks.cloud]
+driver = "s3"
+prefix = "uploads"
+public = true
+
+[storage.s3]
+bucket = "app"
+region = "us-east-1"
+endpoint = "https://s3.example.com"
+access_key = "access"
+secret_key = "secret"
+path_style = true
+domain = "https://cdn.example.com"
+url_prefix = "/files"
+```
+
+`storage.s3` overrides shared `[s3]` connection values. Use `[s3.<name>]` plus `s3storage.Use(name)` when several S3-compatible connections are configured. If static credentials are not provided, the AWS SDK default credential chain is used, including environment variables, shared config, and IAM roles. For MinIO, R2, OSS, or other S3-compatible services, set `endpoint` and `path_style` as required.
+
+When `endpoint` is set, the driver treats the target as a generic S3-compatible service. It does not detect or branch on provider names such as OSS, COS, R2, or MinIO. Instead, it applies provider-neutral compatibility behavior: request checksum calculation is lowered to `when_required`, copy sources are URL-escaped for non-ASCII and reserved characters, and delete calls use single-object `DeleteObject` requests instead of multi-object delete. This avoids common checksum, copy-source, and `Content-MD5` differences across S3-compatible providers while keeping native AWS S3 behavior unchanged when `endpoint` is not set.
+
+### S3-compatible providers
+
+These recipes use the same `s3storage.Provider(...)` and `[storage.disks.<name>]` setup shown above.
+
+```toml
+# MinIO
+[storage.s3]
+bucket = "app"
+region = "us-east-1"
+endpoint = "http://127.0.0.1:9000"
+access_key = "minioadmin"
+secret_key = "minioadmin"
+path_style = true
+
+# Cloudflare R2
+[storage.s3]
+bucket = "app"
+region = "auto"
+endpoint = "https://<account-id>.r2.cloudflarestorage.com"
+access_key = "<access-key-id>"
+secret_key = "<secret-access-key>"
+path_style = true
+
+# Alibaba Cloud OSS
+[storage.s3]
+bucket = "app"
+region = "oss-cn-hangzhou"
+endpoint = "https://oss-cn-hangzhou.aliyuncs.com"
+access_key = "<access-key-id>"
+secret_key = "<access-key-secret>"
+path_style = false
+
+# Tencent Cloud COS
+[storage.s3]
+bucket = "app-1250000000"
+region = "ap-guangzhou"
+endpoint = "https://cos.ap-guangzhou.myqcloud.com"
+access_key = "<secret-id>"
+secret_key = "<secret-key>"
+path_style = false
+
+# Qiniu Kodo S3
+[storage.s3]
+bucket = "app"
+region = "z0"
+endpoint = "https://s3-cn-east-1.qiniucs.com"
+access_key = "<access-key>"
+secret_key = "<secret-key>"
+path_style = true
+
+# Volcano Engine TOS
+[storage.s3]
+bucket = "app"
+region = "cn-beijing"
+endpoint = "https://tos-s3-cn-beijing.volces.com"
+access_key = "<access-key>"
+secret_key = "<secret-key>"
+path_style = false
+
+# Huawei OBS
+[storage.s3]
+bucket = "app"
+region = "cn-north-4"
+endpoint = "https://obs.cn-north-4.myhuaweicloud.com"
+access_key = "<access-key>"
+secret_key = "<secret-key>"
+path_style = false
+```
+
+| Provider | CRUD | TempURL | SignPut | SignPost |
+| --- | --- | --- | --- | --- |
+| AWS S3 | yes | yes | yes | yes |
+| MinIO | yes | yes | yes | usually yes |
+| Cloudflare R2 | yes | yes | yes | usually yes |
+| Alibaba Cloud OSS S3 | yes | yes | yes | partial |
+| Tencent Cloud COS S3 | yes | yes | yes | usually yes |
+| Qiniu Kodo S3 | yes | yes | yes | partial |
+| Volcano TOS S3 | yes | yes | yes | partial |
+| Huawei OBS S3 | yes | yes | yes | partial |
+
+For browser uploads, prefer `SignPut` unless you have already verified SigV4 POST policy support on the target provider. Provider-native callbacks, upload tokens, persistent processing, and image processing parameters are outside the S3 protocol; add a provider-specific driver only when those native-only features are required.
 
 ## Common API
 
@@ -108,13 +215,17 @@ disk := storage.Default().MustOf("public")
 
 _ = disk.PutString(ctx, "avatars/1.txt", "hello", storage.ContentType("text/plain"))
 body, err := disk.GetString(ctx, "avatars/1.txt")
+files, err := disk.List(ctx, "avatars", storage.Limit(100), storage.Recursive())
 exists, err := disk.Exists(ctx, "avatars/1.txt")
 url, err := disk.URL(ctx, "avatars/1.txt")
 _ = body
+_ = files
 _ = exists
 _ = url
 _ = err
 ```
+
+`List` returns one page with `Items`, `CommonDirs`, `Cursor`, and `HasMore`. Pass `storage.Cursor(previous.Cursor)` to continue pagination.
 
 ## Choosing public and private disks
 
@@ -148,3 +259,4 @@ For production public uploads, object storage plus CDN is usually more reliable 
 - `storage.RegisterDisk(name, options...)` registers a disk.
 - `registry.MustOf(name)` gets a disk.
 - `storage.LocalDriver(...)` creates a local driver.
+- `s3storage.Provider(...)` registers the S3-compatible driver from options or config.

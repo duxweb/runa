@@ -2,6 +2,24 @@
 
 English | [简体中文](CHANGELOG.zh-CN.md)
 
+## v0.1.3 - 2026-07-03
+
+### Added
+
+- Added storage listing support with cursor pagination, recursive listing, and common directory results for local and S3 disks.
+- Added native storage copy and move extension points, with local filesystem and S3 implementations.
+- Added `storage/s3.Provider` with client injection, option-based setup, `[storage.s3]` config, shared `[s3]` / `[s3.<name>]` config, and AWS default credential chain fallback.
+
+### Changed
+
+- Improved the S3 driver with multipart uploads, batch-compatible deletion behavior for S3-compatible endpoints, metadata writes, content type extension fallback, and URL-encoded server-side copy sources.
+- Documented multi-cloud S3-compatible configuration for MinIO, Cloudflare R2, Alibaba OSS, Tencent COS, and Qiniu Kodo.
+
+### Fixed
+
+- Disabled unsupported AWS SDK checksum behavior automatically for custom S3-compatible endpoints.
+- Fixed S3 copy and move for object keys containing spaces, `+`, `#`, or non-ASCII characters.
+
 ## v0.1.2 - 2026-07-02
 
 ### Changed

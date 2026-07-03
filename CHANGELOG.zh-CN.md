@@ -2,6 +2,24 @@
 
 [English](CHANGELOG.md) | 简体中文
 
+## v0.1.3 - 2026-07-03
+
+### 新增
+
+- 新增 storage 列表能力，支持游标分页、递归列表和公共目录结果，local 与 S3 disk 均已实现。
+- 新增 storage 原生 Copy/Move 扩展接口，并为 local filesystem 与 S3 提供实现。
+- 新增 `storage/s3.Provider`，支持 client 注入、options 构造、`[storage.s3]` 配置、共享 `[s3]` / `[s3.<name>]` 配置，以及 AWS 默认凭证链回落。
+
+### 变更
+
+- 增强 S3 驱动：支持 multipart upload、S3 兼容端点的删除兼容行为、metadata 写入、按扩展名推断 Content-Type，以及服务端 CopySource URL 编码。
+- 补充 MinIO、Cloudflare R2、阿里云 OSS、腾讯云 COS、七牛 Kodo 的 S3 兼容配置文档。
+
+### 修复
+
+- 对自定义 S3 兼容 endpoint 自动关闭不兼容的 AWS SDK checksum 行为。
+- 修复 S3 copy/move 在 object key 包含空格、`+`、`#` 或非 ASCII 字符时的问题。
+
 ## v0.1.2 - 2026-07-02
 
 ### 变更

@@ -12,6 +12,11 @@ type FileOption interface {
 	ApplyFile(*FileOptions)
 }
 
+// ListOption configures one list operation.
+type ListOption interface {
+	ApplyList(*ListOptions)
+}
+
 // DriverOption configures local or external driver wrappers.
 type DriverOption interface {
 	ApplyDriver(*DriverOptions)
@@ -31,6 +36,13 @@ type DiskOptions struct {
 type FileOptions struct {
 	ContentType string
 	Meta        core.Map
+}
+
+// ListOptions stores object listing controls.
+type ListOptions struct {
+	Cursor    string
+	Limit     int32
+	Recursive bool
 }
 
 // URLOptions stores URL generation options.
@@ -54,10 +66,12 @@ type DriverOptions struct {
 
 type diskOptionFunc func(*DiskOptions)
 type fileOptionFunc func(*FileOptions)
+type listOptionFunc func(*ListOptions)
 type driverOptionFunc func(*DriverOptions)
 
 func (fn diskOptionFunc) ApplyDisk(options *DiskOptions)       { fn(options) }
 func (fn fileOptionFunc) ApplyFile(options *FileOptions)       { fn(options) }
+func (fn listOptionFunc) ApplyList(options *ListOptions)       { fn(options) }
 func (fn driverOptionFunc) ApplyDriver(options *DriverOptions) { fn(options) }
 
 // Driver selects the storage driver used by a disk.
@@ -113,6 +127,21 @@ func FileMeta(key string, value any) FileOption {
 		}
 		options.Meta[key] = value
 	})
+}
+
+// Cursor continues a paginated listing from a previous cursor.
+func Cursor(value string) ListOption {
+	return listOptionFunc(func(options *ListOptions) { options.Cursor = value })
+}
+
+// Limit sets the maximum number of objects returned by one list call.
+func Limit(value int32) ListOption {
+	return listOptionFunc(func(options *ListOptions) { options.Limit = value })
+}
+
+// Recursive lists all nested objects under the prefix.
+func Recursive() ListOption {
+	return listOptionFunc(func(options *ListOptions) { options.Recursive = true })
 }
 
 // Name sets driver name metadata.
@@ -172,6 +201,19 @@ func applyFileOptions(options ...FileOption) FileOptions {
 		if option != nil {
 			option.ApplyFile(&opts)
 		}
+	}
+	return opts
+}
+
+func applyListOptions(options ...ListOption) ListOptions {
+	opts := ListOptions{Limit: 1000}
+	for _, option := range options {
+		if option != nil {
+			option.ApplyList(&opts)
+		}
+	}
+	if opts.Limit <= 0 {
+		opts.Limit = 1000
 	}
 	return opts
 }

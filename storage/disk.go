@@ -112,18 +112,65 @@ func (disk *disk) Info(ctx context.Context, path string) (FileInfo, error) {
 	return info, nil
 }
 
+func (disk *disk) List(ctx context.Context, prefix string, options ...ListOption) (FileList, error) {
+	ctx = core.NormalizeContext(ctx)
+	fullPrefix := disk.options.Prefix
+	if prefix != "" {
+		joined, err := joinPath(disk.options.Prefix, prefix)
+		if err != nil {
+			return FileList{}, err
+		}
+		fullPrefix = joined
+	}
+	list, err := disk.driver.List(ctx, fullPrefix, applyListOptions(options...))
+	if err != nil {
+		return FileList{}, err
+	}
+	for index := range list.Items {
+		list.Items[index].Path = trimDiskPrefix(disk.options.Prefix, list.Items[index].Path)
+	}
+	for index := range list.CommonDirs {
+		list.CommonDirs[index] = trimDiskPrefix(disk.options.Prefix, list.CommonDirs[index])
+	}
+	return list, nil
+}
+
 func (disk *disk) Copy(ctx context.Context, from string, to string, options ...FileOption) error {
+	ctx = core.NormalizeContext(ctx)
+	fileOptions := applyFileOptions(options...)
+	if copyDriver, ok := disk.driver.(CopyDriver); ok {
+		fullFrom, err := joinPath(disk.options.Prefix, from)
+		if err != nil {
+			return err
+		}
+		fullTo, err := joinPath(disk.options.Prefix, to)
+		if err != nil {
+			return err
+		}
+		return copyDriver.Copy(ctx, fullFrom, fullTo, fileOptions)
+	}
 	reader, info, err := disk.Get(ctx, from)
 	if err != nil {
 		return err
 	}
 	defer reader.Close()
-	fileOptions := applyFileOptions(options...)
 	fileOptions = fileOptionsWithContentType(fileOptions, info.ContentType)
 	return disk.Put(ctx, to, reader, fileOptionsToOptions(fileOptions)...)
 }
 
 func (disk *disk) Move(ctx context.Context, from string, to string, options ...FileOption) error {
+	ctx = core.NormalizeContext(ctx)
+	if moveDriver, ok := disk.driver.(MoveDriver); ok {
+		fullFrom, err := joinPath(disk.options.Prefix, from)
+		if err != nil {
+			return err
+		}
+		fullTo, err := joinPath(disk.options.Prefix, to)
+		if err != nil {
+			return err
+		}
+		return moveDriver.Move(ctx, fullFrom, fullTo, applyFileOptions(options...))
+	}
 	if err := disk.Copy(ctx, from, to, options...); err != nil {
 		return err
 	}

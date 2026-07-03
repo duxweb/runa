@@ -70,6 +70,53 @@ func TestLocalDiskReadWriteAndFileOps(t *testing.T) {
 	}
 }
 
+func TestLocalDiskList(t *testing.T) {
+	root := t.TempDir()
+	registry := New(Root(root))
+	registry.Disk("docs", Use(DefaultDriver), Prefix("docs"))
+	disk := registry.MustOf("docs")
+	ctx := context.Background()
+
+	files := map[string]string{
+		"2026/a.txt":        "a",
+		"2026/b.txt":        "b",
+		"2026/nested/c.txt": "c",
+		"2025/old.txt":      "old",
+	}
+	for name, body := range files {
+		if err := disk.PutString(ctx, name, body); err != nil {
+			t.Fatalf("put %s: %v", name, err)
+		}
+	}
+
+	page, err := disk.List(ctx, "2026", Limit(2), Recursive())
+	if err != nil {
+		t.Fatalf("list page 1: %v", err)
+	}
+	if len(page.Items) != 2 || !page.HasMore || page.Cursor == "" {
+		t.Fatalf("unexpected page 1: %+v", page)
+	}
+	if page.Items[0].Path != "2026/a.txt" || page.Items[1].Path != "2026/b.txt" {
+		t.Fatalf("unexpected page 1 items: %+v", page.Items)
+	}
+
+	next, err := disk.List(ctx, "2026", Limit(2), Recursive(), Cursor(page.Cursor))
+	if err != nil {
+		t.Fatalf("list page 2: %v", err)
+	}
+	if len(next.Items) != 1 || next.Items[0].Path != "2026/nested/c.txt" || next.HasMore {
+		t.Fatalf("unexpected page 2: %+v", next)
+	}
+
+	flat, err := disk.List(ctx, "2026")
+	if err != nil {
+		t.Fatalf("list flat: %v", err)
+	}
+	if len(flat.Items) != 2 || len(flat.CommonDirs) != 1 || flat.CommonDirs[0] != "2026/nested" {
+		t.Fatalf("unexpected flat list: %+v", flat)
+	}
+}
+
 func TestNewCreatesDirectLocalDisk(t *testing.T) {
 	disk := New(Root(t.TempDir())).MustOf(DiskLocal)
 	ctx := context.Background()
@@ -222,6 +269,9 @@ func (driver *fakeDriver) Get(context.Context, string) (io.ReadCloser, FileInfo,
 func (driver *fakeDriver) Delete(context.Context, ...string) error        { return nil }
 func (driver *fakeDriver) Exists(context.Context, string) (bool, error)   { return true, nil }
 func (driver *fakeDriver) Info(context.Context, string) (FileInfo, error) { return FileInfo{}, nil }
+func (driver *fakeDriver) List(context.Context, string, ListOptions) (FileList, error) {
+	return FileList{}, nil
+}
 func (driver *fakeDriver) URL(_ context.Context, path string, _ URLOptions) (string, error) {
 	return "/" + path, nil
 }
