@@ -56,6 +56,19 @@ func TestDriverDisablesSupportedChecksumsForCustomEndpoint(t *testing.T) {
 	if got := driver.client.Options().RequestChecksumCalculation; got != aws.RequestChecksumCalculationWhenRequired {
 		t.Fatalf("checksum calculation = %v", got)
 	}
+	if got := driver.uploader.RequestChecksumCalculation; got != aws.RequestChecksumCalculationWhenRequired {
+		t.Fatalf("uploader checksum calculation = %v", got)
+	}
+}
+
+func TestDriverKeepsDefaultUploaderChecksumsForAWS(t *testing.T) {
+	t.Setenv("AWS_REGION", "us-east-1")
+	t.Setenv("AWS_ACCESS_KEY_ID", "test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	driver := Driver(Bucket("bucket")).(*driver)
+	if got := driver.uploader.RequestChecksumCalculation; got != aws.RequestChecksumCalculationWhenSupported {
+		t.Fatalf("uploader checksum calculation = %v", got)
+	}
 }
 
 func TestCopyEncodesCopySource(t *testing.T) {

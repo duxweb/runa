@@ -63,7 +63,11 @@ func newDriver(opts options) storage.Driver {
 		})
 	}
 	if uploader == nil && client != nil {
-		uploader = manager.NewUploader(client)
+		uploader = manager.NewUploader(client, func(uploader *manager.Uploader) {
+			if opts.endpoint != "" {
+				uploader.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+			}
+		})
 	}
 	presigner := opts.presigner
 	if presigner == nil && client != nil {
