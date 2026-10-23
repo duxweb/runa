@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/duxweb/runa v0.1.3
+	github.com/duxweb/runa v0.1.4
 	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	github.com/samber/do/v2 v2.0.0
 	golang.org/x/text v0.32.0

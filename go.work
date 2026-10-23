@@ -65,126 +65,126 @@ use (
 	./ws/redis
 )
 
-replace github.com/duxweb/runa v0.1.3 => .
+replace github.com/duxweb/runa v0.1.4 => .
 
-replace github.com/duxweb/runa/asset v0.1.3 => ./asset
+replace github.com/duxweb/runa/asset v0.1.4 => ./asset
 
-replace github.com/duxweb/runa/audit v0.1.3 => ./audit
+replace github.com/duxweb/runa/audit v0.1.4 => ./audit
 
-replace github.com/duxweb/runa/auth v0.1.3 => ./auth
+replace github.com/duxweb/runa/auth v0.1.4 => ./auth
 
-replace github.com/duxweb/runa/cache v0.1.3 => ./cache
+replace github.com/duxweb/runa/cache v0.1.4 => ./cache
 
-replace github.com/duxweb/runa/cache/redis v0.1.3 => ./cache/redis
+replace github.com/duxweb/runa/cache/redis v0.1.4 => ./cache/redis
 
-replace github.com/duxweb/runa/cluster v0.1.3 => ./cluster
+replace github.com/duxweb/runa/cluster v0.1.4 => ./cluster
 
-replace github.com/duxweb/runa/cluster/redis v0.1.3 => ./cluster/redis
+replace github.com/duxweb/runa/cluster/redis v0.1.4 => ./cluster/redis
 
-replace github.com/duxweb/runa/cmd/runa v0.1.3 => ./cmd/runa
+replace github.com/duxweb/runa/cmd/runa v0.1.4 => ./cmd/runa
 
-replace github.com/duxweb/runa/console v0.1.3 => ./console
+replace github.com/duxweb/runa/console v0.1.4 => ./console
 
-replace github.com/duxweb/runa/crud v0.1.3 => ./crud
+replace github.com/duxweb/runa/crud v0.1.4 => ./crud
 
-replace github.com/duxweb/runa/crud/excelize v0.1.3 => ./crud/excelize
+replace github.com/duxweb/runa/crud/excelize v0.1.4 => ./crud/excelize
 
-replace github.com/duxweb/runa/crud/orostore v0.1.3 => ./crud/orostore
+replace github.com/duxweb/runa/crud/orostore v0.1.4 => ./crud/orostore
 
-replace github.com/duxweb/runa/database v0.1.3 => ./database
+replace github.com/duxweb/runa/database v0.1.4 => ./database
 
-replace github.com/duxweb/runa/database/oro v0.1.3 => ./database/oro
+replace github.com/duxweb/runa/database/oro v0.1.4 => ./database/oro
 
-replace github.com/duxweb/runa/database/redis v0.1.3 => ./database/redis
+replace github.com/duxweb/runa/database/redis v0.1.4 => ./database/redis
 
-replace github.com/duxweb/runa/devtools v0.1.3 => ./devtools
+replace github.com/duxweb/runa/devtools v0.1.4 => ./devtools
 
-replace github.com/duxweb/runa/event v0.1.3 => ./event
+replace github.com/duxweb/runa/event v0.1.4 => ./event
 
-replace github.com/duxweb/runa/examples/admin v0.1.3 => ./examples/admin
+replace github.com/duxweb/runa/examples/admin v0.1.4 => ./examples/admin
 
-replace github.com/duxweb/runa/examples/api v0.1.3 => ./examples/api
+replace github.com/duxweb/runa/examples/api v0.1.4 => ./examples/api
 
-replace github.com/duxweb/runa/examples/basic v0.1.3 => ./examples/basic
+replace github.com/duxweb/runa/examples/basic v0.1.4 => ./examples/basic
 
-replace github.com/duxweb/runa/examples/console v0.1.3 => ./examples/console
+replace github.com/duxweb/runa/examples/console v0.1.4 => ./examples/console
 
-replace github.com/duxweb/runa/examples/fullstack v0.1.3 => ./examples/fullstack
+replace github.com/duxweb/runa/examples/fullstack v0.1.4 => ./examples/fullstack
 
-replace github.com/duxweb/runa/id v0.1.3 => ./id
+replace github.com/duxweb/runa/id v0.1.4 => ./id
 
-replace github.com/duxweb/runa/id/snowflake v0.1.3 => ./id/snowflake
+replace github.com/duxweb/runa/id/snowflake v0.1.4 => ./id/snowflake
 
-replace github.com/duxweb/runa/jsonrpc v0.1.3 => ./jsonrpc
+replace github.com/duxweb/runa/jsonrpc v0.1.4 => ./jsonrpc
 
-replace github.com/duxweb/runa/kernel/embedgen v0.1.3 => ./kernel/embedgen
+replace github.com/duxweb/runa/kernel/embedgen v0.1.4 => ./kernel/embedgen
 
-replace github.com/duxweb/runa/lang v0.1.3 => ./lang
+replace github.com/duxweb/runa/lang v0.1.4 => ./lang
 
-replace github.com/duxweb/runa/lang/view v0.1.3 => ./lang/view
+replace github.com/duxweb/runa/lang/view v0.1.4 => ./lang/view
 
-replace github.com/duxweb/runa/lock v0.1.3 => ./lock
+replace github.com/duxweb/runa/lock v0.1.4 => ./lock
 
-replace github.com/duxweb/runa/lock/redis v0.1.3 => ./lock/redis
+replace github.com/duxweb/runa/lock/redis v0.1.4 => ./lock/redis
 
-replace github.com/duxweb/runa/log v0.1.3 => ./log
+replace github.com/duxweb/runa/log v0.1.4 => ./log
 
-replace github.com/duxweb/runa/message v0.1.3 => ./message
+replace github.com/duxweb/runa/message v0.1.4 => ./message
 
-replace github.com/duxweb/runa/message/amqp v0.1.3 => ./message/amqp
+replace github.com/duxweb/runa/message/amqp v0.1.4 => ./message/amqp
 
-replace github.com/duxweb/runa/message/mqtt v0.1.3 => ./message/mqtt
+replace github.com/duxweb/runa/message/mqtt v0.1.4 => ./message/mqtt
 
-replace github.com/duxweb/runa/message/nats v0.1.3 => ./message/nats
+replace github.com/duxweb/runa/message/nats v0.1.4 => ./message/nats
 
-replace github.com/duxweb/runa/message/redis v0.1.3 => ./message/redis
+replace github.com/duxweb/runa/message/redis v0.1.4 => ./message/redis
 
-replace github.com/duxweb/runa/middleware v0.1.3 => ./middleware
+replace github.com/duxweb/runa/middleware v0.1.4 => ./middleware
 
-replace github.com/duxweb/runa/middleware/lang v0.1.3 => ./middleware/lang
+replace github.com/duxweb/runa/middleware/lang v0.1.4 => ./middleware/lang
 
-replace github.com/duxweb/runa/observe v0.1.3 => ./observe
+replace github.com/duxweb/runa/observe v0.1.4 => ./observe
 
-replace github.com/duxweb/runa/observe/prometheus v0.1.3 => ./observe/prometheus
+replace github.com/duxweb/runa/observe/prometheus v0.1.4 => ./observe/prometheus
 
-replace github.com/duxweb/runa/openapi v0.1.3 => ./openapi
+replace github.com/duxweb/runa/openapi v0.1.4 => ./openapi
 
-replace github.com/duxweb/runa/queue v0.1.3 => ./queue
+replace github.com/duxweb/runa/queue v0.1.4 => ./queue
 
-replace github.com/duxweb/runa/queue/amqp v0.1.3 => ./queue/amqp
+replace github.com/duxweb/runa/queue/amqp v0.1.4 => ./queue/amqp
 
-replace github.com/duxweb/runa/queue/redis v0.1.3 => ./queue/redis
+replace github.com/duxweb/runa/queue/redis v0.1.4 => ./queue/redis
 
-replace github.com/duxweb/runa/rate v0.1.3 => ./rate
+replace github.com/duxweb/runa/rate v0.1.4 => ./rate
 
-replace github.com/duxweb/runa/rate/redis v0.1.3 => ./rate/redis
+replace github.com/duxweb/runa/rate/redis v0.1.4 => ./rate/redis
 
-replace github.com/duxweb/runa/rbac v0.1.3 => ./rbac
+replace github.com/duxweb/runa/rbac v0.1.4 => ./rbac
 
-replace github.com/duxweb/runa/resource v0.1.3 => ./resource
+replace github.com/duxweb/runa/resource v0.1.4 => ./resource
 
-replace github.com/duxweb/runa/route v0.1.3 => ./route
+replace github.com/duxweb/runa/route v0.1.4 => ./route
 
-replace github.com/duxweb/runa/sanitize v0.1.3 => ./sanitize
+replace github.com/duxweb/runa/sanitize v0.1.4 => ./sanitize
 
-replace github.com/duxweb/runa/schedule v0.1.3 => ./schedule
+replace github.com/duxweb/runa/schedule v0.1.4 => ./schedule
 
-replace github.com/duxweb/runa/scope v0.1.3 => ./scope
+replace github.com/duxweb/runa/scope v0.1.4 => ./scope
 
-replace github.com/duxweb/runa/security v0.1.3 => ./security
+replace github.com/duxweb/runa/security v0.1.4 => ./security
 
-replace github.com/duxweb/runa/session v0.1.3 => ./session
+replace github.com/duxweb/runa/session v0.1.4 => ./session
 
-replace github.com/duxweb/runa/storage v0.1.3 => ./storage
+replace github.com/duxweb/runa/storage v0.1.4 => ./storage
 
-replace github.com/duxweb/runa/storage/s3 v0.1.3 => ./storage/s3
+replace github.com/duxweb/runa/storage/s3 v0.1.4 => ./storage/s3
 
-replace github.com/duxweb/runa/task v0.1.3 => ./task
+replace github.com/duxweb/runa/task v0.1.4 => ./task
 
-replace github.com/duxweb/runa/validate v0.1.3 => ./validate
+replace github.com/duxweb/runa/validate v0.1.4 => ./validate
 
-replace github.com/duxweb/runa/view v0.1.3 => ./view
+replace github.com/duxweb/runa/view v0.1.4 => ./view
 
-replace github.com/duxweb/runa/ws v0.1.3 => ./ws
+replace github.com/duxweb/runa/ws v0.1.4 => ./ws
 
-replace github.com/duxweb/runa/ws/redis v0.1.3 => ./ws/redis
+replace github.com/duxweb/runa/ws/redis v0.1.4 => ./ws/redis

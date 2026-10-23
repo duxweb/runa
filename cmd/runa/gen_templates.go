@@ -338,7 +338,7 @@ const capabilityGoModTemplate = `module {{.GoModule}}/{{.Name}}
 
 go 1.27.3
 
-require github.com/duxweb/runa v0.1.3
+require github.com/duxweb/runa v0.1.4
 {{if .RootReplace}}
 replace github.com/duxweb/runa => {{.RootReplace}}
 {{end}}`

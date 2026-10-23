@@ -39,7 +39,7 @@
 
 ## Status
 
-Runa is a **pre-1.0 public preview**. The current public release target is `v0.1.3`, so APIs may still change before `v1.0`.
+Runa is a **pre-1.0 public preview**. The current public release target is `v0.1.4`, so APIs may still change before `v1.0`.
 
 Runa requires **Go 1.27.3 or newer**. Use a stable Go toolchain for development, CI, and releases.
 

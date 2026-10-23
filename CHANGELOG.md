@@ -4,6 +4,8 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 
 ## [Unreleased]
 
+## v0.1.4 - 2026-10-23
+
 ### Added
 
 - Added schedule `NextRun` metadata, `Info.NextRunAt`, and next-run timestamps in CLI and console listings.
@@ -11,11 +13,11 @@ English | [简体中文](CHANGELOG.zh-CN.md)
 ### Changed
 
 - Require stable Go 1.27.3 across all modules, workspace, generators, and CI; updated English and Chinese setup instructions.
-- Upgrade Oro adapters to verified Oro v0.1.2.
+- Upgrade Oro adapters to verified Oro v0.1.3.
 
 ### Fixed
 
-- Fix generated projects and external capabilities referencing the unpublished Runa v0.0.0 placeholder; use released v0.1.3 dependencies.
+- Fix generated projects and external capabilities referencing the unpublished Runa v0.0.0 placeholder; use released v0.1.4 dependencies.
 - Apply schedule timezones to descriptors such as `@daily` and reject incomplete timezone prefixes without panicking.
 - Fix Oro CRUD scroll cursors skipping the first row of the next page; use deterministic key ordering and matching descending cursor comparisons.
 

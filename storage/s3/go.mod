@@ -9,8 +9,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.20.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.104.0
 	github.com/aws/smithy-go v1.27.1
-	github.com/duxweb/runa v0.1.3
-	github.com/duxweb/runa/storage v0.1.3
+	github.com/duxweb/runa v0.1.4
+	github.com/duxweb/runa/storage v0.1.4
 )
 
 require (

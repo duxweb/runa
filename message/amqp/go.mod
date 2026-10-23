@@ -3,8 +3,8 @@ module github.com/duxweb/runa/message/amqp
 go 1.27.3
 
 require (
-	github.com/duxweb/runa v0.1.3
-	github.com/duxweb/runa/message v0.1.3
+	github.com/duxweb/runa v0.1.4
+	github.com/duxweb/runa/message v0.1.4
 	github.com/rabbitmq/amqp091-go v1.12.0
 )
 

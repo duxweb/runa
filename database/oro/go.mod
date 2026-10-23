@@ -3,10 +3,10 @@ module github.com/duxweb/runa/database/oro
 go 1.27.3
 
 require (
-	github.com/duxweb/oro v0.1.2
-	github.com/duxweb/runa v0.1.3
-	github.com/duxweb/runa/database v0.1.3
-	github.com/duxweb/runa/log v0.1.3
+	github.com/duxweb/oro v0.1.3
+	github.com/duxweb/runa v0.1.4
+	github.com/duxweb/runa/database v0.1.4
+	github.com/duxweb/runa/log v0.1.4
 	github.com/samber/do/v2 v2.0.0
 	modernc.org/sqlite v1.53.0
 )

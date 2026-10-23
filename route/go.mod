@@ -3,9 +3,9 @@ module github.com/duxweb/runa/route
 go 1.27.3
 
 require (
-	github.com/duxweb/runa v0.1.3
-	github.com/duxweb/runa/scope v0.1.3
-	github.com/duxweb/runa/validate v0.1.3
+	github.com/duxweb/runa v0.1.4
+	github.com/duxweb/runa/scope v0.1.4
+	github.com/duxweb/runa/validate v0.1.4
 	github.com/samber/do/v2 v2.0.0
 )
 
