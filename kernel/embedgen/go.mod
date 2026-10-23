@@ -1,6 +1,6 @@
 module github.com/duxweb/runa/kernel/embedgen
 
-go 1.27rc1
+go 1.27.3
 
 require github.com/duxweb/runa/view v0.1.3
 

@@ -120,6 +120,10 @@ go run . schedule:run
 
 `schedule:run` 会启动整个调度 worker，不接收单个调度名称参数。
 
+console 或后台进程需要调度元数据时，可以使用 `schedule:list --json` 或 `schedule.Default().Info()`。每个条目会包含 `NextRun`，业务代码也可以用 `item.NextRunAt(now)` 按指定参考时间重新计算下一次执行时间，不需要自己重复解析 cron。
+
+`NextRun` 是相对于当前应用时间计算的预估值；`@every` 或时长表达式不会读取运行中调度器的实际计时状态。禁用或无效的调度返回零时间，控制台显示 `-`。控制台和文本列表保留日期和时区偏移，避免跨天或跨时区歧义。`@daily`、`@midnight` 等描述符同样遵循调度或应用时区。
+
 ## 常见错误
 
 ### 以为 schedule 会直接写业务逻辑
@@ -140,4 +144,6 @@ go run . schedule:run
 - `schedule.Provider()` 接入框架生命周期
 - `schedule.Default()` 从默认 DI 取 `*schedule.Registry`
 - `registry.Register(name, spec, taskName, payload, options...)` 注册调度项
+- `registry.Info()` 返回调度元数据，包括 `NextRun`
+- `info.NextRunAt(now)` 返回 `now` 之后的下一次执行时间
 - `schedule.NewUnit(registry, tasks)` 创建调度 Host 单元

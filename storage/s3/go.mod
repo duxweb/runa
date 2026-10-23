@@ -1,6 +1,6 @@
 module github.com/duxweb/runa/storage/s3
 
-go 1.27rc1
+go 1.27.3
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.42.0

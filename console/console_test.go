@@ -23,6 +23,7 @@ import (
 	"github.com/duxweb/runa/rate"
 	"github.com/duxweb/runa/route"
 	"github.com/duxweb/runa/runtime"
+	"github.com/duxweb/runa/schedule"
 	"github.com/duxweb/runa/session"
 	"github.com/duxweb/runa/ws"
 )
@@ -244,6 +245,34 @@ func TestExternalProviderRegistersConsolePanel(t *testing.T) {
 	if response.Code != http.StatusOK || response.Body.String() != "pong" {
 		t.Fatalf("external panel = %d %q", response.Code, response.Body.String())
 	}
+}
+
+func TestScheduleRowsIncludeNextRun(t *testing.T) {
+	nextRun := time.Date(2026, 7, 4, 2, 0, 0, 0, time.UTC)
+	table := scheduleRows([]schedule.Info{{Name: "nightly", Spec: "0 2 * * *", Task: "sync", Mode: "direct", Timezone: "UTC", Enabled: true, NextRun: nextRun}})
+	columns, ok := table["columns"].([]string)
+	if !ok {
+		t.Fatalf("columns = %#v", table["columns"])
+	}
+	if !containsString(columns, "next_run") {
+		t.Fatalf("columns = %#v", columns)
+	}
+	rows, ok := table["rows"].([]core.Map)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("rows = %#v", table["rows"])
+	}
+	if rows[0]["next_run"] != "2026-07-04T02:00:00Z" {
+		t.Fatalf("next_run = %#v", rows[0]["next_run"])
+	}
+}
+
+func containsString(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestConsoleAuthOptionProtectsRoutes(t *testing.T) {

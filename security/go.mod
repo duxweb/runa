@@ -1,6 +1,6 @@
 module github.com/duxweb/runa/security
 
-go 1.27rc1
+go 1.27.3
 
 require (
 	github.com/duxweb/runa/middleware v0.1.3

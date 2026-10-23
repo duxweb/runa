@@ -336,9 +336,9 @@ func TestProviderBoots(t *testing.T) {
 
 const capabilityGoModTemplate = `module {{.GoModule}}/{{.Name}}
 
-go 1.27rc1
+go 1.27.3
 
-require github.com/duxweb/runa v0.0.0
+require github.com/duxweb/runa v0.1.3
 {{if .RootReplace}}
 replace github.com/duxweb/runa => {{.RootReplace}}
 {{end}}`
@@ -579,7 +579,7 @@ func TestRegistryRegisterDriver(t *testing.T) {
 
 const driverGoModTemplate = `module {{.GoModule}}/{{.Cap}}/{{.Name}}
 
-go 1.27rc1
+go 1.27.3
 
 require {{.CapImport}} v0.0.0
 

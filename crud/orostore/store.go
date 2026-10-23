@@ -62,18 +62,29 @@ func (store *OroStore[Model]) Query(ctx *crud.Context[Model]) (*oro.ModelQuery[M
 // List returns models and list metadata.
 func (store *OroStore[Model]) List(ctx *crud.Context[Model], query *oro.ModelQuery[Model]) ([]*Model, core.ListMeta, error) {
 	query = store.applyRelations(ctx, store.applyFilters(ctx, query))
-	query = store.applySort(ctx, query)
 
 	switch ctx.Pagination() {
 	case crud.NoPageMode:
-		models, err := query.Get(requestContext(ctx))
+		models, err := store.applySort(ctx, query).Get(requestContext(ctx))
 		return models, nil, err
 	case crud.ScrollMode:
 		scroll := ctx.Scroll()
+		key := store.fieldName(ctx, ctx.Key())
+		orders := ctx.Sort()
+		if len(orders) > 1 || (len(orders) == 1 && store.fieldName(ctx, orders[0].Field) != key) {
+			return nil, nil, fmt.Errorf("orostore scroll pagination requires sorting by %s only", ctx.Key())
+		}
+		operator := ">"
+		if len(orders) == 1 && strings.EqualFold(orders[0].Direction, "desc") {
+			operator = "<"
+			query = query.OrderByDesc(key)
+		} else {
+			query = query.OrderBy(key)
+		}
 		if scroll.Cursor != "" {
 			key, value, ok := store.keyValue(ctx, scroll.Cursor)
 			if ok {
-				query = query.Where(key, ">", value)
+				query = query.Where(key, operator, value)
 			}
 		}
 		limit := scroll.Limit
@@ -86,11 +97,12 @@ func (store *OroStore[Model]) List(ctx *crud.Context[Model], query *oro.ModelQue
 		}
 		next := ""
 		if len(models) > limit {
-			next = store.modelKeyString(ctx, models[limit])
+			next = store.modelKeyString(ctx, models[limit-1])
 			models = models[:limit]
 		}
 		return models, core.ScrollMeta{Cursor: scroll.Cursor, Limit: limit, Next: next}, nil
 	default:
+		query = store.applySort(ctx, query)
 		page := ctx.Page()
 		total, err := query.Count(requestContext(ctx))
 		if err != nil {

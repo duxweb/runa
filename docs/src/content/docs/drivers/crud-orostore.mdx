@@ -7,6 +7,8 @@ description: "Connect Oro models to Runa CRUD and quickly expose business data A
 
 It solves the bridge between Oro models and Runa CRUD. Models, relations, query expressions, and database behavior belong to Oro. Resource routes, actions, writable fields, output transforms, filters, and pagination belong to Runa CRUD
 
+Scroll pagination uses the configured unique key as its cursor. It defaults to ascending key order; use `Sort("id", "desc")` for descending traversal. Scroll mode supports sorting by that key only. Pass `meta.next` as the next request’s `cursor`; an empty `next` means the last page.
+
 ## Install
 
 ```bash

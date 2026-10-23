@@ -1,6 +1,6 @@
 module github.com/duxweb/runa/message/redis
 
-go 1.27rc1
+go 1.27.3
 
 require (
 	github.com/alicebob/miniredis/v2 v2.38.0

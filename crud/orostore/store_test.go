@@ -196,6 +196,12 @@ func TestOroStoreExportAndScroll(t *testing.T) {
 	if len(scrollBody.Items) != 1 || scrollBody.Meta["next"] == "" {
 		t.Fatalf("scroll = %#v", scrollBody)
 	}
+	firstID := scrollBody.Items[0].ID
+	next := scrollBody.Meta["next"].(string)
+	decode(t, request(registry, http.MethodGet, "/users?limit=1&cursor="+next, nil), &scrollBody)
+	if len(scrollBody.Items) != 1 || scrollBody.Items[0].Name != "bob" || scrollBody.Items[0].ID == firstID || scrollBody.Meta["next"] != "" {
+		t.Fatalf("second scroll page = %#v", scrollBody)
+	}
 
 	exported := request(registry, http.MethodGet, "/users/export", nil)
 	if exported.Code != http.StatusOK {
@@ -208,6 +214,42 @@ func TestOroStoreExportAndScroll(t *testing.T) {
 	}
 	if len(rows) != 3 || rows[0][0] != "ID" || rows[1][1] != "alice" {
 		t.Fatalf("rows = %#v", rows)
+	}
+}
+
+func TestOroStoreScrollKeyOrdering(t *testing.T) {
+	for _, direction := range []string{"", "asc", "desc"} {
+		t.Run("sort="+direction, func(t *testing.T) {
+			db := newTestDB(t)
+			seedUsers(t, db)
+			registry := route.New()
+			users := resource.New(route.NewGroup(registry, ""), "/users").Name("user")
+			builder := crud.New[storeUser](users, Store[storeUser](db)).
+				Actions(crud.ListAction).Scroll(1, 2).
+				Transform[storeUserOutput](transformStoreUser)
+			if direction != "" {
+				builder.Sort("id", direction)
+			}
+			want := []string{"alice", "bob"}
+			if direction == "desc" {
+				want = []string{"bob", "alice"}
+			}
+			cursor := ""
+			for index, name := range want {
+				var body struct {
+					Items []storeUserOutput `json:"items"`
+					Meta  core.ScrollMeta   `json:"meta"`
+				}
+				decode(t, request(registry, http.MethodGet, "/users?limit=1&cursor="+cursor, nil), &body)
+				if len(body.Items) != 1 || body.Items[0].Name != name {
+					t.Fatalf("page %d = %#v", index+1, body)
+				}
+				cursor = body.Meta.Next
+				if (cursor == "") != (index == len(want)-1) {
+					t.Fatalf("page %d cursor = %q", index+1, cursor)
+				}
+			}
+		})
 	}
 }
 

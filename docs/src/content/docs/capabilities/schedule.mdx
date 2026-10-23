@@ -120,6 +120,10 @@ go run . schedule:run
 
 `schedule:run` starts the whole scheduler worker and does not accept a single schedule name argument.
 
+Use `schedule:list --json` or `schedule.Default().Info()` when a console or background process needs schedule metadata. Each item includes `NextRun`, and `item.NextRunAt(now)` can recompute the next run time for a custom reference time without reparsing cron in business code.
+
+`NextRun` is an estimate relative to the current application time; interval expressions such as `@every` do not inspect the running scheduler’s timer state. Disabled or invalid schedules return zero time, displayed as `-`. Console and text listings retain the date and UTC offset to make cross-day and cross-timezone runs clear. Descriptors such as `@daily` and `@midnight` also follow the schedule or application timezone.
+
 ## Common mistakes
 
 ### Expecting schedule to contain business logic
@@ -140,4 +144,6 @@ If you do not call `schedule.Timezone(...)`, the schedule follows the applicatio
 - `schedule.Provider()` connects to the framework lifecycle.
 - `schedule.Default()` reads `*schedule.Registry` from default DI.
 - `registry.Register(name, spec, taskName, payload, options...)` registers a schedule.
+- `registry.Info()` returns schedule metadata, including `NextRun`.
+- `info.NextRunAt(now)` returns the next run time after `now`.
 - `schedule.NewUnit(registry, tasks)` creates a scheduler Host unit.

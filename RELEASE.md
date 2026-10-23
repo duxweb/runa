@@ -10,6 +10,6 @@
 - 发布检查项已全部确认。
 - 未提前创建 tag 或发布包。
 
-Go 基线：`go 1.27`。
+Go 基线：`go 1.27.3`（正式版）。
 
 Module：`github.com/duxweb/runa`。

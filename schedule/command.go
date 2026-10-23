@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"fmt"
+	"time"
 
 	runacommand "github.com/duxweb/runa/command"
 	runaprovider "github.com/duxweb/runa/provider"
@@ -21,11 +22,18 @@ func (listCommand) Run(_ context.Context, cmd *runacommand.Context) error {
 	if cmd.Get[bool]("json") {
 		return cmd.JSON(registry.Info())
 	}
-	rows := [][]string{{"SCHEDULE", "SPEC", "TASK", "MODE", "QUEUE", "ENABLED"}}
+	rows := [][]string{{"SCHEDULE", "SPEC", "TASK", "MODE", "QUEUE", "NEXT RUN", "ENABLED"}}
 	for _, item := range registry.Info() {
-		rows = append(rows, []string{item.Name, item.Spec, item.Task, item.Mode, item.Queue, fmt.Sprint(item.Enabled)})
+		rows = append(rows, []string{item.Name, item.Spec, item.Task, item.Mode, item.Queue, formatNextRun(item.NextRun), fmt.Sprint(item.Enabled)})
 	}
 	return cmd.Table(rows)
+}
+
+func formatNextRun(value time.Time) string {
+	if value.IsZero() {
+		return "-"
+	}
+	return value.Format(time.RFC3339)
 }
 
 type runCommand struct{}

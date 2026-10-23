@@ -28,7 +28,7 @@
     "llms.txt"
   ],
   "rules": [
-    "Use Go 1.27 or newer; the current public preview targets Go 1.27rc1.",
+    "Use stable Go 1.27.3 or newer.",
     "Install only the modules you import; capabilities and drivers are separate Go modules.",
     "Start HTTP applications with github.com/duxweb/runa and github.com/duxweb/runa/route.",
     "Register capabilities with Provider(...) during startup and call Default() only after the application has been frozen or run.",

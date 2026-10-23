@@ -23,7 +23,7 @@
   <a href="https://github.com/duxweb/runa/actions/workflows/docs.yml"><img alt="Docs" src="https://github.com/duxweb/runa/actions/workflows/docs.yml/badge.svg"></a>
   <a href="https://pkg.go.dev/github.com/duxweb/runa"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/duxweb/runa.svg"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-black.svg"></a>
-  <img alt="Go" src="https://img.shields.io/badge/go-1.27rc1+-00ADD8.svg">
+  <img alt="Go" src="https://img.shields.io/badge/go-1.27.3+-00ADD8.svg">
 </p>
 
 ---
@@ -41,7 +41,7 @@
 
 Runa is a **pre-1.0 public preview**. The current public release target is `v0.1.3`, so APIs may still change before `v1.0`.
 
-Runa currently targets **Go 1.27rc1**. Use a Go 1.27 release candidate toolchain until the stable Go 1.27 toolchain is available.
+Runa requires **Go 1.27.3 or newer**. Use a stable Go toolchain for development, CI, and releases.
 
 ## Install
 

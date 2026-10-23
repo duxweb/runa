@@ -42,7 +42,20 @@ type Info struct {
 	Queue    string
 	Timezone string
 	Enabled  bool
+	NextRun  time.Time
 	Meta     core.Map
+}
+
+// NextRunAt returns the next run time after now.
+func (info Info) NextRunAt(now time.Time) time.Time {
+	if !info.Enabled {
+		return time.Time{}
+	}
+	schedule, err := info.schedule()
+	if err != nil {
+		return time.Time{}
+	}
+	return schedule.Next(now)
 }
 
 // Register registers a typed schedule.
@@ -111,13 +124,16 @@ func (registry *Registry) Freeze(tasks interface {
 func (registry *Registry) Info() []Info {
 	registry.mu.RLock()
 	defer registry.mu.RUnlock()
+	now := core.Now()
 	items := make([]Info, 0, len(registry.entries))
 	for name, entries := range registry.entries {
 		if len(entries) == 0 {
 			continue
 		}
 		item := entries[len(entries)-1]
-		items = append(items, Info{Name: name, Spec: item.spec, Task: item.task, Payload: item.payloadName, Mode: item.mode, Queue: item.queue, Timezone: scheduleTimezone(item), Enabled: item.enabled, Meta: core.CloneMap(item.meta)})
+		info := Info{Name: name, Spec: item.spec, Task: item.task, Payload: item.payloadName, Mode: item.mode, Queue: item.queue, Timezone: scheduleTimezone(item), Enabled: item.enabled, Meta: core.CloneMap(item.meta)}
+		info.NextRun = info.NextRunAt(now)
+		items = append(items, info)
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 	return items
@@ -190,21 +206,18 @@ func (unit *Unit) Start(ctx context.Context) error {
 	unit.status = host.Starting
 	unit.mu.Unlock()
 
-	cronRunner := cron.New()
+	cronRunner := cron.New(cron.WithParser(scheduleParser()))
 	for _, item := range unit.registry.list() {
 		if !item.enabled {
 			continue
 		}
-		spec, err := parseSpec(item)
+		_, schedule, err := parseSchedule(item.spec, scheduleTimezone(item))
 		if err != nil {
 			unit.setStatus(host.Failed)
 			return err
 		}
 		item := item
-		if _, err := cronRunner.AddFunc(spec, func() { unit.run(ctx, item) }); err != nil {
-			unit.setStatus(host.Failed)
-			return err
-		}
+		cronRunner.Schedule(schedule, cron.FuncJob(func() { unit.run(ctx, item) }))
 	}
 	unit.mu.Lock()
 	unit.cron = cronRunner
@@ -314,23 +327,42 @@ type runState struct {
 }
 
 func parseSpec(item entry) (string, error) {
-	spec := strings.TrimSpace(item.spec)
-	if spec == "" {
-		return "", fmt.Errorf("empty spec")
-	}
-	if duration, err := time.ParseDuration(spec); err == nil {
-		return "@every " + duration.String(), nil
-	}
-	timezone := item.timezone
+	spec, _, err := parseSchedule(item.spec, scheduleTimezone(item))
+	return spec, err
+}
+
+func (info Info) schedule() (cron.Schedule, error) {
+	timezone := info.Timezone
 	if timezone == "" && core.Location() != nil {
 		timezone = core.Location().String()
 	}
-	if timezone != "" && !strings.HasPrefix(spec, "@") && !strings.HasPrefix(spec, "CRON_TZ=") && !strings.HasPrefix(spec, "TZ=") {
+	_, schedule, err := parseSchedule(info.Spec, timezone)
+	return schedule, err
+}
+
+func parseSchedule(spec string, timezone string) (string, cron.Schedule, error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return "", nil, fmt.Errorf("empty spec")
+	}
+	if duration, err := time.ParseDuration(spec); err == nil {
+		spec = "@every " + duration.String()
+		schedule, err := scheduleParser().Parse(spec)
+		return spec, schedule, err
+	}
+	if strings.HasPrefix(spec, "CRON_TZ=") || strings.HasPrefix(spec, "TZ=") {
+		if !strings.Contains(spec, " ") {
+			return "", nil, fmt.Errorf("timezone prefix requires a schedule")
+		}
+	} else if timezone != "" {
 		spec = "CRON_TZ=" + timezone + " " + spec
 	}
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
-	_, err := parser.Parse(spec)
-	return spec, err
+	schedule, err := scheduleParser().Parse(spec)
+	return spec, schedule, err
+}
+
+func scheduleParser() cron.Parser {
+	return cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 }
 
 // Direct uses direct task dispatch.

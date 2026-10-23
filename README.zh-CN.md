@@ -23,7 +23,7 @@
   <a href="https://github.com/duxweb/runa/actions/workflows/docs.yml"><img alt="Docs" src="https://github.com/duxweb/runa/actions/workflows/docs.yml/badge.svg"></a>
   <a href="https://pkg.go.dev/github.com/duxweb/runa"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/duxweb/runa.svg"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-black.svg"></a>
-  <img alt="Go" src="https://img.shields.io/badge/go-1.27rc1+-00ADD8.svg">
+  <img alt="Go" src="https://img.shields.io/badge/go-1.27.3+-00ADD8.svg">
 </p>
 
 ---
@@ -41,7 +41,7 @@
 
 Runa 目前是 **pre-1.0 公开预览版**。当前公开版本目标是 `v0.1.3`，在 `v1.0` 前 API 仍可能调整。
 
-当前最低 Go 版本是 **Go 1.27rc1**。在 Go 1.27 稳定版可用前，请使用 Go 1.27 RC 工具链。
+当前最低 Go 版本是 **Go 1.27.3**。开发、CI 和发布均使用正式版 Go 工具链。
 
 ## 安装
 

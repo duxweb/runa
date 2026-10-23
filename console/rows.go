@@ -207,10 +207,11 @@ func scheduleRows(items []schedule.Info) core.Map {
 			"mode":     item.Mode,
 			"queue":    item.Queue,
 			"timezone": item.Timezone,
+			"next_run": formatTimestamp(item.NextRun),
 			"status":   status,
 		})
 	}
-	return tableRows([]string{"name", "spec", "task", "mode", "queue", "timezone", "status"}, rows)
+	return tableRows([]string{"name", "spec", "task", "mode", "queue", "timezone", "next_run", "status"}, rows)
 }
 
 func taskRows(items []task.Info) core.Map {
@@ -379,6 +380,13 @@ func formatClock(value time.Time) string {
 		return "-"
 	}
 	return value.Format("15:04:05")
+}
+
+func formatTimestamp(value time.Time) string {
+	if value.IsZero() {
+		return "-"
+	}
+	return value.Format(time.RFC3339)
 }
 
 func formatUnixNano(value uint64) string {

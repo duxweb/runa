@@ -21,7 +21,7 @@ func Scaffold(dir string, module string) error {
 	if err := os.MkdirAll(filepath.Join(dir, "cmd", "app"), 0o755); err != nil {
 		return err
 	}
-	if err := writeNew(filepath.Join(dir, "go.mod"), "module "+module+"\n\ngo 1.27\n\nrequire (\n\tgithub.com/duxweb/runa v0.0.0\n\tgithub.com/duxweb/runa/route v0.0.0\n)\n"); err != nil {
+	if err := writeNew(filepath.Join(dir, "go.mod"), "module "+module+"\n\ngo 1.27.3\n\nrequire (\n\tgithub.com/duxweb/runa v0.1.3\n\tgithub.com/duxweb/runa/route v0.1.3\n)\n"); err != nil {
 		return err
 	}
 	main := `package main

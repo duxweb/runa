@@ -1,9 +1,9 @@
 module github.com/duxweb/runa/crud/orostore
 
-go 1.27rc1
+go 1.27.3
 
 require (
-	github.com/duxweb/oro v0.1.0
+	github.com/duxweb/oro v0.1.2
 	github.com/duxweb/runa v0.1.3
 	github.com/duxweb/runa/crud v0.1.3
 	github.com/duxweb/runa/resource v0.1.3
@@ -16,13 +16,13 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/duxweb/runa/auth v0.1.3 // indirect
 	github.com/duxweb/runa/cache v0.1.3 // indirect
-	github.com/duxweb/runa/lang v0.1.3 // indirect
 	github.com/duxweb/runa/log v0.1.3 // indirect
 	github.com/duxweb/runa/scope v0.1.3 // indirect
 	github.com/duxweb/runa/session v0.1.3 // indirect
 	github.com/duxweb/runa/storage v0.1.3 // indirect
 	github.com/duxweb/runa/validate v0.1.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/lmittmann/tint v1.1.3 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
@@ -30,6 +30,7 @@ require (
 	github.com/samber/go-type-to-string v1.8.0 // indirect
 	github.com/urfave/cli/v3 v3.10.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
 	modernc.org/libc v1.73.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

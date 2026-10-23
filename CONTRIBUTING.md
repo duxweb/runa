@@ -13,7 +13,7 @@ go work sync
 go test ./...
 ```
 
-The project currently targets **Go 1.27rc1**. Use the same toolchain when running tests or generating release artifacts.
+The project currently targets **Go 1.27.3**. Use the same toolchain when running tests or generating release artifacts.
 
 ## Naming and structure
 

@@ -1,6 +1,6 @@
 module github.com/duxweb/runa/sanitize
 
-go 1.27rc1
+go 1.27.3
 
 require github.com/microcosm-cc/bluemonday v1.0.27
 

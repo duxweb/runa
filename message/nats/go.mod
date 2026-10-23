@@ -1,6 +1,6 @@
 module github.com/duxweb/runa/message/nats
 
-go 1.27rc1
+go 1.27.3
 
 require (
 	github.com/duxweb/runa v0.1.3
